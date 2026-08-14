@@ -11,6 +11,11 @@
 .DEFAULT_GOAL := help
 SHELL := /usr/bin/env bash
 
+# The repo root is not a Go module, so `go build ./...` cannot run from here.
+# This lists the workspace module directories straight out of go.work, so adding
+# a module to go.work is enough - nothing here needs updating.
+GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
+
 .PHONY: help install dev sim test test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
@@ -34,9 +39,12 @@ sim:
 test:
 	@echo "test: not wired yet - branch feature/python-tooling"; exit 1
 
-## test-go: run the Go test suite across the workspace
+## test-go: build and test every Go module in the workspace
 test-go:
-	@echo "test-go: not wired yet - branch feature/go-workspace"; exit 1
+	@$(GO_MODULE_DIRS) | while IFS= read -r dir; do \
+		echo "--- $$dir"; \
+		( cd "$$dir" && go build ./... && go test ./... ) || exit 1; \
+	done
 
 ## test-ts: run the dashboard test suite
 test-ts:
@@ -46,9 +54,12 @@ test-ts:
 lint:
 	@echo "lint: not wired yet - branch feature/python-tooling"; exit 1
 
-## lint-go: run golangci-lint across the Go workspace
+## lint-go: vet and golangci-lint every Go module in the workspace
 lint-go:
-	@echo "lint-go: not wired yet - branch feature/go-workspace"; exit 1
+	@root="$$(pwd)"; $(GO_MODULE_DIRS) | while IFS= read -r dir; do \
+		echo "--- $$dir"; \
+		( cd "$$dir" && go vet ./... && golangci-lint run --config "$$root/.golangci.yml" ./... ) || exit 1; \
+	done
 
 ## lint-ts: run biome against the dashboard
 lint-ts:
