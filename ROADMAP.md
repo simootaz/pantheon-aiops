@@ -25,6 +25,24 @@ is unaffected — the branches are independent.
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
 
+## Definition of done — Phase 0
+
+On a fresh clone, all of the following must pass.
+
+| Language | Commands |
+|---|---|
+| Python | `make install && make lint && make typecheck && make test` |
+| Go | `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...` |
+| TypeScript | `pnpm --dir dashboard build` |
+| Deploy | `helm lint deploy/helm/pantheon`, `terraform fmt -check`, `docker compose config` |
+| Docs | CLAUDE.md accurately describes every directory that exists |
+
+> **Note on the Go commands.** `go build ./...` is *not* used and must not be
+> reintroduced. The repo root has no `go.mod`, so the pattern is invalid there,
+> and adding a root module would not help — nested modules are pruned from a
+> parent's package walk, so it would report success while building nothing. The
+> three commands above cover all four modules and all eight packages.
+
 ## Deferred decisions
 
 Things deliberately set to a scaffold-friendly value now, to be tightened later.

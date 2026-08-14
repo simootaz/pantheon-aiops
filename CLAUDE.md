@@ -63,7 +63,7 @@ Three languages, each with a hard boundary. **Do not cross them.**
 | Language | Owns | Why |
 |---|---|---|
 | **Python 3.12** | `core/`, `agents/`, `api/`, `simulator/`, most of `connectors/`, `codegen/` | The agent, LLM and data-science ecosystem is Python. Pydantic v2 gives us one place to define every shape. |
-| **Go 1.23** | `connectors/kubernetes/`, `connectors/_base/go/`, `cmd/pantheonctl/`, `cmd/collector/` | `client-go` is the only first-class Kubernetes client. Single static binaries matter for a CLI and a sidecar. |
+| **Go 1.23** | `pkg/mcpserver/`, `connectors/kubernetes/`, `cmd/pantheonctl/`, `cmd/collector/` | `client-go` is the only first-class Kubernetes client. Single static binaries matter for a CLI and a sidecar. |
 | **TypeScript** | `dashboard/` — and nowhere else | Next.js 15 App Router. The dashboard is the *only* TypeScript in this repo. |
 
 Tooling per language:
@@ -72,33 +72,54 @@ Tooling per language:
 - **Go** — Go workspace (`go.work`), `golangci-lint`
 - **TypeScript** — `pnpm`, `biome` (no ESLint, no Prettier), `vitest`
 
-### ⚠️ Go: the repo root is not a module
+### Go layout and how to build it
+
+**Shared Go libraries live in `pkg/`.** That is the idiomatic home for
+importable Go code, and it keeps every Go path free of a leading underscore —
+which matters, because the Go tool silently skips `_`-prefixed directories when
+expanding a `...` wildcard.
 
 There are **four** Go modules, all under `github.com/simootaz/pantheon-aiops`:
 
 | Module path | Directory |
 |---|---|
-| `…/connectors/_base/go` | `connectors/_base/go` |
+| `…/pkg/mcpserver` | `pkg/mcpserver` |
 | `…/connectors/kubernetes` | `connectors/kubernetes` |
 | `…/cmd/pantheonctl` | `cmd/pantheonctl` |
 | `…/cmd/collector` | `cmd/collector` |
 
-The repo root has **no** `go.mod`. Two consequences that will bite you:
+#### ⚠️ The repo root is not a Go module
 
-1. **`go build ./...` fails from the repo root** with *"directory prefix . does
-   not contain modules listed in go.work"*. It is not a broken checkout — the
-   pattern is simply invalid there. Run it from **inside a module**, or use
-   `make test-go` / `make lint-go`, which iterate the modules listed in
-   `go.work`.
-2. **`connectors/_base/` is invisible to `./...`.** The Go tool skips any
-   directory whose name begins with `_` or `.` when expanding a `...` wildcard.
-   The module-path form `go build github.com/simootaz/pantheon-aiops/...` *does*
-   reach it, and so does running `./...` from inside the module.
+`go build ./...` **fails from the repo root** with *"directory prefix . does not
+contain modules listed in go.work"*. That is not a broken checkout — the pattern
+is invalid there, and adding a root `go.mod` would not fix it: nested modules
+are pruned from a parent module's package walk, so it would report success while
+building nothing.
 
-`connectors/kubernetes` depends on `connectors/_base/go`. Neither module is
-published, so `go.work` resolves the dependency inside the workspace and a
-`replace` directive in `connectors/kubernetes/go.mod` keeps that module building
-on its own.
+**Use these three commands.** Together they cover every module and every
+package — this is the definition of done for Go:
+
+```bash
+make lint-go                                       # go vet + golangci-lint, per module
+make test-go                                       # go build + go test, per module
+go build github.com/simootaz/pantheon-aiops/...    # single root-level build
+```
+
+`connectors/kubernetes` depends on `pkg/mcpserver`. Neither module is published,
+so `go.work` resolves the dependency inside the workspace and a `replace`
+directive in `connectors/kubernetes/go.mod` keeps that module building on its
+own.
+
+#### Why `connectors/_base/python/` keeps its underscore
+
+The Python base is deliberately **not** moved. Its leading underscore is
+load-bearing: `core.registry.loader` discovers connectors by walking
+`connectors/*/`, and the underscore marks `_base` as scaffolding rather than a
+connector to be registered. `agents/_base/` follows the same convention.
+
+Python has no `...` wildcard to trip over, so the underscore costs nothing there
+and earns its keep. Go had no such benefit — only the cost — which is why the Go
+base moved to `pkg/mcpserver`.
 
 ### The one rule that outranks the others
 
@@ -147,8 +168,7 @@ pantheon-aiops/
 | `agents/_base/` | `base_agent`, `tool_binding`, `testing` — shared agent scaffolding. | 1 |
 | `agents/<domain>/` | One agent: `agent.py`, `manifest.yaml`, `tools.py`, `prompts/`, `tests/`. | varies |
 | **connectors/** | Polyglot. Each connector is a separate process speaking MCP. | 1–6 |
-| `connectors/_base/python/` | `base_server.py` — base MCP server for Python connectors. | 1 |
-| `connectors/_base/go/` | Shared MCP server package for Go connectors. | 6 |
+| `connectors/_base/python/` | `base_server.py` — base MCP server for Python connectors. The `_` keeps it out of connector auto-discovery. | 1 |
 | `connectors/kubernetes/` | **Go.** `cmd/server/`, `internal/{tools,readonly,write,client}/`. | 6 |
 | `connectors/kubernetes/pkg/contracts/` | ⚙️ **Generated.** Go structs from the JSON Schema. | 0 |
 | `connectors/kubernetes/python_ref/` | Temporary Python implementation. **Deleted in Phase 6.** | 1 |
@@ -158,6 +178,8 @@ pantheon-aiops/
 | `connectors/gitlab/` | Python. Pipelines, jobs, merge requests, diffs. | 4 |
 | `connectors/github/` | Python. Actions runs, pull requests, diffs. | 4 |
 | `connectors/litmus/` | Python. Chaos experiment lifecycle and results. | 5 |
+| **pkg/** | Go. Shared, importable Go libraries. One module per subdirectory. | 6 |
+| `pkg/mcpserver/` | Shared MCP server package every Go connector builds on. | 6 |
 | **cmd/** | Go binaries. | 6 |
 | `cmd/pantheonctl/` | Operator CLI. | 6 |
 | `cmd/collector/` | Signal-shipping sidecar. | 6 |
@@ -194,7 +216,8 @@ pantheon-aiops/
 | I am adding… | It goes in | Also do |
 |---|---|---|
 | A new **agent** | `agents/<domain>/` — `agent.py`, `manifest.yaml`, `tools.py`, `prompts/`, `tests/` | Extend `agents/_base/base_agent.py`; register capabilities in `manifest.yaml`; add the codename to the agent table above |
-| A new **connector** | `connectors/<name>/` — Python unless it needs a Go-only client library | Build on `connectors/_base/python/base_server.py` (or `_base/go/`) |
+| A new **connector** | `connectors/<name>/` — Python unless it needs a Go-only client library | Build on `connectors/_base/python/base_server.py`, or `pkg/mcpserver` for Go |
+| A new **shared Go library** | `pkg/<name>/` with its own `go.mod` — never `connectors/_base/` | Add a `use` line to `go.work` |
 | A new **contract / data shape** | `core/contracts/<name>.py` — **always here first** | Run `make codegen`; commit the regenerated output |
 | A new **orchestrator stage** | `core/orchestrator/` | Zeus only — agents never orchestrate each other |
 | A new **guardrail or policy** | `core/guardrails/` | Every write action must route through it |
@@ -348,6 +371,8 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-14 | `feature/go-base-relocation` | **Moved `connectors/_base/go/` → `pkg/mcpserver/`** (module `github.com/simootaz/pantheon-aiops/pkg/mcpserver`). `pkg/` is the idiomatic home for shared Go libraries, and the move removes the `_`-wildcard trap outright instead of documenting it. Updated `go.work`, `connectors/kubernetes/go.mod` (require + replace → `../../pkg/mcpserver`) and the three importing files; the import alias is no longer needed. `connectors/_base/python/` **stays** — its underscore is load-bearing for connector auto-discovery. Rewrote the CLAUDE.md Go section accordingly and corrected `connectors/_base/__init__.py`, which still claimed to host both languages. **Supersedes the wildcard guidance in the `feature/go-workspace` row below.** |
+| 2026-08-14 | `feature/go-base-relocation` | **Definition of done corrected.** Dropped `go build ./...` — it cannot work from a non-module root. Replaced everywhere by the three commands that genuinely cover every module: `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...`. Branch 7 must use these in CI. |
 | 2026-08-14 | `feature/go-workspace` | **Pending rename recorded, not yet applied.** `deploy/terraform/modules/s3/` → `deploy/terraform/modules/object-storage/`, made provider-shaped rather than AWS-specific. Scheduled for `feature/deploy-skeleton` (branch 6) per [ADR 0001](docs/adr/0001-object-storage-minio.md). On disk today the directory is still `modules/s3/`. |
 | 2026-08-14 | `feature/go-workspace` | **Standing decision: object storage is MinIO.** Added `docs/adr/0001-object-storage-minio.md` and removed the now-redundant `docs/adr/.gitkeep`. Added a *Standing decisions* section here and an object-storage row to the *Where do I put X?* table. |
 | 2026-08-14 | `feature/go-workspace` | **Branch order changed.** Branch 3 pulled ahead of branch 2 — the Python toolchain was not installed yet, so `feature/python-tooling` could not be verified while `feature/go-workspace` could. Recorded in ROADMAP.md and the phase roadmap above. |
