@@ -1,0 +1,7 @@
+// Go workspace for the Pantheon Go modules.
+//
+// Phase: 0 - Scaffold & Tooling
+// The `use` directives land on branch feature/go-workspace together with the
+// per-module go.mod files.
+
+go 1.23

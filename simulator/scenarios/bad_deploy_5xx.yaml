@@ -1,0 +1,4 @@
+# Scenario: Error rate spike correlated with a deployment rollout.
+#
+# Phase: 1 - Contracts & First Agent Path
+# TODO: Phase 1 - define the bad_deploy_5xx signal timeline and expected Verdict

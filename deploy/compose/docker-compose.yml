@@ -1,0 +1,4 @@
+# Base Compose stack: API, worker, connectors, Postgres, Redis.
+#
+# Phase: 6 - Go Port & Platform Binaries
+# TODO: Phase 6 - define the base service topology

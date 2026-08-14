@@ -1,0 +1,4 @@
+# Scenario: Steadily climbing RSS on one workload until OOMKill.
+#
+# Phase: 1 - Contracts & First Agent Path
+# TODO: Phase 1 - define the memory_leak signal timeline and expected Verdict

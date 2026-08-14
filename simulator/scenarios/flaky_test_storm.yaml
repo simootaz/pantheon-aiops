@@ -1,0 +1,4 @@
+# Scenario: Intermittent CI failures with no underlying code regression.
+#
+# Phase: 4 - Delivery Flow
+# TODO: Phase 4 - define the flaky_test_storm signal timeline and expected Verdict

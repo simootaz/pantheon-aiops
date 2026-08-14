@@ -1,0 +1,6 @@
+"""Unit tests for the Hephaestus agent.
+
+Phase: 4 - Delivery Flow
+"""
+
+# TODO: Phase 4 - test Hephaestus Finding construction against golden fixtures

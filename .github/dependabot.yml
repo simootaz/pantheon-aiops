@@ -1,0 +1,8 @@
+# Dependency update automation for the Python, Go, TypeScript and Actions
+# ecosystems.
+#
+# Phase: 0 - Scaffold & Tooling
+# Populated on branch feature/ci-workflows.
+
+version: 2
+updates: []

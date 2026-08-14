@@ -1,0 +1,4 @@
+# Observability overlay: Prometheus, Grafana, Loki, Tempo, OTel collector.
+#
+# Phase: 6 - Go Port & Platform Binaries
+# TODO: Phase 6 - define the observability stack

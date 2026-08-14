@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.cache/
+
+# ---------------------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------------------
+bin/
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.test
+*.out
+go.work.sum
+vendor/
+
+# ---------------------------------------------------------------------------
+# Node / TypeScript / Next.js
+# ---------------------------------------------------------------------------
+node_modules/
+.pnpm-store/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Terraform
+# ---------------------------------------------------------------------------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# ---------------------------------------------------------------------------
+# Secrets and local environment
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/**/*.key
+kubeconfig
+*.kubeconfig
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Pantheon local runtime artifacts
+# ---------------------------------------------------------------------------
+.pantheon/
+simulator/output/
+*.log
