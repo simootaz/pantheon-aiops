@@ -1,0 +1,49 @@
+# Build context exclusions shared by every image in deploy/docker/.
+
+.git/
+.github/
+.gitignore
+.dockerignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage*
+coverage.xml
+
+# Go
+bin/
+*.exe
+*.test
+vendor/
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+.turbo/
+
+# Infrastructure - never part of an application image
+deploy/terraform/
+deploy/ansible/
+deploy/kustomize/
+deploy/helm/
+deploy/argocd/
+
+# Local state
+.env
+.env.*
+!.env.example
+.pantheon/
+*.log
