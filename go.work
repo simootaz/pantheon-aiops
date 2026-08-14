@@ -3,14 +3,14 @@
 // Phase: 0 - Scaffold & Tooling
 //
 // Four modules, all under github.com/simootaz/pantheon-aiops. The workspace is
-// what lets connectors/kubernetes depend on connectors/_base/go without either
-// module being published.
+// what lets connectors/kubernetes depend on pkg/mcpserver without either module
+// being published.
 
 go 1.23
 
 use (
 	./cmd/collector
 	./cmd/pantheonctl
-	./connectors/_base/go
 	./connectors/kubernetes
+	./pkg/mcpserver
 )
