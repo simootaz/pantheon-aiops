@@ -146,6 +146,8 @@ pantheon-aiops/
 ├── CONTRIBUTING.md         Git Flow + codegen rules
 ├── Makefile                every developer entrypoint
 ├── pyproject.toml          Python project, ruff, mypy, pytest config
+├── .python-version         uv's interpreter pin — 3.12, and only 3.12
+├── uv.lock                 resolved dependency lock — committed on purpose
 ├── go.work                 Go workspace over the four Go modules
 ├── .golangci.yml           Go lint rules, applied to every module
 ├── .env.example            every environment variable, documented
@@ -311,24 +313,39 @@ This repo uses Git Flow. `main` and `develop` already exist.
 Every Makefile target. Targets are wired branch by branch during Phase 0; a
 target that is not yet wired says so and exits non-zero.
 
-| Target | Does |
-|---|---|
-| `make help` | List every target (default goal) |
-| `make install` | Install Python, Go and dashboard dependencies |
-| `make dev` | Run the API and worker locally with reload |
-| `make sim` | Run a simulator scenario against the local stack |
-| `make test` | Python test suite (`pytest`) |
-| `make test-go` | `go build` + `go test` in every module listed in `go.work` |
-| `make test-ts` | Dashboard test suite (`vitest`) |
-| `make lint` | Lint and format-check Python (`ruff`) |
-| `make lint-go` | `go vet` + `golangci-lint` in every module listed in `go.work` |
-| `make lint-ts` | `biome` against the dashboard |
-| `make typecheck` | `mypy --strict` over the Python tree |
-| `make codegen` | Regenerate JSON Schema, Go structs and TS types |
-| `make codegen-verify` | Fail if generated output has drifted |
-| `make up` | Start the local Compose stack |
-| `make down` | Stop the local Compose stack |
-| `make clean` | Remove build artifacts and tooling caches |
+| Target | Does | Live? |
+|---|---|---|
+| `make help` | List every target (default goal) | ✅ |
+| `make install` | `uv sync`. Go has no external deps; dashboard deps land on branch 4 | ✅ |
+| `make dev` | Run the API and worker locally with reload | ⏳ needs `api.main:app` (Phase 1) |
+| `make sim` | Run a simulator scenario against the local stack | ⏳ needs `simulator.cli` (Phase 1) |
+| `make test` | `pytest` with coverage | ✅ |
+| `make test-go` | `go build` + `go test` in every module listed in `go.work` | ✅ |
+| `make test-ts` | Dashboard test suite (`vitest`) | ⏳ branch 4 |
+| `make lint` | `ruff check` + `ruff format --check` | ✅ |
+| `make lint-go` | `go vet` + `golangci-lint` in every module listed in `go.work` | ✅ |
+| `make lint-ts` | `biome` against the dashboard | ⏳ branch 4 |
+| `make typecheck` | `mypy --strict` over the Python tree | ✅ |
+| `make codegen` | Regenerate JSON Schema, Go structs and TS types | ⏳ branch 5 |
+| `make codegen-verify` | Fail if generated output has drifted | ⏳ branch 5 |
+| `make up` | Start the local Compose stack | ⏳ branch 6 |
+| `make down` | Stop the local Compose stack | ⏳ branch 6 |
+| `make clean` | Remove build artifacts and tooling caches | ✅ |
+
+A target that is not live names what it is waiting on and exits non-zero. None
+of them silently succeed.
+
+### Python environment
+
+`uv` owns the environment. `.python-version` pins **3.12** and `pyproject.toml`
+declares `requires-python = ">=3.12,<3.13"` — the platform is validated against
+exactly one minor version, so the upper bound is deliberate, not an oversight.
+Run tools through `uv run` (or `make`), never against a system interpreter.
+
+**`pre-commit install` is not wired into `make install`.** The `codegen-verify`
+hook shells out to `codegen/verify.sh`, which does not exist until branch 5, so
+installing the git hooks today would block every commit. Install them once that
+branch lands.
 
 ---
 
@@ -356,9 +373,10 @@ could not. See [ROADMAP.md](ROADMAP.md#phase-0-branch-order).
 |---|---|---|
 | 1 | `feature/repo-skeleton` | ✅ merged |
 | 2 | `feature/go-workspace` | ✅ merged *(was 3rd)* |
-| 3 | `feature/python-tooling` | ⏳ next *(was 2nd)* |
-| 4 | `feature/dashboard-scaffold` | ⏳ |
-| 5 | `feature/codegen-pipeline` | ⏳ |
+| — | `feature/go-base-relocation` | ✅ merged — unplanned; moved the shared Go library to `pkg/mcpserver` |
+| 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
+| 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
+| 5 | `feature/codegen-pipeline` | ⏳ next |
 | 6 | `feature/deploy-skeleton` | ⏳ |
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
@@ -371,6 +389,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-14 | `feature/python-tooling` | **Python toolchain.** Filled `pyproject.toml` (ruff `E,F,I,B,UP,SIM,RUF` @ 100, mypy `strict`, pytest + coverage, `dependency-groups.dev`) and `.pre-commit-config.yaml` (ruff-check, ruff-format, mypy, gitleaks, codegen drift). Added `.python-version` (3.12) and `uv.lock`, both committed. Added `tests/unit/test_repo_structure.py` — five guards over the agent roster, package initialisers, phase markers and generated-directory banners. Wired `make install`, `test`, `lint`, `typecheck`; `dev` and `sim` stay stubs until Phase 1 supplies `api.main:app` and `simulator.cli`. Rewrapped five over-length docstrings in `api/`, `core/` flagged by ruff. |
 | 2026-08-14 | `feature/go-base-relocation` | **Moved `connectors/_base/go/` → `pkg/mcpserver/`** (module `github.com/simootaz/pantheon-aiops/pkg/mcpserver`). `pkg/` is the idiomatic home for shared Go libraries, and the move removes the `_`-wildcard trap outright instead of documenting it. Updated `go.work`, `connectors/kubernetes/go.mod` (require + replace → `../../pkg/mcpserver`) and the three importing files; the import alias is no longer needed. `connectors/_base/python/` **stays** — its underscore is load-bearing for connector auto-discovery. Rewrote the CLAUDE.md Go section accordingly and corrected `connectors/_base/__init__.py`, which still claimed to host both languages. **Supersedes the wildcard guidance in the `feature/go-workspace` row below.** |
 | 2026-08-14 | `feature/go-base-relocation` | **Definition of done corrected.** Dropped `go build ./...` — it cannot work from a non-module root. Replaced everywhere by the three commands that genuinely cover every module: `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...`. Branch 7 must use these in CI. |
 | 2026-08-14 | `feature/go-workspace` | **Pending rename recorded, not yet applied.** `deploy/terraform/modules/s3/` → `deploy/terraform/modules/object-storage/`, made provider-shaped rather than AWS-specific. Scheduled for `feature/deploy-skeleton` (branch 6) per [ADR 0001](docs/adr/0001-object-storage-minio.md). On disk today the directory is still `modules/s3/`. |
