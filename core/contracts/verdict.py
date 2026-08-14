@@ -3,4 +3,5 @@
 Phase: 1 - Contracts & First Agent Path
 """
 
-# TODO: Phase 1 - define Verdict with root_cause, contributing_findings, confidence and recommended_actions
+# TODO: Phase 1 - define Verdict with root_cause, contributing_findings,
+# confidence and recommended_actions
