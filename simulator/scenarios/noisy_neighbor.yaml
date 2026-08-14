@@ -1,0 +1,4 @@
+# Scenario: One workload starving its node's CPU and degrading peers.
+#
+# Phase: 1 - Contracts & First Agent Path
+# TODO: Phase 1 - define the noisy_neighbor signal timeline and expected Verdict

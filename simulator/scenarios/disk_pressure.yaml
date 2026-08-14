@@ -1,0 +1,4 @@
+# Scenario: Node disk filling until eviction thresholds trip.
+#
+# Phase: 1 - Contracts & First Agent Path
+# TODO: Phase 1 - define the disk_pressure signal timeline and expected Verdict
