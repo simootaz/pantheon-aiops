@@ -1,7 +1,10 @@
 # Pantheon Python project definition.
 #
 # Phase: 0 - Scaffold & Tooling
-# Fully configured on branch feature/python-tooling (ruff, mypy, pytest, uv).
+#
+# Python 3.12 is the target and the floor. The upper bound is deliberate: the
+# platform is validated against exactly one minor version, and .python-version
+# pins it for uv.
 
 [project]
 name = "pantheon-aiops"
@@ -11,9 +14,22 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 
+# Runtime dependencies are added by the branch that first needs them, so the
+# scaffold stays honest about what it actually imports. Today: nothing.
+dependencies = []
+
 [project.urls]
 Homepage = "https://github.com/simootaz/pantheon-aiops"
 Repository = "https://github.com/simootaz/pantheon-aiops"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14",
+    "mypy>=1.18",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -21,3 +37,74 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "agents", "api", "connectors", "simulator", "codegen"]
+
+# ---------------------------------------------------------------------------
+# ruff - lint and format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+extend-exclude = [
+    "core/contracts/export",
+    "connectors/kubernetes/pkg/contracts",
+    "dashboard",
+    "deploy",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "agents", "api", "connectors", "simulator", "codegen"]
+
+# ---------------------------------------------------------------------------
+# mypy - strict, no exceptions
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["core", "agents", "api", "connectors", "simulator", "codegen", "tests"]
+exclude = "^(dashboard|deploy)/"
+warn_unused_configs = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests", "agents"]
+pythonpath = ["."]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=core",
+    "--cov=agents",
+    "--cov=api",
+    "--cov=connectors",
+    "--cov=simulator",
+    "--cov=codegen",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    # Phase 0 is a scaffold: there is almost nothing to cover yet, so the gate
+    # is off. ROADMAP.md tracks raising this to 80 at Phase 1.
+    "--cov-fail-under=0",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/python_ref/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
