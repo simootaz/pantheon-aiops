@@ -25,19 +25,22 @@ help:
 
 ## install: install all Python, Go and dashboard dependencies
 install:
-	@echo "install: not wired yet - branch feature/python-tooling"; exit 1
+	@uv sync
+	@echo "install: python ready (uv, 3.12)."
+	@echo "         go modules have no external dependencies."
+	@echo "         dashboard deps land on branch feature/dashboard-scaffold."
 
 ## dev: run the API and worker locally with reload
 dev:
-	@echo "dev: not wired yet - branch feature/python-tooling"; exit 1
+	@echo "dev: needs api.main:app, which lands in Phase 1"; exit 1
 
 ## sim: run a simulator scenario against the local stack
 sim:
-	@echo "sim: not wired yet - branch feature/python-tooling"; exit 1
+	@echo "sim: needs simulator.cli, which lands in Phase 1"; exit 1
 
 ## test: run the Python test suite
 test:
-	@echo "test: not wired yet - branch feature/python-tooling"; exit 1
+	@uv run pytest
 
 ## test-go: build and test every Go module in the workspace
 test-go:
@@ -52,7 +55,8 @@ test-ts:
 
 ## lint: lint and format-check Python
 lint:
-	@echo "lint: not wired yet - branch feature/python-tooling"; exit 1
+	@uv run ruff check .
+	@uv run ruff format --check .
 
 ## lint-go: vet and golangci-lint every Go module in the workspace
 lint-go:
@@ -67,7 +71,7 @@ lint-ts:
 
 ## typecheck: run mypy --strict over the Python tree
 typecheck:
-	@echo "typecheck: not wired yet - branch feature/python-tooling"; exit 1
+	@uv run mypy
 
 ## codegen: regenerate JSON Schema, Go structs and TypeScript types
 codegen:

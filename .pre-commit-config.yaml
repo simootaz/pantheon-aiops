@@ -1,7 +1,41 @@
 # Pre-commit hooks for Pantheon.
 #
 # Phase: 0 - Scaffold & Tooling
-# Populated on branch feature/python-tooling with ruff, ruff-format, mypy,
-# gitleaks and codegen/verify.sh.
+#
+# Install with `pre-commit install`. Note that the codegen drift hook below
+# fails until feature/codegen-pipeline implements codegen/verify.sh - that is
+# why `make install` does not install the git hooks for you yet.
 
-repos: []
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy
+        # mypy is configured entirely in pyproject.toml, including which trees
+        # it walks, so it must not be handed the staged file list.
+        pass_filenames: false
+        args: ["--config-file=pyproject.toml"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: codegen-verify
+        name: codegen drift check
+        description: Fail if generated output has drifted from core/contracts/.
+        entry: bash codegen/verify.sh
+        language: system
+        pass_filenames: false
+        # TODO: Phase 0 - becomes green on branch feature/codegen-pipeline.
