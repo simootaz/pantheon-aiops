@@ -1,0 +1,7 @@
+# Pre-commit hooks for Pantheon.
+#
+# Phase: 0 - Scaffold & Tooling
+# Populated on branch feature/python-tooling with ruff, ruff-format, mypy,
+# gitleaks and codegen/verify.sh.
+
+repos: []

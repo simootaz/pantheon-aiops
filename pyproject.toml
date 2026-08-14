@@ -1,0 +1,23 @@
+# Pantheon Python project definition.
+#
+# Phase: 0 - Scaffold & Tooling
+# Fully configured on branch feature/python-tooling (ruff, mypy, pytest, uv).
+
+[project]
+name = "pantheon-aiops"
+version = "0.1.0"
+description = "Polyglot multi-agent AIOps platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+[project.urls]
+Homepage = "https://github.com/simootaz/pantheon-aiops"
+Repository = "https://github.com/simootaz/pantheon-aiops"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "agents", "api", "connectors", "simulator", "codegen"]
