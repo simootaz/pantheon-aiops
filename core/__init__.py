@@ -1,4 +1,7 @@
-"""Pantheon core: contracts, orchestration, registry, guardrails, memory, LLM access and observability.
+"""Pantheon core.
+
+Contracts, orchestration, registry, guardrails, memory, LLM access and
+observability.
 
 Phase: 1 - Contracts & First Agent Path
 """

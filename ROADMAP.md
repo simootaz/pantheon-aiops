@@ -18,9 +18,10 @@ is unaffected — the branches are independent.
 |---|---|---|
 | 1 | `feature/repo-skeleton` | ✅ merged |
 | 2 | `feature/go-workspace` | ✅ merged *(was 3rd)* |
-| 3 | `feature/python-tooling` | ⏳ next *(was 2nd)* |
-| 4 | `feature/dashboard-scaffold` | ⏳ |
-| 5 | `feature/codegen-pipeline` | ⏳ |
+| — | `feature/go-base-relocation` | ✅ merged — unplanned; moved the shared Go library to `pkg/mcpserver` |
+| 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
+| 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
+| 5 | `feature/codegen-pipeline` | ⏳ next |
 | 6 | `feature/deploy-skeleton` | ⏳ |
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
@@ -49,6 +50,9 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 
 | Item | Now | Target | When |
 |---|---|---|---|
+| **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
+| `make dev` / `make sim` | stubs, exit non-zero | wired | Phase 1, once `api.main:app` and `simulator.cli` exist |
+| `pre-commit install` | not wired into `make install` | wired | Branch 5, once `codegen/verify.sh` exists and the hook can pass |
 | Object storage | — | MinIO everywhere, S3-compatible only | Phase 6 — see [ADR 0001](docs/adr/0001-object-storage-minio.md) |
 | `unparam` / `nilnil` Go linters | disabled | enabled | Phase 6, once the Go connector is real |
 

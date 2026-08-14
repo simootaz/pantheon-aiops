@@ -3,4 +3,5 @@
 Phase: 1 - Contracts & First Agent Path
 """
 
-# TODO: Phase 1 - define AgentManifest with codename, capabilities, tools, budgets and output contract
+# TODO: Phase 1 - define AgentManifest with codename, capabilities, tools,
+# budgets and output contract
