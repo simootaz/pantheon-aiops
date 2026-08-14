@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	mcpserver "github.com/simootaz/pantheon-aiops/connectors/_base/go"
 	"github.com/simootaz/pantheon-aiops/connectors/kubernetes/internal/client"
 	"github.com/simootaz/pantheon-aiops/connectors/kubernetes/internal/readonly"
 	"github.com/simootaz/pantheon-aiops/connectors/kubernetes/internal/write"
+	"github.com/simootaz/pantheon-aiops/pkg/mcpserver"
 )
 
 // ErrNilDependency reports a missing server or client at registration time.

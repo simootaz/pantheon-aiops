@@ -5,8 +5,8 @@
 package write
 
 import (
-	mcpserver "github.com/simootaz/pantheon-aiops/connectors/_base/go"
 	"github.com/simootaz/pantheon-aiops/connectors/kubernetes/internal/client"
+	"github.com/simootaz/pantheon-aiops/pkg/mcpserver"
 )
 
 // Tools returns the mutating tool set backed by c.

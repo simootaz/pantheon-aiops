@@ -5,8 +5,8 @@
 package readonly
 
 import (
-	mcpserver "github.com/simootaz/pantheon-aiops/connectors/_base/go"
 	"github.com/simootaz/pantheon-aiops/connectors/kubernetes/internal/client"
+	"github.com/simootaz/pantheon-aiops/pkg/mcpserver"
 )
 
 // Tools returns the read-only tool set backed by c.
