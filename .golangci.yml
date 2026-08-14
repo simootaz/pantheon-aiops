@@ -1,0 +1,124 @@
+# golangci-lint configuration for the Pantheon Go workspace.
+#
+# Phase: 0 - Scaffold & Tooling
+#
+# Run from the repo root; it covers every module in go.work. Note that the root
+# is not itself a module, so linting is driven by the module-path pattern
+# github.com/simootaz/pantheon-aiops/... rather than ./... - see the Makefile.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # --- correctness ---------------------------------------------------------
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - asasalint
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - makezero
+    - nilerr
+    - noctx
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - wastedassign
+    # --- security ------------------------------------------------------------
+    - gosec
+    # --- style and clarity ---------------------------------------------------
+    - asciicheck
+    - errname
+    - gochecknoinits
+    - gocritic
+    - godot
+    - lll
+    - misspell
+    - nakedret
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - unconvert
+    - usestdlibvars
+    - whitespace
+
+  # Deliberately NOT enabled while the tree is scaffolding:
+  #   unparam  - every stub returns a constant error; it would fire on all of
+  #              them. Enable at Phase 6 once the Go connector is real.
+  #   nilnil   - same reason.
+  # Deliberately never enabled:
+  #   gochecknoglobals - sentinel `Err...` values are idiomatic Go.
+  #   exhaustruct      - the Tool struct is intentionally partially populated.
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Println
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    lll:
+      line-length: 120
+      tab-width: 4
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 0
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: errorf
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: receiver-naming
+        - name: unreachable-code
+    staticcheck:
+      checks:
+        - all
+    gosec:
+      excludes:
+        # G104 duplicates errcheck.
+        - G104
+
+  exclusions:
+    generated: lax
+    rules:
+      # Generated contract structs are never hand-written; do not lint them.
+      - path: pkg/contracts/
+        linters:
+          - lll
+          - revive
+          - godot
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/simootaz/pantheon-aiops

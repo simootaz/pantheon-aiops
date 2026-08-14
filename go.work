@@ -1,7 +1,16 @@
 // Go workspace for the Pantheon Go modules.
 //
 // Phase: 0 - Scaffold & Tooling
-// The `use` directives land on branch feature/go-workspace together with the
-// per-module go.mod files.
+//
+// Four modules, all under github.com/simootaz/pantheon-aiops. The workspace is
+// what lets connectors/kubernetes depend on connectors/_base/go without either
+// module being published.
 
 go 1.23
+
+use (
+	./cmd/collector
+	./cmd/pantheonctl
+	./connectors/_base/go
+	./connectors/kubernetes
+)

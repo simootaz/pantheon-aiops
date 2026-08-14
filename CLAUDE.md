@@ -72,6 +72,34 @@ Tooling per language:
 - **Go** — Go workspace (`go.work`), `golangci-lint`
 - **TypeScript** — `pnpm`, `biome` (no ESLint, no Prettier), `vitest`
 
+### ⚠️ Go: the repo root is not a module
+
+There are **four** Go modules, all under `github.com/simootaz/pantheon-aiops`:
+
+| Module path | Directory |
+|---|---|
+| `…/connectors/_base/go` | `connectors/_base/go` |
+| `…/connectors/kubernetes` | `connectors/kubernetes` |
+| `…/cmd/pantheonctl` | `cmd/pantheonctl` |
+| `…/cmd/collector` | `cmd/collector` |
+
+The repo root has **no** `go.mod`. Two consequences that will bite you:
+
+1. **`go build ./...` fails from the repo root** with *"directory prefix . does
+   not contain modules listed in go.work"*. It is not a broken checkout — the
+   pattern is simply invalid there. Run it from **inside a module**, or use
+   `make test-go` / `make lint-go`, which iterate the modules listed in
+   `go.work`.
+2. **`connectors/_base/` is invisible to `./...`.** The Go tool skips any
+   directory whose name begins with `_` or `.` when expanding a `...` wildcard.
+   The module-path form `go build github.com/simootaz/pantheon-aiops/...` *does*
+   reach it, and so does running `./...` from inside the module.
+
+`connectors/kubernetes` depends on `connectors/_base/go`. Neither module is
+published, so `go.work` resolves the dependency inside the workspace and a
+`replace` directive in `connectors/kubernetes/go.mod` keeps that module building
+on its own.
+
 ### The one rule that outranks the others
 
 `core/contracts/` is the **single source of truth** for every cross-language data
@@ -98,6 +126,7 @@ pantheon-aiops/
 ├── Makefile                every developer entrypoint
 ├── pyproject.toml          Python project, ruff, mypy, pytest config
 ├── go.work                 Go workspace over the four Go modules
+├── .golangci.yml           Go lint rules, applied to every module
 ├── .env.example            every environment variable, documented
 ├── .pre-commit-config.yaml ruff, ruff-format, mypy, gitleaks, codegen drift
 ```
@@ -156,6 +185,7 @@ pantheon-aiops/
 | `deploy/scripts/` | `bootstrap-local`, `seed-db`, `smoke-test`, `teardown`. | 6 |
 | **.github/** | `workflows/`, `ISSUE_TEMPLATE/`, `dependabot.yml`. | 7 |
 | **docs/** | `architecture/`, `agents/`, `deployment/`, `adr/`, `diagrams/`. | 7 |
+| `docs/adr/` | Architecture Decision Records, numbered `NNNN-title.md`. Active from Phase 0. | 0 |
 
 ---
 
@@ -178,8 +208,11 @@ pantheon-aiops/
 | A new **CI check** | `.github/workflows/<name>.yml` | Trigger on PRs into `develop` |
 | A new **simulator scenario** | `simulator/scenarios/<name>.yaml` | |
 | A new **cross-cutting test** | `tests/{unit,integration,e2e}/` | Agent-specific tests belong in `agents/<domain>/tests/` |
-| A new **architecture decision** | `docs/adr/NNNN-<title>.md` | |
+| A new **Go module** | Its own directory with a `go.mod` under `github.com/simootaz/pantheon-aiops/<path>` | Add a `use` line to `go.work`. `make test-go` / `make lint-go` pick it up automatically |
+| A new **Go package** in an existing module | `internal/` for module-private, `pkg/` for importable | Never `pkg/contracts/` — that is generated |
+| A new **architecture decision** | `docs/adr/NNNN-<title>.md` | Number sequentially; link it from the CLAUDE.md changelog row |
 | A **Go type mirroring a Python model** | ❌ **Nowhere.** | Add it to `core/contracts/` and generate it |
+| Anything touching **object storage** | Any S3-compatible client against `S3_ENDPOINT_URL` | See [Standing decisions](#standing-decisions). Never hardcode an AWS endpoint or region |
 
 ---
 
@@ -200,6 +233,33 @@ pre-commit and in the `codegen-check` workflow.
 
 To change any of these: edit `core/contracts/`, run `make codegen`, commit both
 the contract change and the regenerated output together.
+
+---
+
+## Standing decisions
+
+Cross-cutting rules that outlive any one branch. Each links to its ADR.
+
+### Object storage is MinIO — never a cloud dependency
+
+[ADR 0001](docs/adr/0001-object-storage-minio.md) · applies from Phase 6
+
+Pantheon must run **fully self-hosted with zero cloud accounts**. MinIO is the
+default S3 layer everywhere: Compose ships `minio` + a `minio-init` one-shot
+creating `pantheon-reports`, `pantheon-artifacts` and `pantheon-backups`; Helm
+exposes a `minio:` block (`enabled: true`, with `external.endpoint` /
+`external.region` / `existingSecret` for swapping in a real provider);
+Terraform's `object-storage/` module is provider-shaped, not AWS-shaped.
+
+Application code uses `boto3` or `minio-py` against a configurable
+`S3_ENDPOINT_URL`. Config lives in `.env.example` as `S3_ENDPOINT_URL`,
+`S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_BUCKET_REPORTS`,
+`S3_BUCKET_ARTIFACTS`, `S3_BUCKET_BACKUPS`, `S3_USE_SSL`.
+
+> **The rule:** any S3-compatible endpoint must work. Do not couple to MinIO's
+> own SDK features beyond what the S3 API gives you. `mc` is allowed only in the
+> Compose init container and in `deploy/scripts/` — never in `core/`, `agents/`,
+> `api/` or `connectors/`.
 
 ---
 
@@ -235,10 +295,10 @@ target that is not yet wired says so and exits non-zero.
 | `make dev` | Run the API and worker locally with reload |
 | `make sim` | Run a simulator scenario against the local stack |
 | `make test` | Python test suite (`pytest`) |
-| `make test-go` | Go test suite across the workspace |
+| `make test-go` | `go build` + `go test` in every module listed in `go.work` |
 | `make test-ts` | Dashboard test suite (`vitest`) |
 | `make lint` | Lint and format-check Python (`ruff`) |
-| `make lint-go` | `golangci-lint` across the workspace |
+| `make lint-go` | `go vet` + `golangci-lint` in every module listed in `go.work` |
 | `make lint-ts` | `biome` against the dashboard |
 | `make typecheck` | `mypy --strict` over the Python tree |
 | `make codegen` | Regenerate JSON Schema, Go structs and TS types |
@@ -262,6 +322,24 @@ target that is not yet wired says so and exits non-zero.
 | 6 | Go Port & Platform Binaries | Kubernetes connector in Go (`python_ref/` deleted), `pantheonctl`, `collector`, Docker + Compose + Helm |
 | 7 | Production Hardening | Terraform, Argo CD, Ansible, observability dashboards, security policies, backup, release automation |
 
+### Phase 0 branch order
+
+Phase 0 ships as eight feature branches. Branch 3 was pulled ahead of branch 2
+because the Python toolchain was not yet installed while Go 1.23 already was, so
+`feature/go-workspace` could be fully verified and `feature/python-tooling`
+could not. See [ROADMAP.md](ROADMAP.md#phase-0-branch-order).
+
+| Order | Branch | Status |
+|---|---|---|
+| 1 | `feature/repo-skeleton` | ✅ merged |
+| 2 | `feature/go-workspace` | ✅ merged *(was 3rd)* |
+| 3 | `feature/python-tooling` | ⏳ next *(was 2nd)* |
+| 4 | `feature/dashboard-scaffold` | ⏳ |
+| 5 | `feature/codegen-pipeline` | ⏳ |
+| 6 | `feature/deploy-skeleton` | ⏳ |
+| 7 | `feature/ci-workflows` | ⏳ |
+| 8 | `feature/docs-baseline` | ⏳ |
+
 ---
 
 ## Structure changelog
@@ -270,4 +348,8 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-14 | `feature/go-workspace` | **Pending rename recorded, not yet applied.** `deploy/terraform/modules/s3/` → `deploy/terraform/modules/object-storage/`, made provider-shaped rather than AWS-specific. Scheduled for `feature/deploy-skeleton` (branch 6) per [ADR 0001](docs/adr/0001-object-storage-minio.md). On disk today the directory is still `modules/s3/`. |
+| 2026-08-14 | `feature/go-workspace` | **Standing decision: object storage is MinIO.** Added `docs/adr/0001-object-storage-minio.md` and removed the now-redundant `docs/adr/.gitkeep`. Added a *Standing decisions* section here and an object-storage row to the *Where do I put X?* table. |
+| 2026-08-14 | `feature/go-workspace` | **Branch order changed.** Branch 3 pulled ahead of branch 2 — the Python toolchain was not installed yet, so `feature/python-tooling` could not be verified while `feature/go-workspace` could. Recorded in ROADMAP.md and the phase roadmap above. |
+| 2026-08-14 | `feature/go-workspace` | **Go workspace.** Added root `.golangci.yml` and four `go.mod` files (`connectors/_base/go`, `connectors/kubernetes`, `cmd/pantheonctl`, `cmd/collector`), all under `github.com/simootaz/pantheon-aiops`. Filled `go.work` with its `use` block. Replaced the Go placeholders with compiling stubs. Wired `make test-go` and `make lint-go` to iterate `go.work`. Documented that the repo root is not a module and that `_base/` is skipped by `...` wildcards. |
 | 2026-08-14 | `feature/repo-skeleton` | **Initial tree.** Created `core/`, `agents/` (10 domains + `_base`), `connectors/` (7 + `_base`), `cmd/`, `api/`, `dashboard/`, `simulator/`, `codegen/`, `tests/`, `deploy/`, `.github/`, `docs/`. Added root `CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `Makefile`, `pyproject.toml`, `go.work`, `.env.example`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.pre-commit-config.yaml`. Every Python package has `__init__.py`; every intentionally empty directory has `.gitkeep`; the three generated directories have a `README.md` instead. |
