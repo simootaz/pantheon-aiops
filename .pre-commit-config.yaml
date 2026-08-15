@@ -24,6 +24,11 @@ repos:
         # it walks, so it must not be handed the staged file list.
         pass_filenames: false
         args: ["--config-file=pyproject.toml"]
+        # The hook runs in its own isolated venv, so runtime dependencies that
+        # contracts import must be declared here too or every model becomes
+        # "Cannot find implementation or library stub".
+        additional_dependencies:
+          - pydantic>=2.9
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0
