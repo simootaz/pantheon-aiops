@@ -1,4 +1,20 @@
-# Container image: Base image for the Go MCP connectors.
+# Container image: base for the Go MCP connectors.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - write the connector-go image build
+#
+# Built from the repo root so the Go workspace and pkg/ modules are in context:
+#   docker build -f deploy/docker/Dockerfile.connector-go .
+
+FROM golang:1.23-alpine AS build
+WORKDIR /src
+COPY go.work ./
+COPY pkg ./pkg
+COPY connectors/kubernetes ./connectors/kubernetes
+COPY cmd ./cmd
+RUN go build -trimpath -ldflags="-s -w"     -o /out/connector ./connectors/kubernetes/cmd/server
+
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+COPY --from=build /out/connector /connector
+USER nonroot:nonroot
+# TODO: Phase 6 - pin the base images by digest
+ENTRYPOINT ["/connector"]

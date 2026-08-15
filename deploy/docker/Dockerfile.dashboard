@@ -1,4 +1,30 @@
 # Container image: Next.js dashboard.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - write the dashboard image build
+#
+# Built from the repo root: docker build -f deploy/docker/Dockerfile.dashboard .
+
+FROM node:24-alpine AS deps
+WORKDIR /app
+RUN corepack enable
+COPY dashboard/package.json dashboard/pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile || pnpm install
+
+FROM node:24-alpine AS build
+WORKDIR /app
+RUN corepack enable
+COPY --from=deps /app/node_modules ./node_modules
+COPY dashboard ./
+RUN pnpm build
+
+FROM node:24-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+USER node
+EXPOSE 3000
+# TODO: Phase 6 - switch to the Next.js standalone output and pin by digest
+CMD ["node_modules/.bin/next", "start"]
