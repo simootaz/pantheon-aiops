@@ -16,7 +16,7 @@ from pydantic import Field
 from core.contracts.base import ContractModel
 
 
-class Capability(ContractModel):
+class AgentCapability(ContractModel):
     """One thing an agent claims it can do."""
 
     name: str = Field(description="Stable identifier, e.g. 'detect_metric_anomaly'.")
@@ -37,7 +37,7 @@ class AgentManifest(ContractModel):
     codename: str = Field(description="Mythological name, e.g. 'argus'.")
     domain: str = Field(description="Folder under agents/, e.g. 'anomaly'.")
     description: str
-    capabilities: list[Capability] = Field(default_factory=list)
+    capabilities: list[AgentCapability] = Field(default_factory=list)
     tools: list[str] = Field(
         default_factory=list, description="Connector tools this agent may call."
     )

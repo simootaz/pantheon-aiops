@@ -30,7 +30,18 @@ from core.contracts.investigation import (
     Trigger,
     TriggerKind,
 )
-from core.contracts.manifest import AgentBudget, AgentManifest, Capability
+from core.contracts.llm import (
+    AuthMode,
+    Capability,
+    Dialect,
+    ModelDescriptor,
+    ModelRequirements,
+    ProviderConfig,
+    ResolutionRecord,
+    ResolutionStep,
+    Tier,
+)
+from core.contracts.manifest import AgentBudget, AgentCapability, AgentManifest
 from core.contracts.verdict import Verdict
 
 # Top-level models the codegen pipeline exports. Nested models reachable from
@@ -43,17 +54,24 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     Investigation,
     AgentManifest,
     EventEnvelope,
+    ProviderConfig,
+    ModelDescriptor,
+    ModelRequirements,
+    ResolutionRecord,
 )
 
 __all__ = [
     "EXPORTED_MODELS",
     "Action",
     "AgentBudget",
+    "AgentCapability",
     "AgentManifest",
     "ApprovalRequestedEvent",
     "ApprovalState",
+    "AuthMode",
     "BlastRadius",
     "Capability",
+    "Dialect",
     "EventEnvelope",
     "Evidence",
     "EvidenceKind",
@@ -63,7 +81,13 @@ __all__ = [
     "Investigation",
     "InvestigationStartedEvent",
     "InvestigationState",
+    "ModelDescriptor",
+    "ModelRequirements",
+    "ProviderConfig",
+    "ResolutionRecord",
+    "ResolutionStep",
     "Severity",
+    "Tier",
     "Trigger",
     "TriggerKind",
     "Verdict",

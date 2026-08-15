@@ -24,6 +24,18 @@
     "investigation": {
       "$ref": "#/$defs/Investigation"
     },
+    "model_descriptor": {
+      "$ref": "#/$defs/ModelDescriptor"
+    },
+    "model_requirements": {
+      "$ref": "#/$defs/ModelRequirements"
+    },
+    "provider_config": {
+      "$ref": "#/$defs/ProviderConfig"
+    },
+    "resolution_record": {
+      "$ref": "#/$defs/ResolutionRecord"
+    },
     "verdict": {
       "$ref": "#/$defs/Verdict"
     }
@@ -112,6 +124,27 @@
       "title": "AgentBudget",
       "type": "object"
     },
+    "AgentCapability": {
+      "additionalProperties": false,
+      "description": "One thing an agent claims it can do.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "description": "Stable identifier, e.g. 'detect_metric_anomaly'.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "AgentCapability",
+      "type": "object"
+    },
     "AgentManifest": {
       "additionalProperties": false,
       "description": "Everything the registry needs to know about an agent without importing it.",
@@ -121,7 +154,7 @@
         },
         "capabilities": {
           "items": {
-            "$ref": "#/$defs/Capability"
+            "$ref": "#/$defs/AgentCapability"
           },
           "title": "Capabilities",
           "type": "array"
@@ -195,6 +228,17 @@
       "title": "ApprovalState",
       "type": "string"
     },
+    "AuthMode": {
+      "description": "How credentials are presented to a provider.",
+      "enum": [
+        "none",
+        "bearer",
+        "header_key",
+        "query_param"
+      ],
+      "title": "AuthMode",
+      "type": "string"
+    },
     "BlastRadius": {
       "description": "How much can break if this Action is wrong.",
       "enum": [
@@ -207,25 +251,26 @@
       "type": "string"
     },
     "Capability": {
-      "additionalProperties": false,
-      "description": "One thing an agent claims it can do.",
-      "properties": {
-        "description": {
-          "title": "Description",
-          "type": "string"
-        },
-        "name": {
-          "description": "Stable identifier, e.g. 'detect_metric_anomaly'.",
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "description"
+      "description": "A behaviour a model either demonstrably has or does not.\n\nMembership is established by probing, never by a hardcoded table - see\ncore.llm.probe.",
+      "enum": [
+        "tool_use",
+        "json_mode",
+        "vision",
+        "streaming"
       ],
       "title": "Capability",
-      "type": "object"
+      "type": "string"
+    },
+    "Dialect": {
+      "description": "Wire format a provider speaks.\n\nNamed by wire format rather than by vendor: a dialect outlives the vendor\nthat popularised it, and several vendors speak each one.\n\n- CHAT_COMPLETIONS: OpenRouter, Groq, Together, DeepSeek, Mistral, vLLM,\n  LM Studio, Ollama, OpenAI and most self-hosted stacks.\n- MESSAGES: Anthropic and API-compatible gateways.\n- GENERATE_CONTENT: Google Gemini.\n- RAW: bespoke HTTP APIs, mapped by configuration.",
+      "enum": [
+        "chat_completions",
+        "messages",
+        "generate_content",
+        "raw"
+      ],
+      "title": "Dialect",
+      "type": "string"
     },
     "EventEnvelope": {
       "additionalProperties": false,
@@ -479,6 +524,14 @@
           "title": "Id",
           "type": "string"
         },
+        "resolutions": {
+          "description": "Every Delphi model resolution made during this run, in order.",
+          "items": {
+            "$ref": "#/$defs/ResolutionRecord"
+          },
+          "title": "Resolutions",
+          "type": "array"
+        },
         "state": {
           "$ref": "#/$defs/InvestigationState"
         },
@@ -543,6 +596,285 @@
       "title": "InvestigationState",
       "type": "string"
     },
+    "ModelDescriptor": {
+      "additionalProperties": false,
+      "description": "One model as observed, not as advertised.\n\nEvery field below the identity pair is measured by core.llm.probe against\nthis deployment, because a model's behaviour behind a particular gateway is\nnot always what its vendor documents.",
+      "properties": {
+        "capabilities": {
+          "description": "Probed, not declared.",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "context_window": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Context Window",
+          "type": "integer"
+        },
+        "input_cost_per_1k": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Cost Per 1K"
+        },
+        "last_probed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Null means never probed; treat capabilities as unknown.",
+          "title": "Last Probed At"
+        },
+        "median_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Latency Ms"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "output_cost_per_1k": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Cost Per 1K"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_id",
+        "model_id"
+      ],
+      "title": "ModelDescriptor",
+      "type": "object"
+    },
+    "ModelRequirements": {
+      "additionalProperties": false,
+      "description": "What an agent needs from a model. The only thing an agent may declare.",
+      "properties": {
+        "capabilities": {
+          "description": "Capabilities the model must demonstrably have.",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "max_cost_per_call": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ceiling for one call. Enforced via core.guardrails.budget.",
+          "title": "Max Cost Per Call"
+        },
+        "min_context": {
+          "default": 0,
+          "description": "Minimum context window in tokens.",
+          "minimum": 0,
+          "title": "Min Context",
+          "type": "integer"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier",
+          "default": "balanced"
+        }
+      },
+      "title": "ModelRequirements",
+      "type": "object"
+    },
+    "ProviderConfig": {
+      "additionalProperties": false,
+      "description": "A configured provider. Added from settings, never from code.",
+      "properties": {
+        "auth_mode": {
+          "$ref": "#/$defs/AuthMode",
+          "default": "bearer"
+        },
+        "base_url": {
+          "description": "Root URL of the provider's API.",
+          "title": "Base Url",
+          "type": "string"
+        },
+        "dialect": {
+          "$ref": "#/$defs/Dialect"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Stable identifier, e.g. 'local-ollama'.",
+          "title": "Id",
+          "type": "string"
+        },
+        "manual_models": {
+          "description": "Model ids entered by hand when enumeration is absent.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Manual Models",
+          "type": "array"
+        },
+        "models_endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path used to enumerate models, when the provider offers one.",
+          "title": "Models Endpoint"
+        },
+        "secret_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the credential in the keyring. Never the credential itself.",
+          "title": "Secret Ref"
+        }
+      },
+      "required": [
+        "id",
+        "display_name",
+        "dialect",
+        "base_url"
+      ],
+      "title": "ProviderConfig",
+      "type": "object"
+    },
+    "ResolutionRecord": {
+      "additionalProperties": false,
+      "description": "Why Delphi chose the model it chose, for one call.\n\nAttached to the Investigation so a run is reproducible and can explain its\nown cost without being re-run.",
+      "properties": {
+        "chosen": {
+          "$ref": "#/$defs/ModelDescriptor"
+        },
+        "estimated_cost": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Cost"
+        },
+        "fallback_used": {
+          "default": false,
+          "title": "Fallback Used",
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "matched_step": {
+          "$ref": "#/$defs/ResolutionStep"
+        },
+        "rejected": {
+          "description": "Human-readable reason per rejected candidate, in evaluation order.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Rejected",
+          "type": "array"
+        },
+        "requested_by": {
+          "description": "Agent codename that consulted Delphi, e.g. 'hermes'.",
+          "title": "Requested By",
+          "type": "string"
+        },
+        "requirements": {
+          "$ref": "#/$defs/ModelRequirements"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "title": "Resolved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "requested_by",
+        "requirements",
+        "matched_step",
+        "chosen",
+        "resolved_at"
+      ],
+      "title": "ResolutionRecord",
+      "type": "object"
+    },
+    "ResolutionStep": {
+      "description": "Which rung of the resolution cascade produced the answer.",
+      "enum": [
+        "task_override",
+        "agent_binding",
+        "tier_default",
+        "global_default"
+      ],
+      "title": "ResolutionStep",
+      "type": "string"
+    },
     "Severity": {
       "description": "How much a Finding should worry the on-call engineer.",
       "enum": [
@@ -553,6 +885,16 @@
         "critical"
       ],
       "title": "Severity",
+      "type": "string"
+    },
+    "Tier": {
+      "description": "Cost/capability band an agent asks for, rather than a specific model.",
+      "enum": [
+        "cheap",
+        "balanced",
+        "frontier"
+      ],
+      "title": "Tier",
       "type": "string"
     },
     "Trigger": {
