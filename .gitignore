@@ -87,6 +87,13 @@ kubeconfig
 *.kubeconfig
 
 # ---------------------------------------------------------------------------
+# Local editor/assistant scratch files are excluded per-clone via
+# .git/info/exclude, not here. Naming them in a tracked file would defeat
+# docs/adr/0003-neutral-repository-documentation.md - to ignore a name you have
+# to write it down, and .gitignore is tracked. The ADR explains the setup.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Editors and OS
 # ---------------------------------------------------------------------------
 .idea/
