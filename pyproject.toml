@@ -35,6 +35,9 @@ dev = [
     "pre-commit>=4.0",
     # Required by fastapi.testclient.
     "httpx>=0.28",
+    # Used by the structural guards to read Helm values.
+    "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
 ]
 
 [build-system]

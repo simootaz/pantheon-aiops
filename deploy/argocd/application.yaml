@@ -4,6 +4,19 @@
 #
 # Points at the Helm chart in this repository. Per-environment values are
 # selected with valueFiles.
+#
+# ⚠️ CLIENT-SIDE RENDERING AND GENERATED CREDENTIALS
+#
+# Argo CD renders Helm charts client-side by default, which means `lookup`
+# returns empty. Any chart that generates a credential behind `lookup` will
+# therefore produce a different value on every sync, be flagged as drift, and
+# have the secret rewritten - rotating the password on a schedule and orphaning
+# the data encrypted against it.
+#
+# Pantheon avoids this by failing closed: values-prod.yaml sets
+# productionMode=true, and the chart refuses to render unless every credential
+# comes from a pre-created secret. Never point this Application at a values file
+# that relies on generated credentials.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

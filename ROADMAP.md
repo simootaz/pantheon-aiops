@@ -67,6 +67,7 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 |---|---|---|---|
 | **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
 | **Endpoint-surface TS types** | not generated | `codegen/gen_ts_api.sh` — paths, params, status codes from OpenAPI, additive beside the domain types | **Phase 1**, once `api/main.py` has real routes — see [ADR 0002](docs/adr/0002-codegen-from-json-schema.md) |
+| Generated credentials | dev/demo only, chart fails closed in production | supplied secrets everywhere, via Sealed Secrets | Phase 7 |
 | Go event union | `Event interface{}` | hand-written typed accessors beside the generated file | Phase 6 — Go has no sum types; the generator will not invent one |
 | `make sim` | stub, exits non-zero | wired | Phase 1, once `simulator.cli` exists |
 | ~~`make dev`~~ | ✅ live — `uvicorn --factory`, `/health` serving | — | done on `feature/api-minimal` |

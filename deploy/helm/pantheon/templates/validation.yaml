@@ -1,0 +1,25 @@
+{{/*
+Fail closed on production installs that rely on generated credentials.
+
+Generated credentials are a development convenience. They are unsafe under any
+client-side renderer - Argo CD included - because `lookup` is empty there and
+each render mints a new password. Rather than let that reach production quietly,
+the chart refuses to render.
+
+Set `productionMode: true` (values-prod.yaml does) to enforce this.
+*/}}
+{{- if .Values.productionMode }}
+
+{{- if and .Values.minio.enabled (not .Values.minio.existingSecret) }}
+{{- fail "\n\nPantheon: productionMode is true but minio.existingSecret is empty.\n\nThe chart will not generate a MinIO credential for a production install.\nGenerated credentials are regenerated on every client-side render (helm\ntemplate, helm diff, Argo CD), which rotates the password on each sync and\norphans the stored data.\n\nFix one of:\n  - set minio.existingSecret to a pre-created secret, or\n  - set minio.enabled=false and use minio.external.*, or\n  - set productionMode=false if this really is a scratch environment.\n\nSee deploy/security/sealed-secrets/README.md.\n" }}
+{{- end }}
+
+{{- if and (not .Values.minio.enabled) (not .Values.minio.external.existingSecret) }}
+{{- fail "\n\nPantheon: productionMode is true, minio.enabled is false, but\nminio.external.existingSecret is empty.\n\nAn external S3-compatible endpoint needs credentials. Create a secret holding\nS3_ACCESS_KEY and S3_SECRET_KEY and set minio.external.existingSecret to it.\n\nSee deploy/security/sealed-secrets/README.md.\n" }}
+{{- end }}
+
+{{- if and .Values.delphi.enabled (not .Values.delphi.existingSecret) }}
+{{- fail "\n\nPantheon: productionMode is true but delphi.existingSecret is empty.\n\nEvery provider with authMode other than 'none' needs a credential, keyed by its\nsecretRef. Without the secret, Delphi cannot resolve a model and every\ninvestigation fails at the first agent consultation.\n\nSet delphi.existingSecret, or set productionMode=false.\n\nSee docs/adr/0004-llm-provider-abstraction.md.\n" }}
+{{- end }}
+
+{{- end }}

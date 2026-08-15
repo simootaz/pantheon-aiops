@@ -229,3 +229,74 @@ def test_delphi_is_not_an_agent() -> None:
     assert "delphi" not in AGENT_DOMAINS
     assert not (REPO_ROOT / "agents" / "delphi").exists()
     assert not (REPO_ROOT / "core" / "llm" / "manifest.yaml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Credential policy - added on fix/generated-credential-policy
+# ---------------------------------------------------------------------------
+
+CHART = REPO_ROOT / "deploy" / "helm" / "pantheon"
+
+
+def _values(name: str) -> dict[str, object]:
+    import yaml
+
+    loaded = yaml.safe_load((CHART / name).read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_production_values_refuse_generated_credentials() -> None:
+    """values-prod.yaml must fail closed rather than generate a credential.
+
+    A generated credential is re-minted on every client-side render - `helm
+    template`, `helm diff`, Argo CD's default mode - because `lookup` is empty
+    there. Under GitOps that rotates the password on each sync and orphans the
+    data encrypted against it.
+    """
+    prod = _values("values-prod.yaml")
+    assert prod.get("productionMode") is True, (
+        "values-prod.yaml must set productionMode: true so the chart fails closed"
+    )
+
+    minio = prod["minio"]
+    assert isinstance(minio, dict)
+    if minio.get("enabled"):
+        assert minio.get("existingSecret"), "prod with bundled MinIO needs minio.existingSecret"
+    else:
+        external = minio["external"]
+        assert isinstance(external, dict)
+        assert external["existingSecret"], (
+            "prod with external storage needs minio.external.existingSecret"
+        )
+
+    delphi = prod["delphi"]
+    assert isinstance(delphi, dict)
+    if delphi.get("enabled"):
+        assert delphi.get("existingSecret"), "prod with Delphi enabled needs delphi.existingSecret"
+
+
+def test_chart_has_a_validation_template_that_fails_closed() -> None:
+    """The refusal is enforced by the chart, not only by the values file."""
+    validation = (CHART / "templates" / "validation.yaml").read_text(encoding="utf-8")
+    assert "fail" in validation, "validation.yaml must call `fail`"
+    assert "productionMode" in validation
+    for guarded in ("minio.existingSecret", "external.existingSecret", "delphi.existingSecret"):
+        assert guarded in validation, f"validation.yaml does not guard {guarded}"
+
+
+def test_generated_secret_is_marked_and_protected() -> None:
+    """The generated secret is labelled dev-only and survives uninstall."""
+    secret = (CHART / "templates" / "minio-secret.yaml").read_text(encoding="utf-8")
+    assert "helm.sh/resource-policy: keep" in secret
+    assert "pantheon.io/credential-policy: generated-dev-only" in secret
+    assert "lookup" in secret and "client-side" in secret.lower(), (
+        "the lookup caveat must stay documented at the point of use"
+    )
+
+
+def test_argocd_application_documents_client_side_rendering() -> None:
+    """The trap is recorded where an operator would hit it."""
+    app = (REPO_ROOT / "deploy" / "argocd" / "application.yaml").read_text(encoding="utf-8")
+    assert "client-side" in app.lower()
+    assert "productionMode" in app
