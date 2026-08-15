@@ -63,7 +63,7 @@ Three languages, each with a hard boundary. **Do not cross them.**
 | Language | Owns | Why |
 |---|---|---|
 | **Python 3.12** | `core/`, `agents/`, `api/`, `simulator/`, most of `connectors/`, `codegen/` | The agent, LLM and data-science ecosystem is Python. Pydantic v2 gives us one place to define every shape. |
-| **Go 1.23** | `pkg/mcpserver/`, `connectors/kubernetes/`, `cmd/pantheonctl/`, `cmd/collector/` | `client-go` is the only first-class Kubernetes client. Single static binaries matter for a CLI and a sidecar. |
+| **Go 1.23** | `pkg/mcpserver/`, `pkg/contracts/`, `connectors/kubernetes/`, `cmd/pantheonctl/`, `cmd/collector/` | `client-go` is the only first-class Kubernetes client. Single static binaries matter for a CLI and a sidecar. |
 | **TypeScript** | `dashboard/` — and nowhere else | Next.js 15 App Router. The dashboard is the *only* TypeScript in this repo. |
 
 Tooling per language:
@@ -79,11 +79,12 @@ importable Go code, and it keeps every Go path free of a leading underscore —
 which matters, because the Go tool silently skips `_`-prefixed directories when
 expanding a `...` wildcard.
 
-There are **four** Go modules, all under `github.com/simootaz/pantheon-aiops`:
+There are **five** Go modules, all under `github.com/simootaz/pantheon-aiops`:
 
 | Module path | Directory |
 |---|---|
 | `…/pkg/mcpserver` | `pkg/mcpserver` |
+| `…/pkg/contracts` | `pkg/contracts` — ⚙️ generated |
 | `…/connectors/kubernetes` | `connectors/kubernetes` |
 | `…/cmd/pantheonctl` | `cmd/pantheonctl` |
 | `…/cmd/collector` | `cmd/collector` |
@@ -172,7 +173,6 @@ pantheon-aiops/
 | **connectors/** | Polyglot. Each connector is a separate process speaking MCP. | 1–6 |
 | `connectors/_base/python/` | `base_server.py` — base MCP server for Python connectors. The `_` keeps it out of connector auto-discovery. | 1 |
 | `connectors/kubernetes/` | **Go.** `cmd/server/`, `internal/{tools,readonly,write,client}/`. | 6 |
-| `connectors/kubernetes/pkg/contracts/` | ⚙️ **Generated.** Go structs from the JSON Schema. | 0 |
 | `connectors/kubernetes/python_ref/` | Temporary Python implementation. **Deleted in Phase 6.** | 1 |
 | `connectors/prometheus/` | Python. Range/instant queries, series and label discovery. | 1 |
 | `connectors/loki/` | Python. LogQL queries and label discovery. | 2 |
@@ -180,8 +180,9 @@ pantheon-aiops/
 | `connectors/gitlab/` | Python. Pipelines, jobs, merge requests, diffs. | 4 |
 | `connectors/github/` | Python. Actions runs, pull requests, diffs. | 4 |
 | `connectors/litmus/` | Python. Chaos experiment lifecycle and results. | 5 |
-| **pkg/** | Go. Shared, importable Go libraries. One module per subdirectory. | 6 |
+| **pkg/** | Go. Shared, importable Go libraries. One module per subdirectory. | 0–6 |
 | `pkg/mcpserver/` | Shared MCP server package every Go connector builds on. | 6 |
+| `pkg/contracts/` | ⚙️ **Generated.** Go structs from the JSON Schema. Shared by every Go consumer. | 0 |
 | **cmd/** | Go binaries. | 6 |
 | `cmd/pantheonctl/` | Operator CLI. | 6 |
 | `cmd/collector/` | Signal-shipping sidecar. | 6 |
@@ -246,11 +247,17 @@ pantheon-aiops/
 Three directories contain **only** machine-generated output. Editing them by hand
 is a bug that CI will catch.
 
-| Directory | Generated from | By |
-|---|---|---|
-| `core/contracts/export/` | `core/contracts/*.py` (Pydantic v2) | `codegen/export_schemas.py` |
-| `connectors/kubernetes/pkg/contracts/` | `core/contracts/export/*.json` | `codegen/gen_go.sh` |
-| `dashboard/types/generated/` | FastAPI OpenAPI schema | `codegen/gen_ts.sh` |
+| File | Generated from | By | Generator pinned at |
+|---|---|---|---|
+| `core/contracts/export/pantheon.schema.json` | `core/contracts/*.py` (Pydantic v2) | `codegen/export_schemas.py` | `pydantic>=2.9` |
+| `pkg/contracts/contracts.gen.go` | the JSON Schema above | `codegen/gen_go.sh` | `go-jsonschema` `v0.24.1` |
+| `dashboard/types/generated/contracts.ts` | the JSON Schema above | `codegen/gen_ts.sh` | `json-schema-to-typescript` `15.0.4` |
+
+**Both generators read the same JSON Schema — not OpenAPI.** That is one drift
+surface, guarded by one verifier. See
+[ADR 0002](docs/adr/0002-codegen-from-json-schema.md). Generator versions are
+pinned on purpose: an unpinned tool changes its output on upgrade, which is
+indistinguishable from a real contract change.
 
 `codegen/verify.sh` regenerates everything into a temp directory and diffs it
 against the committed output. **Any drift fails the build.** It runs in
@@ -264,6 +271,24 @@ the contract change and the regenerated output together.
 ## Standing decisions
 
 Cross-cutting rules that outlive any one branch. Each links to its ADR.
+
+### Codegen reads JSON Schema, never OpenAPI
+
+[ADR 0002](docs/adr/0002-codegen-from-json-schema.md) · live now
+
+Go and TypeScript domain types are both generated from
+`core/contracts/export/pantheon.schema.json`. The dashboard needs `Finding`,
+`Verdict` and `Investigation` as domain types regardless of which route returns
+them; OpenAPI-derived types would be shaped by routing accidents. One artifact
+means one drift surface and one verifier.
+
+Endpoint-surface types — paths, params, status codes — are a **separate,
+additive** generator arriving at Phase 1 as `codegen/gen_ts_api.sh`. It sits
+*beside* the domain types, never on top of them.
+
+> **The rule:** to change a shape in Go or TypeScript, edit `core/contracts/`
+> and run `make codegen`. Commit the contract change and the regenerated output
+> together. `codegen/verify.sh` fails the build otherwise, in pre-commit and CI.
 
 ### Object storage is MinIO — never a cloud dependency
 
@@ -316,7 +341,7 @@ target that is not yet wired says so and exits non-zero.
 | Target | Does | Live? |
 |---|---|---|
 | `make help` | List every target (default goal) | ✅ |
-| `make install` | `uv sync`. Go has no external deps; dashboard deps land on branch 4 | ✅ |
+| `make install` | `uv sync` + `pre-commit install`. Go has no external deps; dashboard deps land on branch 4 | ✅ |
 | `make dev` | Run the API and worker locally with reload | ⏳ needs `api.main:app` (Phase 1) |
 | `make sim` | Run a simulator scenario against the local stack | ⏳ needs `simulator.cli` (Phase 1) |
 | `make test` | `pytest` with coverage | ✅ |
@@ -326,8 +351,8 @@ target that is not yet wired says so and exits non-zero.
 | `make lint-go` | `go vet` + `golangci-lint` in every module listed in `go.work` | ✅ |
 | `make lint-ts` | `biome` against the dashboard | ⏳ branch 4 |
 | `make typecheck` | `mypy --strict` over the Python tree | ✅ |
-| `make codegen` | Regenerate JSON Schema, Go structs and TS types | ⏳ branch 5 |
-| `make codegen-verify` | Fail if generated output has drifted | ⏳ branch 5 |
+| `make codegen` | Regenerate JSON Schema, Go structs and TS types | ✅ |
+| `make codegen-verify` | Fail if generated output has drifted | ✅ |
 | `make up` | Start the local Compose stack | ⏳ branch 6 |
 | `make down` | Stop the local Compose stack | ⏳ branch 6 |
 | `make clean` | Remove build artifacts and tooling caches | ✅ |
@@ -342,10 +367,8 @@ declares `requires-python = ">=3.12,<3.13"` — the platform is validated agains
 exactly one minor version, so the upper bound is deliberate, not an oversight.
 Run tools through `uv run` (or `make`), never against a system interpreter.
 
-**`pre-commit install` is not wired into `make install`.** The `codegen-verify`
-hook shells out to `codegen/verify.sh`, which does not exist until branch 5, so
-installing the git hooks today would block every commit. Install them once that
-branch lands.
+`make install` runs `pre-commit install` for you. All five hooks — ruff-check,
+ruff-format, mypy, gitleaks and the codegen drift check — are live and passing.
 
 ---
 
@@ -389,6 +412,8 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-15 | `feature/codegen-pipeline` | **Codegen pipeline live.** Filled `core/contracts/` with minimal-but-real Pydantic v2 models, added `core/contracts/base.py` (`ContractModel`, `extra="forbid"`). Implemented `export_schemas.py`, `gen_go.sh`, `gen_ts.sh`, `verify.sh`. New generated artifacts: `core/contracts/export/pantheon.schema.json`, `pkg/contracts/contracts.gen.go`, `dashboard/types/generated/contracts.ts`. **Added module `pkg/contracts/`** (5th Go module) and **deleted `connectors/kubernetes/pkg/`** — shared contracts must not live inside one connector. Wired `make codegen` / `codegen-verify`, enabled the codegen pre-commit hook and added `pre-commit install` to `make install`. Extended `tests/unit/test_repo_structure.py` with three codegen guards. See [ADR 0002](docs/adr/0002-codegen-from-json-schema.md). |
+| 2026-08-15 | `feature/codegen-pipeline` | **Spec corrected.** `gen_ts.sh` generates from JSON Schema, not from the FastAPI OpenAPI document. Endpoint-surface types become a separate additive generator, `codegen/gen_ts_api.sh`, at Phase 1. |
 | 2026-08-14 | `feature/python-tooling` | **Python toolchain.** Filled `pyproject.toml` (ruff `E,F,I,B,UP,SIM,RUF` @ 100, mypy `strict`, pytest + coverage, `dependency-groups.dev`) and `.pre-commit-config.yaml` (ruff-check, ruff-format, mypy, gitleaks, codegen drift). Added `.python-version` (3.12) and `uv.lock`, both committed. Added `tests/unit/test_repo_structure.py` — five guards over the agent roster, package initialisers, phase markers and generated-directory banners. Wired `make install`, `test`, `lint`, `typecheck`; `dev` and `sim` stay stubs until Phase 1 supplies `api.main:app` and `simulator.cli`. Rewrapped five over-length docstrings in `api/`, `core/` flagged by ruff. |
 | 2026-08-14 | `feature/go-base-relocation` | **Moved `connectors/_base/go/` → `pkg/mcpserver/`** (module `github.com/simootaz/pantheon-aiops/pkg/mcpserver`). `pkg/` is the idiomatic home for shared Go libraries, and the move removes the `_`-wildcard trap outright instead of documenting it. Updated `go.work`, `connectors/kubernetes/go.mod` (require + replace → `../../pkg/mcpserver`) and the three importing files; the import alias is no longer needed. `connectors/_base/python/` **stays** — its underscore is load-bearing for connector auto-discovery. Rewrote the CLAUDE.md Go section accordingly and corrected `connectors/_base/__init__.py`, which still claimed to host both languages. **Supersedes the wildcard guidance in the `feature/go-workspace` row below.** |
 | 2026-08-14 | `feature/go-base-relocation` | **Definition of done corrected.** Dropped `go build ./...` — it cannot work from a non-module root. Replaced everywhere by the three commands that genuinely cover every module: `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...`. Branch 7 must use these in CI. |
