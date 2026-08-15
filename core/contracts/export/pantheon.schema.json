@@ -6,6 +6,12 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "a2_u_i_client_capabilities": {
+      "$ref": "#/$defs/A2UIClientCapabilities"
+    },
+    "a2_u_i_surface": {
+      "$ref": "#/$defs/A2UISurface"
+    },
     "access_request": {
       "$ref": "#/$defs/AccessRequest"
     },
@@ -51,11 +57,270 @@
     "resolution_record": {
       "$ref": "#/$defs/ResolutionRecord"
     },
+    "u_i_action_response": {
+      "$ref": "#/$defs/UIActionResponse"
+    },
     "verdict": {
       "$ref": "#/$defs/Verdict"
     }
   },
   "$defs": {
+    "A2UIAction": {
+      "additionalProperties": false,
+      "description": "A declared action on a component.\n\nA2UI carries either a server event or a local function call, both referenced\n**by name**. No executable code crosses the boundary in either direction.",
+      "properties": {
+        "context": {
+          "additionalProperties": true,
+          "description": "Values returned with the action.",
+          "title": "Context",
+          "type": "object"
+        },
+        "event_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Server-dispatched action name, from the catalog.",
+          "title": "Event Name"
+        },
+        "function_call": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Client function name, from the catalog. Never code.",
+          "title": "Function Call"
+        }
+      },
+      "title": "A2UIAction",
+      "type": "object"
+    },
+    "A2UIClientCapabilities": {
+      "additionalProperties": false,
+      "description": "What the client can render, declared once at run start.\n\nA2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI\ndefines no analog, so this is **Pantheon convention, not specification**: the\ndashboard sends it in the AG-UI run input, and the agent is told what it may\nemit before it emits anything.\n\n`components` is generated from A2UIComponentType, so what we advertise is\nexactly what the renderer accepts - there is no second list to keep in step.",
+      "properties": {
+        "a2ui_version": {
+          "default": "v0.9.1",
+          "title": "A2Ui Version",
+          "type": "string"
+        },
+        "catalog_id": {
+          "default": "pantheon.v1",
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "components": {
+          "description": "Every component the renderer accepts.",
+          "items": {
+            "$ref": "#/$defs/A2UIComponentType"
+          },
+          "title": "Components",
+          "type": "array"
+        }
+      },
+      "title": "A2UIClientCapabilities",
+      "type": "object"
+    },
+    "A2UIComponent": {
+      "additionalProperties": false,
+      "description": "One component in a surface. Authored by an agent, rendered by the host.\n\nNote what is absent: no styling, no HTML, no script, and no identity fields.\n``icon_url`` and ``agent_display_name`` live on A2UISurface and are set by\nthe orchestrator, so an agent cannot present itself as another agent or as\nPantheon itself.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/A2UIAction"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "children": {
+          "description": "Child component ids.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Children",
+          "type": "array"
+        },
+        "component": {
+          "$ref": "#/$defs/A2UIComponentType",
+          "description": "Must be in the allowlist."
+        },
+        "data_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "RFC 6901 JSON Pointer into the surface data model.",
+          "title": "Data Path"
+        },
+        "id": {
+          "description": "Unique within its surface.",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input label, where the type takes one.",
+          "title": "Label"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Display text, where the type takes one.",
+          "title": "Text"
+        }
+      },
+      "required": [
+        "id",
+        "component"
+      ],
+      "title": "A2UIComponent",
+      "type": "object"
+    },
+    "A2UIComponentType": {
+      "description": "The closed allowlist of A2UI components Pantheon will render.\n\nA subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so\nthe catalog is chosen for what it *cannot* be abused to do.\n\nDeliberately excluded, with reasons:\n\n- ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.\n  That outbound request is a data-exfiltration channel: an agent encodes\n  what it learned into the URL and the browser delivers it. Excluded even\n  though they are the most obviously useful components here.\n- ``Modal`` - an agent that can force a modal can overlay a convincing fake\n  credential prompt. Credential requests travel one path only, through\n  Cerberus.\n- ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and\n  never speculatively.",
+      "enum": [
+        "Row",
+        "Column",
+        "Card",
+        "List",
+        "Text",
+        "Icon",
+        "Divider",
+        "TextField",
+        "CheckBox",
+        "ChoicePicker",
+        "DateTimeInput",
+        "Button"
+      ],
+      "title": "A2UIComponentType",
+      "type": "string"
+    },
+    "A2UISurface": {
+      "additionalProperties": false,
+      "description": "A renderable surface, assembled by Pantheon rather than by an agent.\n\nIdentity is set here, by the orchestrator, and never by the agent - A2UI\ncalls this out explicitly as an anti-impersonation measure.",
+      "properties": {
+        "a2ui_version": {
+          "default": "v0.9.1",
+          "title": "A2Ui Version",
+          "type": "string"
+        },
+        "agent_display_name": {
+          "default": "Pantheon",
+          "description": "Set by the orchestrator. An agent cannot claim another identity.",
+          "title": "Agent Display Name",
+          "type": "string"
+        },
+        "catalog_id": {
+          "default": "pantheon.v1",
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/A2UIComponent"
+          },
+          "title": "Components",
+          "type": "array"
+        },
+        "data_model": {
+          "additionalProperties": true,
+          "description": "Initial values bound by JSON Pointer.",
+          "title": "Data Model",
+          "type": "object"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set by the orchestrator. Never agent-supplied.",
+          "title": "Icon Url"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Investigation Id"
+        },
+        "kind": {
+          "$ref": "#/$defs/A2UISurfaceKind"
+        },
+        "root": {
+          "description": "Id of the root component.",
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "root"
+      ],
+      "title": "A2UISurface",
+      "type": "object"
+    },
+    "A2UISurfaceKind": {
+      "description": "What a Pantheon-authored surface is for.\n\nEvery surface Pantheon emits has a declared purpose, so the renderer can\napply the right handling - notably that only APPROVAL and ACCESS_REQUEST may\ncollect a decision, and both are bound to their existing backend paths.",
+      "enum": [
+        "approval",
+        "access_request",
+        "report",
+        "notice"
+      ],
+      "title": "A2UISurfaceKind",
+      "type": "string"
+    },
     "AccessRequest": {
       "additionalProperties": false,
       "description": "An agent asking for a capability, with the reason it is asking.\n\n`reason` is not decoration. Approving \"an agent wants database access\" is\nnot a decision; approving a stated hypothesis is.",
@@ -1385,6 +1650,50 @@
       ],
       "title": "TriggerKind",
       "type": "string"
+    },
+    "UIActionResponse": {
+      "additionalProperties": false,
+      "description": "A user's response to an action, travelling back over AG-UI.\n\nMirrors A2UI's client action message. Carries no decision authority of its\nown: an approval reaching the Approval Gate, or an access decision reaching\nCerberus, is re-validated there against the request it claims to answer.",
+      "properties": {
+        "action_name": {
+          "title": "Action Name",
+          "type": "string"
+        },
+        "context": {
+          "additionalProperties": true,
+          "title": "Context",
+          "type": "object"
+        },
+        "investigation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Investigation Id"
+        },
+        "source_component_id": {
+          "title": "Source Component Id",
+          "type": "string"
+        },
+        "surface_id": {
+          "format": "uuid",
+          "title": "Surface Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "surface_id",
+        "source_component_id",
+        "action_name"
+      ],
+      "title": "UIActionResponse",
+      "type": "object"
     },
     "Verdict": {
       "additionalProperties": false,

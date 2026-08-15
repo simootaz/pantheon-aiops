@@ -21,6 +21,9 @@ dependencies = [
     "pydantic>=2.9",
     "fastapi>=0.115",
     "uvicorn>=0.32",
+    # AG-UI event types and encoder. Depended on, never redefined - see
+    # docs/adr/0006-agentic-ui-protocols.md.
+    "ag-ui-protocol>=0.1.20,<0.2",
 ]
 
 [project.urls]

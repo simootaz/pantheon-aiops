@@ -54,6 +54,15 @@ from core.contracts.llm import (
     Tier,
 )
 from core.contracts.manifest import AgentBudget, AgentCapability, AgentManifest
+from core.contracts.ui import (
+    A2UIAction,
+    A2UIClientCapabilities,
+    A2UIComponent,
+    A2UIComponentType,
+    A2UISurface,
+    A2UISurfaceKind,
+    UIActionResponse,
+)
 from core.contracts.verdict import Verdict
 
 # Top-level models the codegen pipeline exports. Nested models reachable from
@@ -75,10 +84,19 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     AccessRequest,
     Lease,
     AuditEntry,
+    A2UISurface,
+    A2UIClientCapabilities,
+    UIActionResponse,
 )
 
 __all__ = [
     "EXPORTED_MODELS",
+    "A2UIAction",
+    "A2UIClientCapabilities",
+    "A2UIComponent",
+    "A2UIComponentType",
+    "A2UISurface",
+    "A2UISurfaceKind",
     "AccessRequest",
     "Action",
     "AgentBudget",
@@ -117,6 +135,7 @@ __all__ = [
     "Tier",
     "Trigger",
     "TriggerKind",
+    "UIActionResponse",
     "Verdict",
     "VerdictReadyEvent",
 ]
