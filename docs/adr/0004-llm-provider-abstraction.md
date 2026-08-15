@@ -178,7 +178,8 @@ change.
 
 ## Secrets
 
-`keyring.py` owns API keys:
+Provider API keys are **Cerberus credentials like any other** - see
+[ADR 0005](0005-credential-brokering.md). Delphi does not own a secret store:
 
 - **encrypted at rest**, never stored in plaintext config;
 - **never written to logs**, never attached to a `ResolutionRecord`, redacted in
@@ -219,7 +220,6 @@ core/llm/                         Delphi - the LLM gateway (Phase 2)
 ├── fallback.py                   fallback chain, budget guard, hard stop
 ├── capability_matrix.py          probe results: what each model actually does
 ├── probe.py                      ★ the four probes; backs "Test connection"
-├── keyring.py                    ★ encrypted key storage, redaction
 ├── catalog.py                    configured providers; loads/validates ProviderConfig
 ├── provider.py                   adapter protocol every dialect implements
 ├── tracing.py                    prompt/response tracing, cost accounting, redaction
@@ -284,7 +284,7 @@ Landing on `feature/deploy-skeleton`:
 | Phase | Delivers |
 |---|---|
 | **0** | Structure and contracts as documented stubs; `delphi:` Helm block; Ollama Compose service; env vars |
-| **2** | `gateway`, `resolver`, `catalog`, `chat_completions`, `keyring`, `tracing`, `ResolutionRecord` persistence |
+| **2** | `gateway`, `resolver`, `catalog`, `chat_completions`, `tracing`, `ResolutionRecord` persistence |
 | **3** | Budget guard integration with `core/guardrails/` |
 | **4** | Settings surface, probes wired to **Test connection**, validation warnings |
 | **5** | Remaining dialect adapters and `custom.py` hardening |

@@ -175,7 +175,6 @@ DELPHI_MODULES = (
     "fallback",
     "capability_matrix",
     "probe",
-    "keyring",
     "catalog",
     "provider",
     "tracing",
@@ -300,3 +299,68 @@ def test_argocd_application_documents_client_side_rendering() -> None:
     app = (REPO_ROOT / "deploy" / "argocd" / "application.yaml").read_text(encoding="utf-8")
     assert "client-side" in app.lower()
     assert "productionMode" in app
+
+
+# ---------------------------------------------------------------------------
+# Cerberus and licensing - added on feature/cerberus-credential-brokering
+# ---------------------------------------------------------------------------
+
+CERBERUS_MODULES = ("broker", "lease", "redemption", "redaction")
+CERBERUS_HEADS = {
+    "store": ("vault", "envelope", "master_key", "kinds", "rotation"),
+    "policy": ("grants", "modes", "scope", "defaults", "revocation"),
+    "audit": ("log", "attach"),
+}
+
+
+def test_cerberus_structure_matches_its_adr() -> None:
+    """Three heads, plus the broker, lease, redemption and redaction modules."""
+    base = REPO_ROOT / "core" / "cerberus"
+    for module in CERBERUS_MODULES:
+        assert (base / f"{module}.py").is_file(), f"core/cerberus/{module}.py is missing"
+    for head, modules in CERBERUS_HEADS.items():
+        assert (base / head / "__init__.py").is_file(), f"core/cerberus/{head}/ is not a package"
+        for module in modules:
+            assert (base / head / f"{module}.py").is_file(), (
+                f"core/cerberus/{head}/{module}.py is missing"
+            )
+
+
+def test_cerberus_is_not_an_agent() -> None:
+    """Infrastructure, like Delphi: no roster entry, no manifest."""
+    assert "cerberus" not in AGENT_DOMAINS
+    assert not (REPO_ROOT / "agents" / "cerberus").exists()
+    assert not (REPO_ROOT / "core" / "cerberus" / "manifest.yaml").exists()
+
+
+def test_delphi_no_longer_ships_its_own_secret_store() -> None:
+    """ADR 0005: provider keys are Cerberus credentials, and no shim was left.
+
+    A re-export shim would leave two apparent secret stores in the tree, and
+    someone would eventually reach for the wrong one.
+    """
+    assert not (REPO_ROOT / "core" / "llm" / "keyring.py").exists(), (
+        "core/llm/keyring.py is back; provider keys belong in Cerberus"
+    )
+
+
+def test_license_is_apache_2_consistently() -> None:
+    """One licence, stated the same way everywhere it is stated."""
+    assert "Apache License" in (REPO_ROOT / "LICENSE").read_text(encoding="utf-8")
+
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'license = "Apache-2.0"' in pyproject
+    assert "MIT" not in pyproject
+
+    chart = (CHART / "Chart.yaml").read_text(encoding="utf-8")
+    assert "Apache-2.0" in chart
+
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Apache" in readme and "LICENSE" in readme
+
+    # The dashboard is scaffolded on a later branch; assert as soon as it exists.
+    package_json = REPO_ROOT / "dashboard" / "package.json"
+    if package_json.is_file():
+        import json
+
+        assert json.loads(package_json.read_text(encoding="utf-8")).get("license") == "Apache-2.0"

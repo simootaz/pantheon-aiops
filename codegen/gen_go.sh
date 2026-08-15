@@ -12,6 +12,12 @@
 # The generator version is pinned. An unpinned generator would make verify.sh
 # report drift whenever the tool changed, which is indistinguishable from a real
 # contract change and would train everyone to ignore it.
+# Known generator constraint: a NULLABLE ENUM (`X | None` in Pydantic, which
+# exports as `anyOf: [{$ref: Enum}, {type: null}]`) makes go-jsonschema v0.24.1
+# emit TWO UnmarshalJSON methods on the same Go type, and the package stops
+# compiling. Model "absent" as an explicit enum member instead. Guarded by
+# tests/unit/test_credential_safety.py so the failure is explained rather than
+# discovered through a confusing Go error.
 set -euo pipefail
 
 GO_JSONSCHEMA_VERSION="v0.24.1"

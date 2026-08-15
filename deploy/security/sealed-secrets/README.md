@@ -19,8 +19,8 @@ kubectl create secret generic pantheon-llm-credentials \
 ```
 
 A provider credential that reaches an Investigation record, a log line or a
-trace is a security bug - see `core/llm/keyring.py` and
-[ADR 0004](../../../docs/adr/0004-llm-provider-abstraction.md).
+trace is a security bug - see [ADR 0005](../../../docs/adr/0005-credential-brokering.md).
+Provider API keys are Cerberus credentials like any other.
 
 _Phase: 7 - Production Hardening_
 

@@ -16,6 +16,7 @@ maintainers:
   - name: simootaz
     url: https://github.com/simootaz
 annotations:
+  artifacthub.io/license: Apache-2.0
   # Phase: 6 - Go Port & Platform Binaries
   # Templates are a minimal but valid skeleton; workloads are filled in as the
   # components they deploy become real.
