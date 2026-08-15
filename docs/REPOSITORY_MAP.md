@@ -198,6 +198,7 @@ pantheon-aiops/
 | **api/** | Python. FastAPI: `main.py` (`create_app()` factory), `routers/`, `agui/`, `auth/`, `schemas/`. `/health` is live. | 1–3 |
 | `api/agui/` | The AG-UI event endpoint (SSE). **Replaces the bespoke `api/ws/`.** Holds the one unresolved A2UI envelope seam. | 4 |
 | **core/ui/** | A2UI surface construction, restricted to the `A2UIComponentType` allowlist. | 4 |
+| `core/ui/artifact_resolution.py` | ⛔ **Resolves an ArtifactRef to a signed URL.** Server-side only; agents must not import it. | 4 |
 | **dashboard/** | TypeScript. Next.js 15 App Router — the only TS in the repo. | 4 |
 | `dashboard/app/` | Routes: `investigations/`, `agents/`, `approvals/`, `settings/`. | 4 |
 | `dashboard/components/` | Shared React components. | 4 |
@@ -245,6 +246,7 @@ pantheon-aiops/
 | A new **HTTP endpoint** | `api/routers/<resource>.py` | Request/response bodies come from `core/contracts/`, never redefined |
 | A new **event the UI sees** | `core/contracts/events.py`, then map it in `api/agui/translator.py` | Prefer a `StateDelta` on the Investigation. A `Custom` event needs the ADR 0006 test: must the UI *act* on arrival, and is that action not itself an A2UI prompt? |
 | A new **agent-rendered UI** | An A2UI surface in `core/ui/`, from the `A2UIComponentType` allowlist | Never raw HTML. Adding a component means adding it to the enum, which is also what the renderer and the advertised capabilities are generated from |
+| Anything an agent wants the **browser to fetch** | ❌ **Not a URL.** An `ArtifactRef` to an object Pantheon stored | Resolved server-side in `core/ui/artifact_resolution.py`, same investigation only |
 | A new **dashboard route** | `dashboard/app/<route>/page.tsx` | Import types from `dashboard/types/generated/` only |
 | A new **React component** | `dashboard/components/` | |
 | A new **Helm template** | `deploy/helm/pantheon/templates/` | Add its values to all three `values*.yaml`; `helm lint` must pass |
@@ -356,6 +358,11 @@ itself an A2UI prompt?*
 > credentials or approvals outside the Cerberus and Approval Gate paths.
 > `iconUrl` and `agentDisplayName` are set by the orchestrator, never by an
 > agent, so no agent can impersonate another or impersonate Pantheon.
+>
+> **Media is reference-based.** `Image` takes an `ArtifactRef` — an object key
+> for an artifact Pantheon produced — never a URL. An agent-authored URL is an
+> exfiltration channel, and a proxy that filters URLs is one bypass from
+> failing; a reference has nothing to filter. Same pattern as `CredentialRef`.
 
 ### Agents never hold credentials
 
@@ -532,6 +539,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-15 | `feature/artifact-backed-media` | **Media re-admitted, reference-based.** `Image` returns to the allowlist taking an `ArtifactRef` — an object key for an artifact Pantheon produced — never a URL. Added `ArtifactRef`/`ArtifactKind` to `core/contracts/ui.py` and `core/ui/artifact_resolution.py`, whose import is forbidden to agents, mirroring `core.cerberus.redemption`. `Video` and `AudioPlayer` stay out. New guards: `ArtifactRef` cannot express a destination, no A2UI component accepts a free-form URL in **any** language, and the resolver is off limits to agents — all verified against planted violations. ADR 0006 records that a URL proxy was considered and rejected. Both ADR 0005 and 0006 now state that the schema scan and redaction cover different halves of one threat. |
 | 2026-08-15 | `feature/agentic-ui-protocols` | **Agentic UI protocols.** Added `core/contracts/ui.py` (A2UI allowlist as a generated contract, surface, component, action, client capabilities), `api/agui/` (endpoint, translator, and the isolated A2UI envelope seam) and `core/ui/` (surface builders, Approval Gate and Cerberus access-request surfaces). **Deleted `api/ws/`** — the bespoke WebSocket protocol is superseded by AG-UI. Pinned `ag-ui-protocol>=0.1.20,<0.2`; A2UI **v0.9.1**, not the v1.0 release candidate. Added `tests/unit/test_agentic_ui.py` (13 guards): allowlist rejection, media/Modal exclusions, allowlist reaches TypeScript, capabilities equal the allowlist, identity not settable by agents, no bespoke WS returns, AG-UI events not redefined, envelope guess isolated to one seam, and redaction covering A2UI payloads. See [ADR 0006](adr/0006-agentic-ui-protocols.md). |
 | 2026-08-15 | `feature/cerberus-credential-brokering` | **Cerberus.** Added `core/cerberus/` — three heads (`store/`, `policy/`, `audit/`) plus `broker`, `lease`, `redemption` and `redaction`, including `store/rotation.py` and `policy/revocation.py` (break-glass). `redaction.py` is **implemented, not stubbed**. Added `core/contracts/credentials.py` (7 contracts) and an `audit` trail on `Investigation`. **Deleted `core/llm/keyring.py`** with no shim; updated all nine references. Renamed contract fields `credential` → `credential_ref` so the name states the invariant. Added `tests/unit/test_credential_safety.py` — schema scan across JSON Schema/Go/TS, an import-graph boundary guard, and a planted-secret redaction test. Licence stated as **Apache-2.0** in `pyproject.toml` (was MIT), `Chart.yaml` and the README badge. See [ADR 0005](adr/0005-credential-brokering.md). |
 | 2026-08-15 | `feature/ci-workflows` | **CI.** Nine workflows: `ci.yml` (the single required check) plus reusable `ci-python`, `ci-go`, `ci-dashboard`, `codegen-check`, `ci-deploy`, `security`, and non-firing `build-push` / `release` stubs. Every action pinned to a commit SHA; `permissions` scoped per job with an empty default; per-workflow per-ref concurrency; uv, Go and pnpm caches. `codegen-check` asserts its generator pins equal those in `codegen/gen_*.sh` and fails loudly on divergence. `ci-deploy` additionally asserts the chart fails closed without credentials and that Ollama stays behind its profile. `dependabot.yml` covers pip, five gomod modules, npm, actions and docker. Added `tests/unit/test_ci_workflows.py` (8 guards). Gated with actionlint and zizmor — both clean. |

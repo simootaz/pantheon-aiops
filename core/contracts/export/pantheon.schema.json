@@ -146,6 +146,18 @@
           ],
           "default": null
         },
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "For Image. A reference Pantheon resolves; never a URL an agent supplies."
+        },
         "children": {
           "description": "Child component ids.",
           "items": {
@@ -211,13 +223,14 @@
       "type": "object"
     },
     "A2UIComponentType": {
-      "description": "The closed allowlist of A2UI components Pantheon will render.\n\nA subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so\nthe catalog is chosen for what it *cannot* be abused to do.\n\nDeliberately excluded, with reasons:\n\n- ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.\n  That outbound request is a data-exfiltration channel: an agent encodes\n  what it learned into the URL and the browser delivers it. Excluded even\n  though they are the most obviously useful components here.\n- ``Modal`` - an agent that can force a modal can overlay a convincing fake\n  credential prompt. Credential requests travel one path only, through\n  Cerberus.\n- ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and\n  never speculatively.",
+      "description": "The closed allowlist of A2UI components Pantheon will render.\n\nA subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so\nthe catalog is chosen for what it *cannot* be abused to do.\n\n``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an\nobject key for an artifact Pantheon itself produced and stored. The agent\ncannot express an arbitrary destination, so there is nothing to filter.\n\nDeliberately excluded, with reasons:\n\n- ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the\n  same ArtifactRef pattern when something does; the allowlist grows on\n  demand, never speculatively.\n- ``Modal`` - an agent that can force a modal can overlay a convincing fake\n  credential prompt. Credential requests travel one path only, through\n  Cerberus.\n- ``Tabs``, ``Slider`` - no current use.",
       "enum": [
         "Row",
         "Column",
         "Card",
         "List",
         "Text",
+        "Image",
         "Icon",
         "Divider",
         "TextField",
@@ -561,6 +574,47 @@
       ],
       "title": "ApprovalState",
       "type": "string"
+    },
+    "ArtifactKind": {
+      "description": "What an artifact is. Only images are renderable today.",
+      "enum": [
+        "image"
+      ],
+      "title": "ArtifactKind",
+      "type": "string"
+    },
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "A reference to an artifact Pantheon produced and stored. Never a URL.\n\nSame shape as CredentialRef, for the same reason: the agent names a thing it\nis allowed to name, and the server resolves it. A URL field would let an\nagent express an arbitrary destination, and the browser fetching it is a\ndata-exfiltration channel - the agent encodes what it learned into the URL\nand the browser delivers it.\n\nA server-side URL proxy was considered and rejected. It still accepts an\nagent-authored URL and defends by filtering, which is one bypass away from\nfailing. A reference has nothing to filter.\n\nNote what is absent: no URL, no host, no bucket. The bucket is fixed\nserver-side, so the agent cannot name one. Resolution happens only in\ncore.ui.artifact_resolution, which agents cannot import - the same boundary\nas core.cerberus.redemption.",
+      "properties": {
+        "alt_text": {
+          "default": "",
+          "description": "Accessible description. Rendered, not fetched.",
+          "title": "Alt Text",
+          "type": "string"
+        },
+        "investigation_id": {
+          "description": "Resolution rejects a reference from a different investigation.",
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "key": {
+          "description": "Object key within Pantheon's own artifact bucket.",
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ArtifactKind",
+          "default": "image"
+        }
+      },
+      "required": [
+        "key",
+        "investigation_id"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
     },
     "AuditEntry": {
       "additionalProperties": false,

@@ -10,6 +10,13 @@ Three independent guards, each catching what the others cannot:
    importing the store directly and never serialising anything.
 3. **Redaction** - a planted secret survives none of the three sinks.
 
+Guards 1 and 3 are **not** redundant, and neither subsumes the other. The schema
+scan reads *field names*: it catches a model that declares somewhere to put a
+secret. Redaction reads *values*: it catches a secret pasted into a field whose
+name is entirely innocent - a Text component's body, a log line, a prompt. A
+contract can pass the scan and still carry a secret, so removing either guard
+leaves a real half of the threat uncovered.
+
 See docs/adr/0005-credential-brokering.md.
 
 Phase: 0 - Scaffold & Tooling
@@ -71,6 +78,10 @@ SAFE_NAMES = frozenset(
 FORBIDDEN_FOR_AGENTS = (
     "core.cerberus.redemption",
     "core.cerberus.store",
+    # Same boundary, different capability: this one turns an ArtifactRef into a
+    # fetchable signed URL. An agent that could resolve could also read the
+    # result, which is the exfiltration path ArtifactRef exists to close.
+    "core.ui.artifact_resolution",
 )
 
 ALLOWED_FOR_AGENTS = (
@@ -202,14 +213,18 @@ def test_agents_cannot_import_plaintext_modules() -> None:
 
 
 def test_allowed_import_surface_is_documented() -> None:
-    """The boundary is stated where a developer would look for it."""
+    """Each boundary is stated in its own package, where a developer would look."""
     from core.cerberus import AGENT_IMPORTABLE
 
     assert set(AGENT_IMPORTABLE) == set(ALLOWED_FOR_AGENTS)
 
-    doc = (REPO_ROOT / "core/cerberus/__init__.py").read_text(encoding="utf-8")
     for forbidden in FORBIDDEN_FOR_AGENTS:
-        assert forbidden in doc, f"{forbidden} is not documented as off limits"
+        package = ".".join(forbidden.split(".")[:2])  # e.g. core.cerberus, core.ui
+        init = REPO_ROOT / package.replace(".", "/") / "__init__.py"
+        assert init.is_file(), f"{package} has no __init__.py to document {forbidden}"
+        assert forbidden in init.read_text(encoding="utf-8"), (
+            f"{forbidden} is not documented as off limits in {package}/__init__.py"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -80,7 +80,7 @@ transport; A2UI is the payload for agent-generated UI.
 | Phase | Delivers |
 |---|---|
 | **0** | Contracts, allowlist, structure, guards; `api/ws/` removed |
-| **4** | AG-UI SSE endpoint and translator, A2UI surfaces for the Approval Gate and Cerberus, dashboard client and renderer |
+| **4** | AG-UI SSE endpoint and translator, A2UI surfaces for the Approval Gate and Cerberus, ArtifactRef resolution (server-side, same-investigation only), dashboard client and renderer |
 | **5** | Replay from snapshot + patches |
 
 ## Deferred decisions
@@ -92,6 +92,7 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 | **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
 | **Endpoint-surface TS types** | not generated | `codegen/gen_ts_api.sh` — paths, params, status codes from OpenAPI, additive beside the domain types | **Phase 1**, once `api/main.py` has real routes — see [ADR 0002](docs/adr/0002-codegen-from-json-schema.md) |
 | **A2UI-over-AG-UI envelope** | `Custom` event named `a2ui`, isolated to `api/agui/a2ui_channel.py` | whatever the specs standardise | **Revisit each AG-UI/A2UI release.** No canonical envelope is documented; A2UI maps to A2A message Parts, and published AG-UI examples improvise. Cost of being wrong: one constant and one function |
+| `Video` / `AudioPlayer` | excluded | admitted with the same `ArtifactRef` treatment as `Image` | when something actually needs them - the allowlist grows on demand, never speculatively |
 | **A2UI v1.0** | pinned to v0.9.1 | v1.0 once released | v1.0 is a *release candidate*; it adds bidirectional typed function calls and single-message UI instantiation |
 | **ag-ui SDK role mismatch** | pinned `>=0.1.20,<0.2` with the bug present | upstream fix | [ag-ui#1169](https://github.com/ag-ui-protocol/ag-ui/issues/1169) — `ReasoningMessageStartEvent.role` is `"assistant"` in Python and `"reasoning"` in TypeScript. Will bite when reasoning events are wired at Phase 4 |
 | Redaction sink wiring | `redact()` implemented and tested | wired into logging, tracing and prompt assembly | Phase 2–3 |

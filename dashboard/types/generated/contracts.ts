@@ -14,17 +14,19 @@ export type CatalogId = string;
  * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
  * the catalog is chosen for what it *cannot* be abused to do.
  *
+ * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
+ * object key for an artifact Pantheon itself produced and stored. The agent
+ * cannot express an arbitrary destination, so there is nothing to filter.
+ *
  * Deliberately excluded, with reasons:
  *
- * - ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.
- *   That outbound request is a data-exfiltration channel: an agent encodes
- *   what it learned into the URL and the browser delivers it. Excluded even
- *   though they are the most obviously useful components here.
+ * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
+ *   same ArtifactRef pattern when something does; the allowlist grows on
+ *   demand, never speculatively.
  * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
  *   credential prompt. Credential requests travel one path only, through
  *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and
- *   never speculatively.
+ * - ``Tabs``, ``Slider`` - no current use.
  */
 export type A2UIComponentType =
   | "Row"
@@ -32,6 +34,7 @@ export type A2UIComponentType =
   | "Card"
   | "List"
   | "Text"
+  | "Image"
   | "Icon"
   | "Divider"
   | "TextField"
@@ -58,6 +61,22 @@ export type EventName = string | null;
  */
 export type FunctionCall = string | null;
 /**
+ * Accessible description. Rendered, not fetched.
+ */
+export type AltText = string;
+/**
+ * Resolution rejects a reference from a different investigation.
+ */
+export type InvestigationId = string;
+/**
+ * Object key within Pantheon's own artifact bucket.
+ */
+export type Key = string;
+/**
+ * What an artifact is. Only images are renderable today.
+ */
+export type ArtifactKind = "image";
+/**
  * Child component ids.
  */
 export type Children = string[];
@@ -67,17 +86,19 @@ export type Children = string[];
  * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
  * the catalog is chosen for what it *cannot* be abused to do.
  *
+ * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
+ * object key for an artifact Pantheon itself produced and stored. The agent
+ * cannot express an arbitrary destination, so there is nothing to filter.
+ *
  * Deliberately excluded, with reasons:
  *
- * - ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.
- *   That outbound request is a data-exfiltration channel: an agent encodes
- *   what it learned into the URL and the browser delivers it. Excluded even
- *   though they are the most obviously useful components here.
+ * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
+ *   same ArtifactRef pattern when something does; the allowlist grows on
+ *   demand, never speculatively.
  * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
  *   credential prompt. Credential requests travel one path only, through
  *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and
- *   never speculatively.
+ * - ``Tabs``, ``Slider`` - no current use.
  */
 export type A2UIComponentType1 =
   | "Row"
@@ -85,6 +106,7 @@ export type A2UIComponentType1 =
   | "Card"
   | "List"
   | "Text"
+  | "Image"
   | "Icon"
   | "Divider"
   | "TextField"
@@ -114,7 +136,7 @@ export type Components1 = A2UIComponent[];
  */
 export type IconUrl = string | null;
 export type Id1 = string;
-export type InvestigationId = string | null;
+export type InvestigationId1 = string | null;
 /**
  * What a Pantheon-authored surface is for.
  *
@@ -170,7 +192,7 @@ export type Service = string | null;
  */
 export type CredentialType = "database" | "ssh" | "kubeconfig" | "http_auth" | "cloud_key" | "tls" | "key_value";
 export type Id3 = string;
-export type InvestigationId1 = string;
+export type InvestigationId2 = string;
 /**
  * The hypothesis this access would test, in the agent's own words.
  */
@@ -270,11 +292,11 @@ export type AuditEvent =
   | "break_glass"
   | "rotated";
 export type Id5 = string;
-export type InvestigationId2 = string | null;
+export type InvestigationId3 = string | null;
 export type LeaseId = string | null;
 export type EmittedAt = string;
 export type Event = InvestigationStartedEvent | FindingProducedEvent | VerdictReadyEvent | ApprovalRequestedEvent;
-export type InvestigationId3 = string;
+export type InvestigationId4 = string;
 export type Type = "investigation_started";
 /**
  * Codename of the agent that produced it, e.g. 'argus'.
@@ -316,21 +338,21 @@ export type Rationale = string | null;
  */
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 export type Title = string;
-export type InvestigationId4 = string;
-export type Type1 = "finding_produced";
 export type InvestigationId5 = string;
+export type Type1 = "finding_produced";
+export type InvestigationId6 = string;
 export type Type2 = "verdict_ready";
 export type Confidence1 = number;
 export type ContributingFindings = Finding[];
 export type Id8 = string;
-export type InvestigationId6 = string;
+export type InvestigationId7 = string;
 export type RecommendedActions = Action[];
 /**
  * Null when the evidence does not support a conclusion.
  */
 export type RootCause = string | null;
 export type Summary1 = string;
-export type InvestigationId7 = string;
+export type InvestigationId8 = string;
 export type Type3 = "approval_requested";
 export type Id9 = string;
 /**
@@ -350,7 +372,7 @@ export type Id10 = string;
 /**
  * Set when mode is ALLOW_FOR_INVESTIGATION.
  */
-export type InvestigationId8 = string | null;
+export type InvestigationId9 = string | null;
 /**
  * How a grant answers a request.
  *
@@ -451,7 +473,7 @@ export type Source = string;
 export type Connector1 = string;
 export type ExpiresAt1 = string;
 export type Id13 = string;
-export type InvestigationId9 = string;
+export type InvestigationId10 = string;
 export type IssuedAt = string;
 /**
  * Auto-renews while the underlying grant is valid and the run is live.
@@ -499,7 +521,7 @@ export type ModelsEndpoint = string | null;
  */
 export type SecretRef = string | null;
 export type ActionName = string;
-export type InvestigationId10 = string | null;
+export type InvestigationId11 = string | null;
 export type SourceComponentId = string;
 export type SurfaceId = string;
 
@@ -557,7 +579,7 @@ export interface A2UISurface {
   data_model?: DataModel;
   icon_url?: IconUrl;
   id: Id1;
-  investigation_id?: InvestigationId;
+  investigation_id?: InvestigationId1;
   kind: A2UISurfaceKind;
   root: Root;
 }
@@ -571,6 +593,10 @@ export interface A2UISurface {
  */
 export interface A2UIComponent {
   action?: A2UIAction | null;
+  /**
+   * For Image. A reference Pantheon resolves; never a URL an agent supplies.
+   */
+  artifact_ref?: ArtifactRef | null;
   children?: Children;
   component: A2UIComponentType1;
   data_path?: DataPath;
@@ -596,6 +622,30 @@ export interface Context {
   [k: string]: unknown;
 }
 /**
+ * A reference to an artifact Pantheon produced and stored. Never a URL.
+ *
+ * Same shape as CredentialRef, for the same reason: the agent names a thing it
+ * is allowed to name, and the server resolves it. A URL field would let an
+ * agent express an arbitrary destination, and the browser fetching it is a
+ * data-exfiltration channel - the agent encodes what it learned into the URL
+ * and the browser delivers it.
+ *
+ * A server-side URL proxy was considered and rejected. It still accepts an
+ * agent-authored URL and defends by filtering, which is one bypass away from
+ * failing. A reference has nothing to filter.
+ *
+ * Note what is absent: no URL, no host, no bucket. The bucket is fixed
+ * server-side, so the agent cannot name one. Resolution happens only in
+ * core.ui.artifact_resolution, which agents cannot import - the same boundary
+ * as core.cerberus.redemption.
+ */
+export interface ArtifactRef {
+  alt_text?: AltText;
+  investigation_id: InvestigationId;
+  key: Key;
+  kind?: ArtifactKind;
+}
+/**
  * Initial values bound by JSON Pointer.
  */
 export interface DataModel {
@@ -612,7 +662,7 @@ export interface AccessRequest {
   agent: Agent;
   credential_ref: CredentialRef;
   id: Id3;
-  investigation_id: InvestigationId1;
+  investigation_id: InvestigationId2;
   reason: Reason;
   requested_at: RequestedAt;
   requested_ttl_seconds: RequestedTtlSeconds;
@@ -689,7 +739,7 @@ export interface AuditEntry {
   detail?: Detail;
   event: AuditEvent;
   id: Id5;
-  investigation_id?: InvestigationId2;
+  investigation_id?: InvestigationId3;
   lease_id?: LeaseId;
 }
 /**
@@ -704,7 +754,7 @@ export interface EventEnvelope {
  * An Investigation moved out of PENDING.
  */
 export interface InvestigationStartedEvent {
-  investigation_id: InvestigationId3;
+  investigation_id: InvestigationId4;
   type?: Type;
 }
 /**
@@ -712,7 +762,7 @@ export interface InvestigationStartedEvent {
  */
 export interface FindingProducedEvent {
   finding: Finding;
-  investigation_id: InvestigationId4;
+  investigation_id: InvestigationId5;
   type?: Type1;
 }
 /**
@@ -755,7 +805,7 @@ export interface EvidenceSource {
  * The aggregator reached a conclusion.
  */
 export interface VerdictReadyEvent {
-  investigation_id: InvestigationId5;
+  investigation_id: InvestigationId6;
   type?: Type2;
   verdict: Verdict;
 }
@@ -766,7 +816,7 @@ export interface Verdict {
   confidence: Confidence1;
   contributing_findings?: ContributingFindings;
   id: Id8;
-  investigation_id: InvestigationId6;
+  investigation_id: InvestigationId7;
   recommended_actions?: RecommendedActions;
   root_cause?: RootCause;
   summary: Summary1;
@@ -776,7 +826,7 @@ export interface Verdict {
  */
 export interface ApprovalRequestedEvent {
   action: Action;
-  investigation_id: InvestigationId7;
+  investigation_id: InvestigationId8;
   type?: Type3;
 }
 /**
@@ -790,7 +840,7 @@ export interface Grant {
   granted_at: GrantedAt;
   granted_by: GrantedBy;
   id: Id10;
-  investigation_id?: InvestigationId8;
+  investigation_id?: InvestigationId9;
   mode: PermissionMode;
   override_ask_default?: OverrideAskDefault;
   revoked_at?: RevokedAt;
@@ -880,7 +930,7 @@ export interface Lease {
   credential_ref: CredentialRef;
   expires_at: ExpiresAt1;
   id: Id13;
-  investigation_id: InvestigationId9;
+  investigation_id: InvestigationId10;
   issued_at: IssuedAt;
   renewable?: Renewable;
   renewed_count?: RenewedCount;
@@ -910,7 +960,7 @@ export interface ProviderConfig {
 export interface UIActionResponse {
   action_name: ActionName;
   context?: Context1;
-  investigation_id?: InvestigationId10;
+  investigation_id?: InvestigationId11;
   source_component_id: SourceComponentId;
   surface_id: SurfaceId;
 }

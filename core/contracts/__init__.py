@@ -61,6 +61,8 @@ from core.contracts.ui import (
     A2UIComponentType,
     A2UISurface,
     A2UISurfaceKind,
+    ArtifactKind,
+    ArtifactRef,
     UIActionResponse,
 )
 from core.contracts.verdict import Verdict
@@ -104,6 +106,8 @@ __all__ = [
     "AgentManifest",
     "ApprovalRequestedEvent",
     "ApprovalState",
+    "ArtifactKind",
+    "ArtifactRef",
     "AuditEntry",
     "AuditEvent",
     "AuthMode",
