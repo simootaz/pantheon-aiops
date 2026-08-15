@@ -151,3 +151,81 @@ def test_every_exported_contract_model_is_closed() -> None:
         model.__name__ for model in EXPORTED_MODELS if model.model_config.get("extra") != "forbid"
     ]
     assert not open_models, f"models not extending ContractModel: {open_models}"
+
+
+# ---------------------------------------------------------------------------
+# Deploy skeleton and Delphi - added on feature/deploy-skeleton
+# ---------------------------------------------------------------------------
+
+# Images the Compose stack and CI expect to be able to build.
+DOCKERFILES = (
+    "api",
+    "worker",
+    "agent",
+    "connector-py",
+    "connector-go",
+    "dashboard",
+    "simulator",
+)
+
+# Delphi's modules, per docs/adr/0004-llm-provider-abstraction.md.
+DELPHI_MODULES = (
+    "gateway",
+    "resolver",
+    "fallback",
+    "capability_matrix",
+    "probe",
+    "keyring",
+    "catalog",
+    "provider",
+    "tracing",
+)
+
+DELPHI_ADAPTERS = ("chat_completions", "messages", "generate_content", "raw", "custom")
+
+
+def test_every_dockerfile_exists() -> None:
+    """One image per component, named as the Compose files reference them."""
+    for name in DOCKERFILES:
+        path = REPO_ROOT / "deploy" / "docker" / f"Dockerfile.{name}"
+        assert path.is_file(), f"deploy/docker/Dockerfile.{name} is missing"
+
+
+def test_object_storage_module_replaced_the_vendor_named_one() -> None:
+    """ADR 0001: the Terraform module is provider-shaped, not vendor-shaped.
+
+    Guards the rename specifically - a module named after one vendor invites
+    vendor-specific resources back in.
+    """
+    assert (REPO_ROOT / "deploy/terraform/modules/object-storage").is_dir()
+    assert not (REPO_ROOT / "deploy/terraform/modules/s3").exists(), (
+        "modules/s3 came back; ADR 0001 renamed it to modules/object-storage"
+    )
+
+
+def test_delphi_structure_matches_its_adr() -> None:
+    """core/llm/ carries the modules and dialect adapters ADR 0004 specifies."""
+    for module in DELPHI_MODULES:
+        assert (REPO_ROOT / "core" / "llm" / f"{module}.py").is_file(), (
+            f"core/llm/{module}.py is missing"
+        )
+    for adapter in DELPHI_ADAPTERS:
+        assert (REPO_ROOT / "core" / "llm" / "providers" / f"{adapter}.py").is_file(), (
+            f"core/llm/providers/{adapter}.py is missing"
+        )
+
+
+def test_dialect_adapters_are_named_by_wire_format_not_vendor() -> None:
+    """ADR 0004: a dialect outlives the vendor that popularised it."""
+    vendor_named = {"openai", "anthropic", "google", "openai_compatible", "gemini"}
+    present = {p.stem for p in (REPO_ROOT / "core" / "llm" / "providers").glob("*.py")}
+    assert not (present & vendor_named), (
+        f"vendor-named dialect adapters: {sorted(present & vendor_named)}"
+    )
+
+
+def test_delphi_is_not_an_agent() -> None:
+    """Delphi is infrastructure: no roster entry, no manifest."""
+    assert "delphi" not in AGENT_DOMAINS
+    assert not (REPO_ROOT / "agents" / "delphi").exists()
+    assert not (REPO_ROOT / "core" / "llm" / "manifest.yaml").exists()
