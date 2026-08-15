@@ -46,6 +46,19 @@ On a fresh clone, all of the following must pass.
 > parent's package walk, so it would report success while building nothing. The
 > three commands above cover all four modules and all eight packages.
 
+## Delphi — the LLM gateway
+
+Specified in [ADR 0004](docs/adr/0004-llm-provider-abstraction.md). Agents
+declare `ModelRequirements`; Delphi resolves them to a model at call time.
+
+| Phase | Delivers |
+|---|---|
+| **0** | Structure and contracts as documented stubs; `delphi:` Helm block; Ollama Compose service; `LLM_*` env vars |
+| **2** | `gateway`, `resolver`, `catalog`, `chat_completions` adapter, `keyring`, `tracing`, `ResolutionRecord` persistence |
+| **3** | Budget guard integrated with `core/guardrails/budget.py` — Delphi supplies price, guardrails decide |
+| **4** | Settings surface: provider cards, tier pickers, per-agent overrides, **Test connection** probes, validation warnings |
+| **5** | Remaining dialect adapters (`messages`, `generate_content`, `raw`) and `custom.py` hardening |
+
 ## Deferred decisions
 
 Things deliberately set to a scaffold-friendly value now, to be tightened later.
