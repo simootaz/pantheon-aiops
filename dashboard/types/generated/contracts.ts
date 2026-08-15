@@ -6,6 +6,127 @@
  * core/contracts/export/pantheon.schema.json. Regenerate with: make codegen
  */
 
+export type A2UiVersion = string;
+export type CatalogId = string;
+/**
+ * The closed allowlist of A2UI components Pantheon will render.
+ *
+ * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
+ * the catalog is chosen for what it *cannot* be abused to do.
+ *
+ * Deliberately excluded, with reasons:
+ *
+ * - ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.
+ *   That outbound request is a data-exfiltration channel: an agent encodes
+ *   what it learned into the URL and the browser delivers it. Excluded even
+ *   though they are the most obviously useful components here.
+ * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
+ *   credential prompt. Credential requests travel one path only, through
+ *   Cerberus.
+ * - ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and
+ *   never speculatively.
+ */
+export type A2UIComponentType =
+  | "Row"
+  | "Column"
+  | "Card"
+  | "List"
+  | "Text"
+  | "Icon"
+  | "Divider"
+  | "TextField"
+  | "CheckBox"
+  | "ChoicePicker"
+  | "DateTimeInput"
+  | "Button";
+/**
+ * Every component the renderer accepts.
+ */
+export type Components = A2UIComponentType[];
+export type A2UiVersion1 = string;
+/**
+ * Set by the orchestrator. An agent cannot claim another identity.
+ */
+export type AgentDisplayName = string;
+export type CatalogId1 = string;
+/**
+ * Server-dispatched action name, from the catalog.
+ */
+export type EventName = string | null;
+/**
+ * Client function name, from the catalog. Never code.
+ */
+export type FunctionCall = string | null;
+/**
+ * Child component ids.
+ */
+export type Children = string[];
+/**
+ * The closed allowlist of A2UI components Pantheon will render.
+ *
+ * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
+ * the catalog is chosen for what it *cannot* be abused to do.
+ *
+ * Deliberately excluded, with reasons:
+ *
+ * - ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.
+ *   That outbound request is a data-exfiltration channel: an agent encodes
+ *   what it learned into the URL and the browser delivers it. Excluded even
+ *   though they are the most obviously useful components here.
+ * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
+ *   credential prompt. Credential requests travel one path only, through
+ *   Cerberus.
+ * - ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and
+ *   never speculatively.
+ */
+export type A2UIComponentType1 =
+  | "Row"
+  | "Column"
+  | "Card"
+  | "List"
+  | "Text"
+  | "Icon"
+  | "Divider"
+  | "TextField"
+  | "CheckBox"
+  | "ChoicePicker"
+  | "DateTimeInput"
+  | "Button";
+/**
+ * RFC 6901 JSON Pointer into the surface data model.
+ */
+export type DataPath = string | null;
+/**
+ * Unique within its surface.
+ */
+export type Id = string;
+/**
+ * Input label, where the type takes one.
+ */
+export type Label = string | null;
+/**
+ * Display text, where the type takes one.
+ */
+export type Text = string | null;
+export type Components1 = A2UIComponent[];
+/**
+ * Set by the orchestrator. Never agent-supplied.
+ */
+export type IconUrl = string | null;
+export type Id1 = string;
+export type InvestigationId = string | null;
+/**
+ * What a Pantheon-authored surface is for.
+ *
+ * Every surface Pantheon emits has a declared purpose, so the renderer can
+ * apply the right handling - notably that only APPROVAL and ACCESS_REQUEST may
+ * collect a decision, and both are bound to their existing backend paths.
+ */
+export type A2UISurfaceKind = "approval" | "access_request" | "report" | "notice";
+/**
+ * Id of the root component.
+ */
+export type Root = string;
 /**
  * Read and write are separate grants.
  *
@@ -27,7 +148,7 @@ export type Agent = string;
 /**
  * Opaque identifier of the stored credential.
  */
-export type Id = string;
+export type Id2 = string;
 /**
  * Human-readable label, e.g. 'prod-postgres'.
  */
@@ -48,8 +169,8 @@ export type Service = string | null;
  * What kind of credential this is. Governs how the store handles it.
  */
 export type CredentialType = "database" | "ssh" | "kubeconfig" | "http_auth" | "cloud_key" | "tls" | "key_value";
-export type Id1 = string;
-export type InvestigationId = string;
+export type Id3 = string;
+export type InvestigationId1 = string;
 /**
  * The hypothesis this access would test, in the agent's own words.
  */
@@ -71,7 +192,7 @@ export type BlastRadius = "none" | "single_workload" | "namespace" | "cluster";
  * Dry run until explicitly cleared.
  */
 export type DryRun = boolean;
-export type Id2 = string;
+export type Id4 = string;
 /**
  * What it does, e.g. 'rollout_restart'.
  */
@@ -148,12 +269,12 @@ export type AuditEvent =
   | "grant_revoked"
   | "break_glass"
   | "rotated";
-export type Id3 = string;
-export type InvestigationId1 = string | null;
+export type Id5 = string;
+export type InvestigationId2 = string | null;
 export type LeaseId = string | null;
 export type EmittedAt = string;
 export type Event = InvestigationStartedEvent | FindingProducedEvent | VerdictReadyEvent | ApprovalRequestedEvent;
-export type InvestigationId2 = string;
+export type InvestigationId3 = string;
 export type Type = "investigation_started";
 /**
  * Codename of the agent that produced it, e.g. 'argus'.
@@ -163,7 +284,7 @@ export type Agent1 = string;
  * Agent's own confidence, 0 to 1.
  */
 export type Confidence = number;
-export type Id4 = string;
+export type Id6 = string;
 /**
  * What sort of observation this Evidence carries.
  */
@@ -185,7 +306,7 @@ export type Summary = string;
  * Evidence supporting the claim. A Finding with none is inadmissible.
  */
 export type Evidence = Evidence1[];
-export type Id5 = string;
+export type Id7 = string;
 /**
  * Why the Evidence supports the claim.
  */
@@ -195,23 +316,23 @@ export type Rationale = string | null;
  */
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 export type Title = string;
-export type InvestigationId3 = string;
-export type Type1 = "finding_produced";
 export type InvestigationId4 = string;
+export type Type1 = "finding_produced";
+export type InvestigationId5 = string;
 export type Type2 = "verdict_ready";
 export type Confidence1 = number;
 export type ContributingFindings = Finding[];
-export type Id6 = string;
-export type InvestigationId5 = string;
+export type Id8 = string;
+export type InvestigationId6 = string;
 export type RecommendedActions = Action[];
 /**
  * Null when the evidence does not support a conclusion.
  */
 export type RootCause = string | null;
 export type Summary1 = string;
-export type InvestigationId6 = string;
+export type InvestigationId7 = string;
 export type Type3 = "approval_requested";
-export type Id7 = string;
+export type Id9 = string;
 /**
  * Agent codename the grant applies to, e.g. 'argus'.
  */
@@ -225,11 +346,11 @@ export type GrantedAt = string;
  * Who approved it.
  */
 export type GrantedBy = string;
-export type Id8 = string;
+export type Id10 = string;
 /**
  * Set when mode is ALLOW_FOR_INVESTIGATION.
  */
-export type InvestigationId7 = string | null;
+export type InvestigationId8 = string | null;
 /**
  * How a grant answers a request.
  *
@@ -252,7 +373,7 @@ export type Audit = AuditEntry[];
 export type CompletedAt = string | null;
 export type CreatedAt = string;
 export type Findings = Finding[];
-export type Id9 = string;
+export type Id11 = string;
 /**
  * A behaviour a model either demonstrably has or does not.
  *
@@ -276,7 +397,7 @@ export type OutputCostPer1K = number | null;
 export type ProviderId = string;
 export type EstimatedCost = number | null;
 export type FallbackUsed = boolean;
-export type Id10 = string;
+export type Id12 = string;
 /**
  * Which rung of the resolution cascade produced the answer.
  */
@@ -329,8 +450,8 @@ export type Source = string;
  */
 export type Connector1 = string;
 export type ExpiresAt1 = string;
-export type Id11 = string;
-export type InvestigationId8 = string;
+export type Id13 = string;
+export type InvestigationId9 = string;
 export type IssuedAt = string;
 /**
  * Auto-renews while the underlying grant is valid and the run is live.
@@ -364,7 +485,7 @@ export type Enabled = boolean;
 /**
  * Stable identifier, e.g. 'local-ollama'.
  */
-export type Id12 = string;
+export type Id14 = string;
 /**
  * Model ids entered by hand when enumeration is absent.
  */
@@ -377,11 +498,17 @@ export type ModelsEndpoint = string | null;
  * Cerberus credential reference. Never the credential itself.
  */
 export type SecretRef = string | null;
+export type ActionName = string;
+export type InvestigationId10 = string | null;
+export type SourceComponentId = string;
+export type SurfaceId = string;
 
 /**
  * Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by hand.
  */
 export interface PantheonContracts {
+  a2_u_i_client_capabilities?: A2UIClientCapabilities;
+  a2_u_i_surface?: A2UISurface;
   access_request?: AccessRequest;
   action?: Action;
   agent_manifest?: AgentManifest;
@@ -397,7 +524,82 @@ export interface PantheonContracts {
   model_requirements?: ModelRequirements;
   provider_config?: ProviderConfig;
   resolution_record?: ResolutionRecord;
+  u_i_action_response?: UIActionResponse;
   verdict?: Verdict;
+}
+/**
+ * What the client can render, declared once at run start.
+ *
+ * A2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI
+ * defines no analog, so this is **Pantheon convention, not specification**: the
+ * dashboard sends it in the AG-UI run input, and the agent is told what it may
+ * emit before it emits anything.
+ *
+ * `components` is generated from A2UIComponentType, so what we advertise is
+ * exactly what the renderer accepts - there is no second list to keep in step.
+ */
+export interface A2UIClientCapabilities {
+  a2ui_version?: A2UiVersion;
+  catalog_id?: CatalogId;
+  components?: Components;
+}
+/**
+ * A renderable surface, assembled by Pantheon rather than by an agent.
+ *
+ * Identity is set here, by the orchestrator, and never by the agent - A2UI
+ * calls this out explicitly as an anti-impersonation measure.
+ */
+export interface A2UISurface {
+  a2ui_version?: A2UiVersion1;
+  agent_display_name?: AgentDisplayName;
+  catalog_id?: CatalogId1;
+  components?: Components1;
+  data_model?: DataModel;
+  icon_url?: IconUrl;
+  id: Id1;
+  investigation_id?: InvestigationId;
+  kind: A2UISurfaceKind;
+  root: Root;
+}
+/**
+ * One component in a surface. Authored by an agent, rendered by the host.
+ *
+ * Note what is absent: no styling, no HTML, no script, and no identity fields.
+ * ``icon_url`` and ``agent_display_name`` live on A2UISurface and are set by
+ * the orchestrator, so an agent cannot present itself as another agent or as
+ * Pantheon itself.
+ */
+export interface A2UIComponent {
+  action?: A2UIAction | null;
+  children?: Children;
+  component: A2UIComponentType1;
+  data_path?: DataPath;
+  id: Id;
+  label?: Label;
+  text?: Text;
+}
+/**
+ * A declared action on a component.
+ *
+ * A2UI carries either a server event or a local function call, both referenced
+ * **by name**. No executable code crosses the boundary in either direction.
+ */
+export interface A2UIAction {
+  context?: Context;
+  event_name?: EventName;
+  function_call?: FunctionCall;
+}
+/**
+ * Values returned with the action.
+ */
+export interface Context {
+  [k: string]: unknown;
+}
+/**
+ * Initial values bound by JSON Pointer.
+ */
+export interface DataModel {
+  [k: string]: unknown;
 }
 /**
  * An agent asking for a capability, with the reason it is asking.
@@ -409,8 +611,8 @@ export interface AccessRequest {
   action: CredentialAction;
   agent: Agent;
   credential_ref: CredentialRef;
-  id: Id1;
-  investigation_id: InvestigationId;
+  id: Id3;
+  investigation_id: InvestigationId1;
   reason: Reason;
   requested_at: RequestedAt;
   requested_ttl_seconds: RequestedTtlSeconds;
@@ -422,7 +624,7 @@ export interface AccessRequest {
  * dashboard, because it identifies without disclosing.
  */
 export interface CredentialRef {
-  id: Id;
+  id: Id2;
   name: Name;
   scope?: CredentialScope;
   type: CredentialType;
@@ -442,7 +644,7 @@ export interface Action {
   approval_state?: ApprovalState;
   blast_radius: BlastRadius;
   dry_run?: DryRun;
-  id: Id2;
+  id: Id4;
   operation: Operation;
   reason?: Reason1;
   target: Target;
@@ -486,8 +688,8 @@ export interface AuditEntry {
   credential_ref?: CredentialRef | null;
   detail?: Detail;
   event: AuditEvent;
-  id: Id3;
-  investigation_id?: InvestigationId1;
+  id: Id5;
+  investigation_id?: InvestigationId2;
   lease_id?: LeaseId;
 }
 /**
@@ -496,13 +698,13 @@ export interface AuditEntry {
 export interface EventEnvelope {
   emitted_at: EmittedAt;
   event: Event;
-  id: Id7;
+  id: Id9;
 }
 /**
  * An Investigation moved out of PENDING.
  */
 export interface InvestigationStartedEvent {
-  investigation_id: InvestigationId2;
+  investigation_id: InvestigationId3;
   type?: Type;
 }
 /**
@@ -510,7 +712,7 @@ export interface InvestigationStartedEvent {
  */
 export interface FindingProducedEvent {
   finding: Finding;
-  investigation_id: InvestigationId3;
+  investigation_id: InvestigationId4;
   type?: Type1;
 }
 /**
@@ -520,7 +722,7 @@ export interface Finding {
   agent: Agent1;
   confidence: Confidence;
   evidence?: Evidence;
-  id: Id5;
+  id: Id7;
   rationale?: Rationale;
   severity: Severity;
   title: Title;
@@ -529,7 +731,7 @@ export interface Finding {
  * A single observation, attributable to one connector at one moment.
  */
 export interface Evidence1 {
-  id: Id4;
+  id: Id6;
   kind: EvidenceKind;
   observed_at: ObservedAt;
   payload?: Payload;
@@ -553,7 +755,7 @@ export interface EvidenceSource {
  * The aggregator reached a conclusion.
  */
 export interface VerdictReadyEvent {
-  investigation_id: InvestigationId4;
+  investigation_id: InvestigationId5;
   type?: Type2;
   verdict: Verdict;
 }
@@ -563,8 +765,8 @@ export interface VerdictReadyEvent {
 export interface Verdict {
   confidence: Confidence1;
   contributing_findings?: ContributingFindings;
-  id: Id6;
-  investigation_id: InvestigationId5;
+  id: Id8;
+  investigation_id: InvestigationId6;
   recommended_actions?: RecommendedActions;
   root_cause?: RootCause;
   summary: Summary1;
@@ -574,7 +776,7 @@ export interface Verdict {
  */
 export interface ApprovalRequestedEvent {
   action: Action;
-  investigation_id: InvestigationId6;
+  investigation_id: InvestigationId7;
   type?: Type3;
 }
 /**
@@ -587,8 +789,8 @@ export interface Grant {
   expires_at?: ExpiresAt;
   granted_at: GrantedAt;
   granted_by: GrantedBy;
-  id: Id8;
-  investigation_id?: InvestigationId7;
+  id: Id10;
+  investigation_id?: InvestigationId8;
   mode: PermissionMode;
   override_ask_default?: OverrideAskDefault;
   revoked_at?: RevokedAt;
@@ -601,7 +803,7 @@ export interface Investigation {
   completed_at?: CompletedAt;
   created_at: CreatedAt;
   findings?: Findings;
-  id: Id9;
+  id: Id11;
   resolutions?: Resolutions;
   state: InvestigationState;
   trigger: Trigger;
@@ -620,7 +822,7 @@ export interface ResolutionRecord {
   chosen: ModelDescriptor;
   estimated_cost?: EstimatedCost;
   fallback_used?: FallbackUsed;
-  id: Id10;
+  id: Id12;
   matched_step: ResolutionStep;
   rejected?: Rejected;
   requested_by: RequestedBy;
@@ -677,8 +879,8 @@ export interface Lease {
   connector: Connector1;
   credential_ref: CredentialRef;
   expires_at: ExpiresAt1;
-  id: Id11;
-  investigation_id: InvestigationId8;
+  id: Id13;
+  investigation_id: InvestigationId9;
   issued_at: IssuedAt;
   renewable?: Renewable;
   renewed_count?: RenewedCount;
@@ -693,8 +895,25 @@ export interface ProviderConfig {
   dialect: Dialect;
   display_name: DisplayName;
   enabled?: Enabled;
-  id: Id12;
+  id: Id14;
   manual_models?: ManualModels;
   models_endpoint?: ModelsEndpoint;
   secret_ref?: SecretRef;
+}
+/**
+ * A user's response to an action, travelling back over AG-UI.
+ *
+ * Mirrors A2UI's client action message. Carries no decision authority of its
+ * own: an approval reaching the Approval Gate, or an access decision reaching
+ * Cerberus, is re-validated there against the request it claims to answer.
+ */
+export interface UIActionResponse {
+  action_name: ActionName;
+  context?: Context1;
+  investigation_id?: InvestigationId10;
+  source_component_id: SourceComponentId;
+  surface_id: SurfaceId;
+}
+export interface Context1 {
+  [k: string]: unknown;
 }

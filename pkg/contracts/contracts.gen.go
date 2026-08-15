@@ -8,6 +8,334 @@ import "fmt"
 import "reflect"
 import "time"
 
+// A declared action on a component.
+//
+// A2UI carries either a server event or a local function call, both referenced
+// **by name**. No executable code crosses the boundary in either direction.
+type A2UIAction struct {
+	// Values returned with the action.
+	Context A2UIActionContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
+
+	// Server-dispatched action name, from the catalog.
+	EventName interface{} `json:"event_name,omitempty,omitzero" yaml:"event_name,omitempty" mapstructure:"event_name,omitempty"`
+
+	// Client function name, from the catalog. Never code.
+	FunctionCall interface{} `json:"function_call,omitempty,omitzero" yaml:"function_call,omitempty" mapstructure:"function_call,omitempty"`
+}
+
+// Values returned with the action.
+type A2UIActionContext map[string]interface{}
+
+type A2UIActionEventName_0 *string
+
+type A2UIActionFunctionCall_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIAction) UnmarshalJSON(value []byte) error {
+	type Plain A2UIAction
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = A2UIAction(plain)
+	return nil
+}
+
+// What the client can render, declared once at run start.
+//
+// A2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI
+// defines no analog, so this is **Pantheon convention, not specification**: the
+// dashboard sends it in the AG-UI run input, and the agent is told what it may
+// emit before it emits anything.
+//
+// `components` is generated from A2UIComponentType, so what we advertise is
+// exactly what the renderer accepts - there is no second list to keep in step.
+type A2UIClientCapabilities struct {
+	// A2UiVersion corresponds to the JSON schema field "a2ui_version".
+	A2UiVersion string `json:"a2ui_version,omitempty,omitzero" yaml:"a2ui_version,omitempty" mapstructure:"a2ui_version,omitempty"`
+
+	// CatalogId corresponds to the JSON schema field "catalog_id".
+	CatalogId string `json:"catalog_id,omitempty,omitzero" yaml:"catalog_id,omitempty" mapstructure:"catalog_id,omitempty"`
+
+	// Every component the renderer accepts.
+	Components []A2UIComponentType `json:"components,omitempty,omitzero" yaml:"components,omitempty" mapstructure:"components,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIClientCapabilities) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	type Plain A2UIClientCapabilities
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["a2ui_version"]; !ok || v == nil {
+		plain.A2UiVersion = "v0.9.1"
+	}
+	if v, ok := raw["catalog_id"]; !ok || v == nil {
+		plain.CatalogId = "pantheon.v1"
+	}
+	*j = A2UIClientCapabilities(plain)
+	return nil
+}
+
+// One component in a surface. Authored by an agent, rendered by the host.
+//
+// Note what is absent: no styling, no HTML, no script, and no identity fields.
+// “icon_url“ and “agent_display_name“ live on A2UISurface and are set by
+// the orchestrator, so an agent cannot present itself as another agent or as
+// Pantheon itself.
+type A2UIComponent struct {
+	// Action corresponds to the JSON schema field "action".
+	Action *A2UIComponentAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
+
+	// Child component ids.
+	Children []string `json:"children,omitempty,omitzero" yaml:"children,omitempty" mapstructure:"children,omitempty"`
+
+	// Must be in the allowlist.
+	Component A2UIComponentType `json:"component" yaml:"component" mapstructure:"component"`
+
+	// RFC 6901 JSON Pointer into the surface data model.
+	DataPath interface{} `json:"data_path,omitempty,omitzero" yaml:"data_path,omitempty" mapstructure:"data_path,omitempty"`
+
+	// Unique within its surface.
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Input label, where the type takes one.
+	Label interface{} `json:"label,omitempty,omitzero" yaml:"label,omitempty" mapstructure:"label,omitempty"`
+
+	// Display text, where the type takes one.
+	Text interface{} `json:"text,omitempty,omitzero" yaml:"text,omitempty" mapstructure:"text,omitempty"`
+}
+
+// A declared action on a component.
+//
+// A2UI carries either a server event or a local function call, both referenced
+// **by name**. No executable code crosses the boundary in either direction.
+type A2UIComponentAction struct {
+	// Values returned with the action.
+	Context A2UIActionContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
+
+	// Server-dispatched action name, from the catalog.
+	EventName interface{} `json:"event_name,omitempty,omitzero" yaml:"event_name,omitempty" mapstructure:"event_name,omitempty"`
+
+	// Client function name, from the catalog. Never code.
+	FunctionCall interface{} `json:"function_call,omitempty,omitzero" yaml:"function_call,omitempty" mapstructure:"function_call,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIComponentAction) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var a2UIComponentAction_0 A2UIComponentAction_0
+	var errs []error
+	if err := a2UIComponentAction_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain A2UIComponentAction
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = A2UIComponentAction(plain)
+	return nil
+}
+
+type A2UIComponentDataPath_0 *string
+
+type A2UIComponentLabel_0 *string
+
+type A2UIComponentText_0 *string
+
+type A2UIComponentType string
+
+const A2UIComponentTypeButton A2UIComponentType = "Button"
+const A2UIComponentTypeCard A2UIComponentType = "Card"
+const A2UIComponentTypeCheckBox A2UIComponentType = "CheckBox"
+const A2UIComponentTypeChoicePicker A2UIComponentType = "ChoicePicker"
+const A2UIComponentTypeColumn A2UIComponentType = "Column"
+const A2UIComponentTypeDateTimeInput A2UIComponentType = "DateTimeInput"
+const A2UIComponentTypeDivider A2UIComponentType = "Divider"
+const A2UIComponentTypeIcon A2UIComponentType = "Icon"
+const A2UIComponentTypeList A2UIComponentType = "List"
+const A2UIComponentTypeRow A2UIComponentType = "Row"
+const A2UIComponentTypeText A2UIComponentType = "Text"
+const A2UIComponentTypeTextField A2UIComponentType = "TextField"
+
+var enumValues_A2UIComponentType = []interface{}{
+	"Row",
+	"Column",
+	"Card",
+	"List",
+	"Text",
+	"Icon",
+	"Divider",
+	"TextField",
+	"CheckBox",
+	"ChoicePicker",
+	"DateTimeInput",
+	"Button",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIComponentType) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_A2UIComponentType {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UIComponentType, v)
+	}
+	*j = A2UIComponentType(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIComponent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["component"]; raw != nil && !ok {
+		return fmt.Errorf("field component in A2UIComponent: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in A2UIComponent: required")
+	}
+	type Plain A2UIComponent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = A2UIComponent(plain)
+	return nil
+}
+
+// A renderable surface, assembled by Pantheon rather than by an agent.
+//
+// Identity is set here, by the orchestrator, and never by the agent - A2UI
+// calls this out explicitly as an anti-impersonation measure.
+type A2UISurface struct {
+	// A2UiVersion corresponds to the JSON schema field "a2ui_version".
+	A2UiVersion string `json:"a2ui_version,omitempty,omitzero" yaml:"a2ui_version,omitempty" mapstructure:"a2ui_version,omitempty"`
+
+	// Set by the orchestrator. An agent cannot claim another identity.
+	AgentDisplayName string `json:"agent_display_name,omitempty,omitzero" yaml:"agent_display_name,omitempty" mapstructure:"agent_display_name,omitempty"`
+
+	// CatalogId corresponds to the JSON schema field "catalog_id".
+	CatalogId string `json:"catalog_id,omitempty,omitzero" yaml:"catalog_id,omitempty" mapstructure:"catalog_id,omitempty"`
+
+	// Components corresponds to the JSON schema field "components".
+	Components []A2UIComponent `json:"components,omitempty,omitzero" yaml:"components,omitempty" mapstructure:"components,omitempty"`
+
+	// Initial values bound by JSON Pointer.
+	DataModel A2UISurfaceDataModel `json:"data_model,omitempty,omitzero" yaml:"data_model,omitempty" mapstructure:"data_model,omitempty"`
+
+	// Set by the orchestrator. Never agent-supplied.
+	IconUrl interface{} `json:"icon_url,omitempty,omitzero" yaml:"icon_url,omitempty" mapstructure:"icon_url,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind A2UISurfaceKind `json:"kind" yaml:"kind" mapstructure:"kind"`
+
+	// Id of the root component.
+	Root string `json:"root" yaml:"root" mapstructure:"root"`
+}
+
+// Initial values bound by JSON Pointer.
+type A2UISurfaceDataModel map[string]interface{}
+
+type A2UISurfaceIconUrl_0 *string
+
+type A2UISurfaceInvestigationId_0 *string
+
+type A2UISurfaceKind string
+
+const A2UISurfaceKindAccessRequest A2UISurfaceKind = "access_request"
+const A2UISurfaceKindApproval A2UISurfaceKind = "approval"
+const A2UISurfaceKindNotice A2UISurfaceKind = "notice"
+const A2UISurfaceKindReport A2UISurfaceKind = "report"
+
+var enumValues_A2UISurfaceKind = []interface{}{
+	"approval",
+	"access_request",
+	"report",
+	"notice",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UISurfaceKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_A2UISurfaceKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UISurfaceKind, v)
+	}
+	*j = A2UISurfaceKind(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UISurface) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in A2UISurface: required")
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in A2UISurface: required")
+	}
+	if _, ok := raw["root"]; raw != nil && !ok {
+		return fmt.Errorf("field root in A2UISurface: required")
+	}
+	type Plain A2UISurface
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["a2ui_version"]; !ok || v == nil {
+		plain.A2UiVersion = "v0.9.1"
+	}
+	if v, ok := raw["agent_display_name"]; !ok || v == nil {
+		plain.AgentDisplayName = "Pantheon"
+	}
+	if v, ok := raw["catalog_id"]; !ok || v == nil {
+		plain.CatalogId = "pantheon.v1"
+	}
+	*j = A2UISurface(plain)
+	return nil
+}
+
 // An agent asking for a capability, with the reason it is asking.
 //
 // `reason` is not decoration. Approving "an agent wants database access" is
@@ -1469,6 +1797,13 @@ func (j *ModelRequirements) UnmarshalJSON(value []byte) error {
 // Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by
 // hand.
 type PantheonSchemaJson struct {
+	// A2UIClientCapabilities corresponds to the JSON schema field
+	// "a2_u_i_client_capabilities".
+	A2UIClientCapabilities *A2UIClientCapabilities `json:"a2_u_i_client_capabilities,omitempty,omitzero" yaml:"a2_u_i_client_capabilities,omitempty" mapstructure:"a2_u_i_client_capabilities,omitempty"`
+
+	// A2UISurface corresponds to the JSON schema field "a2_u_i_surface".
+	A2UISurface *A2UISurface `json:"a2_u_i_surface,omitempty,omitzero" yaml:"a2_u_i_surface,omitempty" mapstructure:"a2_u_i_surface,omitempty"`
+
 	// AccessRequest corresponds to the JSON schema field "access_request".
 	AccessRequest *AccessRequest `json:"access_request,omitempty,omitzero" yaml:"access_request,omitempty" mapstructure:"access_request,omitempty"`
 
@@ -1513,6 +1848,9 @@ type PantheonSchemaJson struct {
 
 	// ResolutionRecord corresponds to the JSON schema field "resolution_record".
 	ResolutionRecord *ResolutionRecord `json:"resolution_record,omitempty,omitzero" yaml:"resolution_record,omitempty" mapstructure:"resolution_record,omitempty"`
+
+	// UIActionResponse corresponds to the JSON schema field "u_i_action_response".
+	UIActionResponse *UIActionResponse `json:"u_i_action_response,omitempty,omitzero" yaml:"u_i_action_response,omitempty" mapstructure:"u_i_action_response,omitempty"`
 
 	// Verdict corresponds to the JSON schema field "verdict".
 	Verdict *Verdict `json:"verdict,omitempty,omitzero" yaml:"verdict,omitempty" mapstructure:"verdict,omitempty"`
@@ -1841,6 +2179,58 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type TriggerPayload map[string]interface{}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trigger) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
+	}
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
+	}
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
+	}
+	type Plain Trigger
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = Trigger(plain)
+	return nil
+}
+
+// A user's response to an action, travelling back over AG-UI.
+//
+// Mirrors A2UI's client action message. Carries no decision authority of its
+// own: an approval reaching the Approval Gate, or an access decision reaching
+// Cerberus, is re-validated there against the request it claims to answer.
+type UIActionResponse struct {
+	// ActionName corresponds to the JSON schema field "action_name".
+	ActionName string `json:"action_name" yaml:"action_name" mapstructure:"action_name"`
+
+	// Context corresponds to the JSON schema field "context".
+	Context UIActionResponseContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// SourceComponentId corresponds to the JSON schema field "source_component_id".
+	SourceComponentId string `json:"source_component_id" yaml:"source_component_id" mapstructure:"source_component_id"`
+
+	// SurfaceId corresponds to the JSON schema field "surface_id".
+	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
+}
+
+type UIActionResponseContext map[string]interface{}
+
+type UIActionResponseInvestigationId_0 *string
+
 // The orchestrator's ranked conclusion for one Investigation.
 type Verdict struct {
 	// Confidence corresponds to the JSON schema field "confidence".
@@ -1868,66 +2258,33 @@ type Verdict struct {
 
 type VerdictRootCause_0 *string
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
-
-type InvestigationVerdict_0 = Verdict
-
-type TriggerPayload map[string]interface{}
+type A2UIComponentAction_0 = A2UIAction
 
 type AuditEntryCredentialRef_0 = CredentialRef
 
+type InvestigationVerdict_0 = Verdict
+
 // UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
+func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
+	if _, ok := raw["action_name"]; raw != nil && !ok {
+		return fmt.Errorf("field action_name in UIActionResponse: required")
 	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
+	if _, ok := raw["source_component_id"]; raw != nil && !ok {
+		return fmt.Errorf("field source_component_id in UIActionResponse: required")
 	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
+	if _, ok := raw["surface_id"]; raw != nil && !ok {
+		return fmt.Errorf("field surface_id in UIActionResponse: required")
 	}
-	type Plain Trigger
+	type Plain UIActionResponse
 	var plain Plain
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
-	*j = Trigger(plain)
+	*j = UIActionResponse(plain)
 	return nil
 }
 
@@ -1967,5 +2324,38 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("field %s: must be equal to %s", "type", "verdict_ready")
 	}
 	*j = VerdictReadyEvent(plain)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
 	return nil
 }
