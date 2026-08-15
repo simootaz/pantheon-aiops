@@ -112,13 +112,43 @@ func (j *AgentBudget) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// One thing an agent claims it can do.
+type AgentCapability struct {
+	// Description corresponds to the JSON schema field "description".
+	Description string `json:"description" yaml:"description" mapstructure:"description"`
+
+	// Stable identifier, e.g. 'detect_metric_anomaly'.
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AgentCapability) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["description"]; raw != nil && !ok {
+		return fmt.Errorf("field description in AgentCapability: required")
+	}
+	if _, ok := raw["name"]; raw != nil && !ok {
+		return fmt.Errorf("field name in AgentCapability: required")
+	}
+	type Plain AgentCapability
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = AgentCapability(plain)
+	return nil
+}
+
 // Everything the registry needs to know about an agent without importing it.
 type AgentManifest struct {
 	// Budget corresponds to the JSON schema field "budget".
 	Budget AgentBudget `json:"budget" yaml:"budget" mapstructure:"budget"`
 
 	// Capabilities corresponds to the JSON schema field "capabilities".
-	Capabilities []Capability `json:"capabilities,omitempty,omitzero" yaml:"capabilities,omitempty" mapstructure:"capabilities,omitempty"`
+	Capabilities []AgentCapability `json:"capabilities,omitempty,omitzero" yaml:"capabilities,omitempty" mapstructure:"capabilities,omitempty"`
 
 	// Mythological name, e.g. 'argus'.
 	Codename string `json:"codename" yaml:"codename" mapstructure:"codename"`
@@ -233,6 +263,40 @@ func (j *ApprovalState) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type AuthMode string
+
+const AuthModeBearer AuthMode = "bearer"
+const AuthModeHeaderKey AuthMode = "header_key"
+const AuthModeNone AuthMode = "none"
+const AuthModeQueryParam AuthMode = "query_param"
+
+var enumValues_AuthMode = []interface{}{
+	"none",
+	"bearer",
+	"header_key",
+	"query_param",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AuthMode) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_AuthMode {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_AuthMode, v)
+	}
+	*j = AuthMode(v)
+	return nil
+}
+
 type BlastRadius string
 
 const BlastRadiusCluster BlastRadius = "cluster"
@@ -267,33 +331,71 @@ func (j *BlastRadius) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// One thing an agent claims it can do.
-type Capability struct {
-	// Description corresponds to the JSON schema field "description".
-	Description string `json:"description" yaml:"description" mapstructure:"description"`
+type Capability string
 
-	// Stable identifier, e.g. 'detect_metric_anomaly'.
-	Name string `json:"name" yaml:"name" mapstructure:"name"`
+const CapabilityJsonMode Capability = "json_mode"
+const CapabilityStreaming Capability = "streaming"
+const CapabilityToolUse Capability = "tool_use"
+const CapabilityVision Capability = "vision"
+
+var enumValues_Capability = []interface{}{
+	"tool_use",
+	"json_mode",
+	"vision",
+	"streaming",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Capability) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
 		return err
 	}
-	if _, ok := raw["description"]; raw != nil && !ok {
-		return fmt.Errorf("field description in Capability: required")
+	var ok bool
+	for _, expected := range enumValues_Capability {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
 	}
-	if _, ok := raw["name"]; raw != nil && !ok {
-		return fmt.Errorf("field name in Capability: required")
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Capability, v)
 	}
-	type Plain Capability
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
+	*j = Capability(v)
+	return nil
+}
+
+type Dialect string
+
+const DialectChatCompletions Dialect = "chat_completions"
+const DialectGenerateContent Dialect = "generate_content"
+const DialectMessages Dialect = "messages"
+const DialectRaw Dialect = "raw"
+
+var enumValues_Dialect = []interface{}{
+	"chat_completions",
+	"messages",
+	"generate_content",
+	"raw",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Dialect) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
 		return err
 	}
-	*j = Capability(plain)
+	var ok bool
+	for _, expected := range enumValues_Dialect {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Dialect, v)
+	}
+	*j = Dialect(v)
 	return nil
 }
 
@@ -567,6 +669,9 @@ type Investigation struct {
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
 
+	// Every Delphi model resolution made during this run, in order.
+	Resolutions []ResolutionRecord `json:"resolutions,omitempty,omitzero" yaml:"resolutions,omitempty" mapstructure:"resolutions,omitempty"`
+
 	// State corresponds to the JSON schema field "state".
 	State InvestigationState `json:"state" yaml:"state" mapstructure:"state"`
 
@@ -725,6 +830,111 @@ func (j *Investigation) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// One model as observed, not as advertised.
+//
+// Every field below the identity pair is measured by core.llm.probe against
+// this deployment, because a model's behaviour behind a particular gateway is
+// not always what its vendor documents.
+type ModelDescriptor struct {
+	// Probed, not declared.
+	Capabilities []Capability `json:"capabilities,omitempty,omitzero" yaml:"capabilities,omitempty" mapstructure:"capabilities,omitempty"`
+
+	// ContextWindow corresponds to the JSON schema field "context_window".
+	ContextWindow int `json:"context_window,omitempty,omitzero" yaml:"context_window,omitempty" mapstructure:"context_window,omitempty"`
+
+	// InputCostPer1K corresponds to the JSON schema field "input_cost_per_1k".
+	InputCostPer1K interface{} `json:"input_cost_per_1k,omitempty,omitzero" yaml:"input_cost_per_1k,omitempty" mapstructure:"input_cost_per_1k,omitempty"`
+
+	// Null means never probed; treat capabilities as unknown.
+	LastProbedAt *time.Time `json:"last_probed_at,omitempty,omitzero" yaml:"last_probed_at,omitempty" mapstructure:"last_probed_at,omitempty"`
+
+	// MedianLatencyMs corresponds to the JSON schema field "median_latency_ms".
+	MedianLatencyMs interface{} `json:"median_latency_ms,omitempty,omitzero" yaml:"median_latency_ms,omitempty" mapstructure:"median_latency_ms,omitempty"`
+
+	// ModelId corresponds to the JSON schema field "model_id".
+	ModelId string `json:"model_id" yaml:"model_id" mapstructure:"model_id"`
+
+	// OutputCostPer1K corresponds to the JSON schema field "output_cost_per_1k".
+	OutputCostPer1K interface{} `json:"output_cost_per_1k,omitempty,omitzero" yaml:"output_cost_per_1k,omitempty" mapstructure:"output_cost_per_1k,omitempty"`
+
+	// ProviderId corresponds to the JSON schema field "provider_id".
+	ProviderId string `json:"provider_id" yaml:"provider_id" mapstructure:"provider_id"`
+}
+
+type ModelDescriptorInputCostPer1K_0 *float64
+
+type ModelDescriptorMedianLatencyMs_0 *int
+
+type ModelDescriptorOutputCostPer1K_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ModelDescriptor) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["model_id"]; raw != nil && !ok {
+		return fmt.Errorf("field model_id in ModelDescriptor: required")
+	}
+	if _, ok := raw["provider_id"]; raw != nil && !ok {
+		return fmt.Errorf("field provider_id in ModelDescriptor: required")
+	}
+	type Plain ModelDescriptor
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["context_window"]; !ok || v == nil {
+		plain.ContextWindow = 0
+	}
+	if 0 > plain.ContextWindow {
+		return fmt.Errorf("field %s: must be >= %v", "context_window", 0)
+	}
+	*j = ModelDescriptor(plain)
+	return nil
+}
+
+// What an agent needs from a model. The only thing an agent may declare.
+type ModelRequirements struct {
+	// Capabilities the model must demonstrably have.
+	Capabilities []Capability `json:"capabilities,omitempty,omitzero" yaml:"capabilities,omitempty" mapstructure:"capabilities,omitempty"`
+
+	// Ceiling for one call. Enforced via core.guardrails.budget.
+	MaxCostPerCall interface{} `json:"max_cost_per_call,omitempty,omitzero" yaml:"max_cost_per_call,omitempty" mapstructure:"max_cost_per_call,omitempty"`
+
+	// Minimum context window in tokens.
+	MinContext int `json:"min_context,omitempty,omitzero" yaml:"min_context,omitempty" mapstructure:"min_context,omitempty"`
+
+	// Tier corresponds to the JSON schema field "tier".
+	Tier Tier `json:"tier,omitempty,omitzero" yaml:"tier,omitempty" mapstructure:"tier,omitempty"`
+}
+
+type ModelRequirementsMaxCostPerCall_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ModelRequirements) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	type Plain ModelRequirements
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["min_context"]; !ok || v == nil {
+		plain.MinContext = 0
+	}
+	if 0 > plain.MinContext {
+		return fmt.Errorf("field %s: must be >= %v", "min_context", 0)
+	}
+	if v, ok := raw["tier"]; !ok || v == nil {
+		plain.Tier = "balanced"
+	}
+	*j = ModelRequirements(plain)
+	return nil
+}
+
 // Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by
 // hand.
 type PantheonSchemaJson struct {
@@ -746,8 +956,192 @@ type PantheonSchemaJson struct {
 	// Investigation corresponds to the JSON schema field "investigation".
 	Investigation *Investigation `json:"investigation,omitempty,omitzero" yaml:"investigation,omitempty" mapstructure:"investigation,omitempty"`
 
+	// ModelDescriptor corresponds to the JSON schema field "model_descriptor".
+	ModelDescriptor *ModelDescriptor `json:"model_descriptor,omitempty,omitzero" yaml:"model_descriptor,omitempty" mapstructure:"model_descriptor,omitempty"`
+
+	// ModelRequirements corresponds to the JSON schema field "model_requirements".
+	ModelRequirements *ModelRequirements `json:"model_requirements,omitempty,omitzero" yaml:"model_requirements,omitempty" mapstructure:"model_requirements,omitempty"`
+
+	// ProviderConfig corresponds to the JSON schema field "provider_config".
+	ProviderConfig *ProviderConfig `json:"provider_config,omitempty,omitzero" yaml:"provider_config,omitempty" mapstructure:"provider_config,omitempty"`
+
+	// ResolutionRecord corresponds to the JSON schema field "resolution_record".
+	ResolutionRecord *ResolutionRecord `json:"resolution_record,omitempty,omitzero" yaml:"resolution_record,omitempty" mapstructure:"resolution_record,omitempty"`
+
 	// Verdict corresponds to the JSON schema field "verdict".
 	Verdict *Verdict `json:"verdict,omitempty,omitzero" yaml:"verdict,omitempty" mapstructure:"verdict,omitempty"`
+}
+
+// A configured provider. Added from settings, never from code.
+type ProviderConfig struct {
+	// AuthMode corresponds to the JSON schema field "auth_mode".
+	AuthMode AuthMode `json:"auth_mode,omitempty,omitzero" yaml:"auth_mode,omitempty" mapstructure:"auth_mode,omitempty"`
+
+	// Root URL of the provider's API.
+	BaseUrl string `json:"base_url" yaml:"base_url" mapstructure:"base_url"`
+
+	// Dialect corresponds to the JSON schema field "dialect".
+	Dialect Dialect `json:"dialect" yaml:"dialect" mapstructure:"dialect"`
+
+	// DisplayName corresponds to the JSON schema field "display_name".
+	DisplayName string `json:"display_name" yaml:"display_name" mapstructure:"display_name"`
+
+	// Enabled corresponds to the JSON schema field "enabled".
+	Enabled bool `json:"enabled,omitempty,omitzero" yaml:"enabled,omitempty" mapstructure:"enabled,omitempty"`
+
+	// Stable identifier, e.g. 'local-ollama'.
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Model ids entered by hand when enumeration is absent.
+	ManualModels []string `json:"manual_models,omitempty,omitzero" yaml:"manual_models,omitempty" mapstructure:"manual_models,omitempty"`
+
+	// Path used to enumerate models, when the provider offers one.
+	ModelsEndpoint interface{} `json:"models_endpoint,omitempty,omitzero" yaml:"models_endpoint,omitempty" mapstructure:"models_endpoint,omitempty"`
+
+	// Name of the credential in the keyring. Never the credential itself.
+	SecretRef interface{} `json:"secret_ref,omitempty,omitzero" yaml:"secret_ref,omitempty" mapstructure:"secret_ref,omitempty"`
+}
+
+type ProviderConfigModelsEndpoint_0 *string
+
+type ProviderConfigSecretRef_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ProviderConfig) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["base_url"]; raw != nil && !ok {
+		return fmt.Errorf("field base_url in ProviderConfig: required")
+	}
+	if _, ok := raw["dialect"]; raw != nil && !ok {
+		return fmt.Errorf("field dialect in ProviderConfig: required")
+	}
+	if _, ok := raw["display_name"]; raw != nil && !ok {
+		return fmt.Errorf("field display_name in ProviderConfig: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in ProviderConfig: required")
+	}
+	type Plain ProviderConfig
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["auth_mode"]; !ok || v == nil {
+		plain.AuthMode = "bearer"
+	}
+	if v, ok := raw["enabled"]; !ok || v == nil {
+		plain.Enabled = true
+	}
+	*j = ProviderConfig(plain)
+	return nil
+}
+
+// Why Delphi chose the model it chose, for one call.
+//
+// Attached to the Investigation so a run is reproducible and can explain its
+// own cost without being re-run.
+type ResolutionRecord struct {
+	// Chosen corresponds to the JSON schema field "chosen".
+	Chosen ModelDescriptor `json:"chosen" yaml:"chosen" mapstructure:"chosen"`
+
+	// EstimatedCost corresponds to the JSON schema field "estimated_cost".
+	EstimatedCost interface{} `json:"estimated_cost,omitempty,omitzero" yaml:"estimated_cost,omitempty" mapstructure:"estimated_cost,omitempty"`
+
+	// FallbackUsed corresponds to the JSON schema field "fallback_used".
+	FallbackUsed bool `json:"fallback_used,omitempty,omitzero" yaml:"fallback_used,omitempty" mapstructure:"fallback_used,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// MatchedStep corresponds to the JSON schema field "matched_step".
+	MatchedStep ResolutionStep `json:"matched_step" yaml:"matched_step" mapstructure:"matched_step"`
+
+	// Human-readable reason per rejected candidate, in evaluation order.
+	Rejected []string `json:"rejected,omitempty,omitzero" yaml:"rejected,omitempty" mapstructure:"rejected,omitempty"`
+
+	// Agent codename that consulted Delphi, e.g. 'hermes'.
+	RequestedBy string `json:"requested_by" yaml:"requested_by" mapstructure:"requested_by"`
+
+	// Requirements corresponds to the JSON schema field "requirements".
+	Requirements ModelRequirements `json:"requirements" yaml:"requirements" mapstructure:"requirements"`
+
+	// ResolvedAt corresponds to the JSON schema field "resolved_at".
+	ResolvedAt time.Time `json:"resolved_at" yaml:"resolved_at" mapstructure:"resolved_at"`
+}
+
+type ResolutionRecordEstimatedCost_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ResolutionRecord) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["chosen"]; raw != nil && !ok {
+		return fmt.Errorf("field chosen in ResolutionRecord: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in ResolutionRecord: required")
+	}
+	if _, ok := raw["matched_step"]; raw != nil && !ok {
+		return fmt.Errorf("field matched_step in ResolutionRecord: required")
+	}
+	if _, ok := raw["requested_by"]; raw != nil && !ok {
+		return fmt.Errorf("field requested_by in ResolutionRecord: required")
+	}
+	if _, ok := raw["requirements"]; raw != nil && !ok {
+		return fmt.Errorf("field requirements in ResolutionRecord: required")
+	}
+	if _, ok := raw["resolved_at"]; raw != nil && !ok {
+		return fmt.Errorf("field resolved_at in ResolutionRecord: required")
+	}
+	type Plain ResolutionRecord
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["fallback_used"]; !ok || v == nil {
+		plain.FallbackUsed = false
+	}
+	*j = ResolutionRecord(plain)
+	return nil
+}
+
+type ResolutionStep string
+
+const ResolutionStepAgentBinding ResolutionStep = "agent_binding"
+const ResolutionStepGlobalDefault ResolutionStep = "global_default"
+const ResolutionStepTaskOverride ResolutionStep = "task_override"
+const ResolutionStepTierDefault ResolutionStep = "tier_default"
+
+var enumValues_ResolutionStep = []interface{}{
+	"task_override",
+	"agent_binding",
+	"tier_default",
+	"global_default",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ResolutionStep) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_ResolutionStep {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ResolutionStep, v)
+	}
+	*j = ResolutionStep(v)
+	return nil
 }
 
 type Severity string
@@ -786,6 +1180,38 @@ func (j *Severity) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type Tier string
+
+const TierBalanced Tier = "balanced"
+const TierCheap Tier = "cheap"
+const TierFrontier Tier = "frontier"
+
+var enumValues_Tier = []interface{}{
+	"cheap",
+	"balanced",
+	"frontier",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Tier) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_Tier {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Tier, v)
+	}
+	*j = Tier(v)
+	return nil
+}
+
 // The inbound event that started everything.
 type Trigger struct {
 	// Kind corresponds to the JSON schema field "kind".
@@ -804,9 +1230,59 @@ type Trigger struct {
 type TriggerKind string
 
 const TriggerKindAlert TriggerKind = "alert"
-const TriggerKindHumanQuestion TriggerKind = "human_question"
-const TriggerKindSchedule TriggerKind = "schedule"
-const TriggerKindWebhook TriggerKind = "webhook"
+
+type InvestigationVerdict_0 = Verdict
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trigger) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
+	}
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
+	}
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
+	}
+	type Plain Trigger
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = Trigger(plain)
+	return nil
+}
+
+type VerdictRootCause_0 *string
+
+// The orchestrator's ranked conclusion for one Investigation.
+type Verdict struct {
+	// Confidence corresponds to the JSON schema field "confidence".
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// ContributingFindings corresponds to the JSON schema field
+	// "contributing_findings".
+	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
+	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
+
+	// Null when the evidence does not support a conclusion.
+	RootCause interface{} `json:"root_cause,omitempty,omitzero" yaml:"root_cause,omitempty" mapstructure:"root_cause,omitempty"`
+
+	// Summary corresponds to the JSON schema field "summary".
+	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
+}
 
 var enumValues_TriggerKind = []interface{}{
 	"alert",
@@ -837,58 +1313,9 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 
 type TriggerPayload map[string]interface{}
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
-	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
-	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
-	}
-	type Plain Trigger
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = Trigger(plain)
-	return nil
-}
-
-// The orchestrator's ranked conclusion for one Investigation.
-type Verdict struct {
-	// Confidence corresponds to the JSON schema field "confidence".
-	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
-
-	// ContributingFindings corresponds to the JSON schema field
-	// "contributing_findings".
-	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
-
-	// Id corresponds to the JSON schema field "id".
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
-	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
-
-	// Null when the evidence does not support a conclusion.
-	RootCause interface{} `json:"root_cause,omitempty,omitzero" yaml:"root_cause,omitempty" mapstructure:"root_cause,omitempty"`
-
-	// Summary corresponds to the JSON schema field "summary".
-	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
-}
-
-type VerdictRootCause_0 *string
-
-type InvestigationVerdict_0 = Verdict
+const TriggerKindWebhook TriggerKind = "webhook"
+const TriggerKindSchedule TriggerKind = "schedule"
+const TriggerKindHumanQuestion TriggerKind = "human_question"
 
 // The aggregator reached a conclusion.
 type VerdictReadyEvent struct {
