@@ -127,10 +127,67 @@ tree. They are covered by the tool configuration described in the addendum.
 
 ---
 
-## Addendum — history rewrite
+## Addendum — history rewrite, 2026-08-15
 
-_To be completed once the rewritten history is pushed._
+The decision above governs new work. Existing history also carried the
+fingerprints, so it was rewritten once, on 2026-08-15, and force-pushed.
 
-<!-- TODO: record the rewrite date, the before/after commit count, confirmation
-     that tree hashes were unchanged, and the local setting that prevents
-     recurrence. -->
+### What was found
+
+An audit separated two layers, which matters because only one of them existed:
+
+| Layer | Affected |
+|---|---|
+| Author / committer identity | **0 commits.** No identity was ever attributed to a tool. |
+| Commit message trailers | **36 of 45 commits**, one appended co-author line each. |
+| The old map filename in messages | **10 lines across 4 commits**, including 3 subject lines. |
+| Generated-by footers, emoji sign-offs | 0 |
+
+The co-author badge visible on the hosting platform came entirely from the
+message trailers, not from commit authorship.
+
+### What was done
+
+A single `git filter-repo` pass over all refs:
+
+1. removed every co-author trailer line naming a tool or its domain;
+2. replaced the old map filename with `docs/REPOSITORY_MAP.md` throughout,
+   a literal substitution that left every message otherwise byte-identical — no
+   reflowing, retitling or rewording.
+
+The substitution was dry-run first, dumping the before/after of all 46 affected
+lines for review and flagging any that would become self-referential,
+tautological or ungrammatical. None did: the rename commits describe the move in
+terms of the *new* name, so no "renamed X to X" could form. All refs were
+bundled to a backup before the pass.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `develop` tree hash | `1aae1120…` → `1aae1120…` — **unchanged** |
+| `main` tree hash | `8f57a999…` → `8f57a999…` — **unchanged** |
+| Commit count | 45 → 45 |
+| Message greps (co-author, tool name, vendor domain, generated-by, emoji) | 0 hits each |
+| Distinct identities | contributor + one platform-web commit |
+| Full gate | lint, typecheck, test, lint-go, test-go, codegen-verify — all pass |
+
+Identical tree hashes are the load-bearing check: **only metadata changed, no
+file content moved.** Commit hashes necessarily changed, so anyone holding an
+older clone must re-clone or hard-reset rather than merge.
+
+### Preventing recurrence
+
+The trailer was appended automatically by local tooling, so the fix belongs in
+local configuration rather than in reviewer discipline. The relevant tool option
+is disabled in a gitignored per-repository settings file, and the committer
+identity is pinned locally as well as globally.
+
+### Note on `.gitignore`
+
+Local pointer files are excluded via `.git/info/exclude`, **not** `.gitignore`,
+for the reason given above: `.gitignore` is tracked, so naming a file there in
+order to ignore it reintroduces the fingerprint. The neutrality guard caught
+exactly this during implementation, along with a case where a path had been
+re-added to the index by an explicit `git add` — and once a path is tracked,
+exclude rules no longer apply to it.
