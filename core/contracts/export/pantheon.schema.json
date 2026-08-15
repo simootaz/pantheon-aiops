@@ -1,0 +1,688 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/simootaz/pantheon-aiops/core/contracts/export/pantheon.schema.json",
+  "title": "PantheonContracts",
+  "description": "Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by hand.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/Action"
+    },
+    "agent_manifest": {
+      "$ref": "#/$defs/AgentManifest"
+    },
+    "event_envelope": {
+      "$ref": "#/$defs/EventEnvelope"
+    },
+    "evidence": {
+      "$ref": "#/$defs/Evidence"
+    },
+    "finding": {
+      "$ref": "#/$defs/Finding"
+    },
+    "investigation": {
+      "$ref": "#/$defs/Investigation"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "description": "A remediation Pantheon proposes, and may later execute.",
+      "properties": {
+        "approval_state": {
+          "$ref": "#/$defs/ApprovalState",
+          "default": "pending"
+        },
+        "blast_radius": {
+          "$ref": "#/$defs/BlastRadius"
+        },
+        "dry_run": {
+          "default": true,
+          "description": "Dry run until explicitly cleared.",
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "operation": {
+          "description": "What it does, e.g. 'rollout_restart'.",
+          "title": "Operation",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why this Action was proposed.",
+          "title": "Reason"
+        },
+        "target": {
+          "description": "What it acts on, e.g. 'deployment/checkout'.",
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "operation",
+        "blast_radius"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "AgentBudget": {
+      "additionalProperties": false,
+      "description": "Ceilings the dispatcher enforces for a single agent invocation.",
+      "properties": {
+        "max_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Max Seconds",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "exclusiveMinimum": 0,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tokens",
+        "max_seconds",
+        "max_tool_calls"
+      ],
+      "title": "AgentBudget",
+      "type": "object"
+    },
+    "AgentManifest": {
+      "additionalProperties": false,
+      "description": "Everything the registry needs to know about an agent without importing it.",
+      "properties": {
+        "budget": {
+          "$ref": "#/$defs/AgentBudget"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "codename": {
+          "description": "Mythological name, e.g. 'argus'.",
+          "title": "Codename",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "domain": {
+          "description": "Folder under agents/, e.g. 'anomaly'.",
+          "title": "Domain",
+          "type": "string"
+        },
+        "tools": {
+          "description": "Connector tools this agent may call.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "codename",
+        "domain",
+        "description",
+        "budget"
+      ],
+      "title": "AgentManifest",
+      "type": "object"
+    },
+    "ApprovalRequestedEvent": {
+      "additionalProperties": false,
+      "description": "An Action needs a human before it can execute.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "approval_requested",
+          "default": "approval_requested",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "action"
+      ],
+      "title": "ApprovalRequestedEvent",
+      "type": "object"
+    },
+    "ApprovalState": {
+      "description": "Where an Action sits in the human-in-the-loop gate.",
+      "enum": [
+        "not_required",
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "title": "ApprovalState",
+      "type": "string"
+    },
+    "BlastRadius": {
+      "description": "How much can break if this Action is wrong.",
+      "enum": [
+        "none",
+        "single_workload",
+        "namespace",
+        "cluster"
+      ],
+      "title": "BlastRadius",
+      "type": "string"
+    },
+    "Capability": {
+      "additionalProperties": false,
+      "description": "One thing an agent claims it can do.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "description": "Stable identifier, e.g. 'detect_metric_anomaly'.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "Capability",
+      "type": "object"
+    },
+    "EventEnvelope": {
+      "additionalProperties": false,
+      "description": "Transport wrapper carrying one event plus its correlation metadata.",
+      "properties": {
+        "emitted_at": {
+          "format": "date-time",
+          "title": "Emitted At",
+          "type": "string"
+        },
+        "event": {
+          "discriminator": {
+            "mapping": {
+              "approval_requested": "#/$defs/ApprovalRequestedEvent",
+              "finding_produced": "#/$defs/FindingProducedEvent",
+              "investigation_started": "#/$defs/InvestigationStartedEvent",
+              "verdict_ready": "#/$defs/VerdictReadyEvent"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/InvestigationStartedEvent"
+            },
+            {
+              "$ref": "#/$defs/FindingProducedEvent"
+            },
+            {
+              "$ref": "#/$defs/VerdictReadyEvent"
+            },
+            {
+              "$ref": "#/$defs/ApprovalRequestedEvent"
+            }
+          ],
+          "title": "Event"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "emitted_at",
+        "event"
+      ],
+      "title": "EventEnvelope",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "description": "A single observation, attributable to one connector at one moment.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "description": "Kind-specific body. Phase 1 replaces this with per-kind models.",
+          "title": "Payload",
+          "type": "object"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "summary": {
+          "description": "One-line human-readable description.",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "observed_at",
+        "summary"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "description": "What sort of observation this Evidence carries.",
+      "enum": [
+        "metric_window",
+        "log_cluster",
+        "manifest_diff",
+        "k8s_event",
+        "pipeline_run"
+      ],
+      "title": "EvidenceKind",
+      "type": "string"
+    },
+    "EvidenceSource": {
+      "additionalProperties": false,
+      "description": "Where a piece of Evidence came from, so a human can go look themselves.",
+      "properties": {
+        "connector": {
+          "description": "Connector that produced it, e.g. 'prometheus'.",
+          "title": "Connector",
+          "type": "string"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Query that produced it, if any.",
+          "title": "Query"
+        }
+      },
+      "required": [
+        "connector"
+      ],
+      "title": "EvidenceSource",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "One agent's supported claim about what it observed.",
+      "properties": {
+        "agent": {
+          "description": "Codename of the agent that produced it, e.g. 'argus'.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "confidence": {
+          "description": "Agent's own confidence, 0 to 1.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "description": "Evidence supporting the claim. A Finding with none is inadmissible.",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the Evidence supports the claim.",
+          "title": "Rationale"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "title",
+        "severity",
+        "confidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingProducedEvent": {
+      "additionalProperties": false,
+      "description": "An agent returned a Finding.",
+      "properties": {
+        "finding": {
+          "$ref": "#/$defs/Finding"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "finding_produced",
+          "default": "finding_produced",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "finding"
+      ],
+      "title": "FindingProducedEvent",
+      "type": "object"
+    },
+    "Investigation": {
+      "additionalProperties": false,
+      "description": "One end-to-end run, from trigger to Verdict.",
+      "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/InvestigationState"
+        },
+        "trigger": {
+          "$ref": "#/$defs/Trigger"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Verdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absent until the run reaches a conclusion."
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "trigger",
+        "created_at"
+      ],
+      "title": "Investigation",
+      "type": "object"
+    },
+    "InvestigationStartedEvent": {
+      "additionalProperties": false,
+      "description": "An Investigation moved out of PENDING.",
+      "properties": {
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "investigation_started",
+          "default": "investigation_started",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id"
+      ],
+      "title": "InvestigationStartedEvent",
+      "type": "object"
+    },
+    "InvestigationState": {
+      "description": "Lifecycle of an Investigation.",
+      "enum": [
+        "pending",
+        "planning",
+        "running",
+        "awaiting_approval",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "InvestigationState",
+      "type": "string"
+    },
+    "Severity": {
+      "description": "How much a Finding should worry the on-call engineer.",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "Trigger": {
+      "additionalProperties": false,
+      "description": "The inbound event that started everything.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/TriggerKind"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "received_at": {
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string"
+        },
+        "source": {
+          "description": "Who sent it, e.g. 'alertmanager'.",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "received_at",
+        "source"
+      ],
+      "title": "Trigger",
+      "type": "object"
+    },
+    "TriggerKind": {
+      "description": "What set an Investigation off.",
+      "enum": [
+        "alert",
+        "webhook",
+        "schedule",
+        "human_question"
+      ],
+      "title": "TriggerKind",
+      "type": "string"
+    },
+    "Verdict": {
+      "additionalProperties": false,
+      "description": "The orchestrator's ranked conclusion for one Investigation.",
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contributing_findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Contributing Findings",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "recommended_actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "title": "Recommended Actions",
+          "type": "array"
+        },
+        "root_cause": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Null when the evidence does not support a conclusion.",
+          "title": "Root Cause"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "investigation_id",
+        "confidence",
+        "summary"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    },
+    "VerdictReadyEvent": {
+      "additionalProperties": false,
+      "description": "The aggregator reached a conclusion.",
+      "properties": {
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "verdict_ready",
+          "default": "verdict_ready",
+          "title": "Type",
+          "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "verdict"
+      ],
+      "title": "VerdictReadyEvent",
+      "type": "object"
+    }
+  }
+}
