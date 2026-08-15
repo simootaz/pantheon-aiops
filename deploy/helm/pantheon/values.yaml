@@ -2,6 +2,11 @@
 #
 # Phase: 6 - Go Port & Platform Binaries
 
+# Fail closed rather than generate credentials. Production installs set this
+# true; the chart then refuses to render if any required secret is missing.
+# See templates/validation.yaml.
+productionMode: false
+
 nameOverride: ""
 fullnameOverride: ""
 
@@ -56,8 +61,13 @@ minio:
 
   rootUser: pantheon
 
-  # Secret holding S3_SECRET_KEY (and S3_ACCESS_KEY if you prefer). Leave empty
-  # to have the chart generate one for evaluation only - never in production.
+  # Secret holding S3_ACCESS_KEY and S3_SECRET_KEY.
+  #
+  # Leave empty and the chart generates one - DEVELOPMENT AND DEMO ONLY. A
+  # generated credential is regenerated on every client-side render (helm
+  # template, helm diff, Argo CD), so under GitOps it rotates on each sync and
+  # orphans the stored data. productionMode=true refuses to render without a
+  # real secret rather than let that happen quietly.
   existingSecret: ""
   secretKeys:
     accessKey: S3_ACCESS_KEY

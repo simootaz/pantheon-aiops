@@ -11,6 +11,11 @@
 #
 #   helm install pantheon deploy/helm/pantheon -f deploy/helm/pantheon/values-prod.yaml
 
+# Refuse to render if any required credential is missing. Generated credentials
+# are a development convenience and are unsafe under GitOps - see
+# templates/validation.yaml.
+productionMode: true
+
 image:
   pullPolicy: IfNotPresent
 

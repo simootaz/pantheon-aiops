@@ -8,6 +8,9 @@
 #
 #   helm install pantheon deploy/helm/pantheon -f deploy/helm/pantheon/values-dev.yaml
 
+# Generated credentials are acceptable here and nowhere else.
+productionMode: false
+
 image:
   tag: dev
   pullPolicy: Always
