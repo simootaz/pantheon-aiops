@@ -35,8 +35,15 @@ AGENT_DOMAINS = frozenset(
 # Directories holding only machine-generated output.
 GENERATED_DIRS = (
     "core/contracts/export",
-    "connectors/kubernetes/pkg/contracts",
+    "pkg/contracts",
     "dashboard/types/generated",
+)
+
+# The three artifacts the codegen pipeline produces, all committed.
+GENERATED_ARTIFACTS = (
+    "core/contracts/export/pantheon.schema.json",
+    "pkg/contracts/contracts.gen.go",
+    "dashboard/types/generated/contracts.ts",
 )
 
 # Trees that are not Python and must not be walked looking for packages.
@@ -105,3 +112,42 @@ def test_generated_directories_warn_against_hand_editing() -> None:
         readme = REPO_ROOT / relative / "README.md"
         assert readme.is_file(), f"{relative}/README.md is missing"
         assert "do not edit" in readme.read_text(encoding="utf-8").lower()
+
+
+def test_generated_artifacts_are_committed() -> None:
+    """The codegen pipeline's three outputs exist and are non-empty.
+
+    verify.sh diffs against these committed copies, so a missing artifact would
+    make the drift check vacuous rather than failing loudly.
+    """
+    for relative in GENERATED_ARTIFACTS:
+        artifact = REPO_ROOT / relative
+        assert artifact.is_file(), f"{relative} is missing - run 'make codegen'"
+        assert artifact.stat().st_size > 0, f"{relative} is empty"
+
+
+def test_generated_artifacts_declare_they_are_generated() -> None:
+    """Each generated file says so in its own text, not just in a sibling README."""
+    for relative in GENERATED_ARTIFACTS:
+        head = (REPO_ROOT / relative).read_text(encoding="utf-8")[:400].lower()
+        assert "generated" in head, f"{relative} does not announce that it is generated"
+        assert "do not edit" in head or "not edit" in head, (
+            f"{relative} does not warn against hand-editing"
+        )
+
+
+def test_every_exported_contract_model_is_closed() -> None:
+    """Exported models forbid extra fields.
+
+    This is not style. Pydantic only emits `additionalProperties: false` for
+    closed models, and without it the TypeScript generator adds an
+    `[k: string]: unknown` index signature to every interface - which silently
+    reopens a contract that is meant to be closed.
+    """
+    from core.contracts import EXPORTED_MODELS
+
+    assert EXPORTED_MODELS, "EXPORTED_MODELS is empty; codegen would emit nothing"
+    open_models = [
+        model.__name__ for model in EXPORTED_MODELS if model.model_config.get("extra") != "forbid"
+    ]
+    assert not open_models, f"models not extending ContractModel: {open_models}"

@@ -26,7 +26,8 @@ help:
 ## install: install all Python, Go and dashboard dependencies
 install:
 	@uv sync
-	@echo "install: python ready (uv, 3.12)."
+	@uv run pre-commit install
+	@echo "install: python ready (uv, 3.12), git hooks installed."
 	@echo "         go modules have no external dependencies."
 	@echo "         dashboard deps land on branch feature/dashboard-scaffold."
 
@@ -75,11 +76,13 @@ typecheck:
 
 ## codegen: regenerate JSON Schema, Go structs and TypeScript types
 codegen:
-	@echo "codegen: not wired yet - branch feature/codegen-pipeline"; exit 1
+	@uv run python -m codegen.export_schemas
+	@bash codegen/gen_go.sh
+	@bash codegen/gen_ts.sh
 
 ## codegen-verify: fail if generated output has drifted from the contracts
 codegen-verify:
-	@echo "codegen-verify: not wired yet - branch feature/codegen-pipeline"; exit 1
+	@bash codegen/verify.sh
 
 ## up: start the local Compose stack
 up:

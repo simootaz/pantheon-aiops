@@ -2,7 +2,7 @@
 //
 // Phase: 0 - Scaffold & Tooling
 //
-// Four modules, all under github.com/simootaz/pantheon-aiops. The workspace is
+// Five modules, all under github.com/simootaz/pantheon-aiops. The workspace is
 // what lets connectors/kubernetes depend on pkg/mcpserver without either module
 // being published.
 
@@ -12,5 +12,6 @@ use (
 	./cmd/collector
 	./cmd/pantheonctl
 	./connectors/kubernetes
+	./pkg/contracts
 	./pkg/mcpserver
 )
