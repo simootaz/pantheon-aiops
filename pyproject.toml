@@ -18,6 +18,8 @@ license = { text = "MIT" }
 # scaffold stays honest about what it actually imports.
 dependencies = [
     "pydantic>=2.9",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
 ]
 
 [project.urls]
@@ -31,6 +33,8 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "pre-commit>=4.0",
+    # Required by fastapi.testclient.
+    "httpx>=0.28",
 ]
 
 [build-system]

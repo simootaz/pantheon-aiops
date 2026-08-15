@@ -3,4 +3,10 @@
 Phase: 1 - Contracts & First Agent Path
 """
 
-# TODO: Phase 1 - expose the app factory
+from __future__ import annotations
+
+__version__ = "0.1.0"
+
+__all__ = ["__version__"]
+
+# TODO: Phase 1 - read the version from package metadata instead of hardcoding
