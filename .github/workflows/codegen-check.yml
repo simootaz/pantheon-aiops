@@ -1,0 +1,103 @@
+# Contract drift: generated output must match core/contracts/.
+#
+# Phase: 7 - Production Hardening
+#
+# Needs all three toolchains, because the chain is
+# Pydantic -> JSON Schema -> Go structs + TypeScript types.
+#
+# The generator versions below are asserted against the pins inside
+# codegen/gen_*.sh. If they ever diverge, this job fails loudly rather than
+# regenerating with a different tool and reporting phantom drift - which is
+# indistinguishable from a real contract change and trains everyone to ignore
+# the check. See docs/adr/0002-codegen-from-json-schema.md.
+name: codegen-check
+
+on:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: codegen-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.23"
+  # Must equal GO_JSONSCHEMA_VERSION in codegen/gen_go.sh
+  EXPECTED_GO_JSONSCHEMA: v0.24.1
+  # Must equal JSON_SCHEMA_TO_TS_VERSION in codegen/gen_ts.sh
+  EXPECTED_JSON_SCHEMA_TO_TS: 15.0.4
+
+jobs:
+  codegen:
+    name: no drift
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Assert generator pins match codegen/gen_*.sh
+        run: |
+          set -euo pipefail
+          script_go="$(sed -n 's/^GO_JSONSCHEMA_VERSION="\(.*\)"$/\1/p' codegen/gen_go.sh)"
+          script_ts="$(sed -n 's/^JSON_SCHEMA_TO_TS_VERSION="\(.*\)"$/\1/p' codegen/gen_ts.sh)"
+
+          echo "gen_go.sh pins go-jsonschema           : ${script_go:-<not found>}"
+          echo "workflow expects                        : ${EXPECTED_GO_JSONSCHEMA}"
+          echo "gen_ts.sh pins json-schema-to-typescript: ${script_ts:-<not found>}"
+          echo "workflow expects                        : ${EXPECTED_JSON_SCHEMA_TO_TS}"
+
+          failed=0
+          if [ -z "${script_go}" ] || [ "${script_go}" != "${EXPECTED_GO_JSONSCHEMA}" ]; then
+            echo "::error file=codegen/gen_go.sh::go-jsonschema pin drifted from this workflow" >&2
+            failed=1
+          fi
+          if [ -z "${script_ts}" ] || [ "${script_ts}" != "${EXPECTED_JSON_SCHEMA_TO_TS}" ]; then
+            echo "::error file=codegen/gen_ts.sh::json-schema-to-typescript pin drifted from this workflow" >&2
+            failed=1
+          fi
+          if [ "${failed}" -ne 0 ]; then
+            echo "Update both the script and this workflow, and commit the regenerated output." >&2
+            exit 1
+          fi
+          echo "generator pins agree"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the pinned interpreter
+        run: uv python install
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Cache Go build and module cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: codegen-go-${{ runner.os }}-${{ env.GO_VERSION }}-${{ hashFiles('**/go.mod', 'go.work') }}
+          restore-keys: |
+            codegen-go-${{ runner.os }}-${{ env.GO_VERSION }}-
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: make codegen-verify
+        run: make codegen-verify

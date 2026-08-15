@@ -1,8 +1,111 @@
-# Dependency update automation for the Python, Go, TypeScript and Actions
-# ecosystems.
+# Dependency updates across all four ecosystems.
 #
-# Phase: 0 - Scaffold & Tooling
-# Populated on branch feature/ci-workflows.
+# Phase: 7 - Production Hardening
+#
+# Go needs one entry per module - there are five, and Dependabot does not walk a
+# go.work. Adding a module means adding an entry here; the repository map's
+# "Where do I put X?" table says so.
 
 version: 2
-updates: []
+
+updates:
+  # --- Python (uv reads pyproject.toml / uv.lock) --------------------------
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    commit-message:
+      prefix: "build"
+      include: scope
+    groups:
+      python-dev:
+        dependency-type: development
+
+  # --- Go: one entry per module in go.work ---------------------------------
+  - package-ecosystem: gomod
+    directory: /pkg/mcpserver
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, go]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: gomod
+    directory: /pkg/contracts
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, go]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: gomod
+    directory: /connectors/kubernetes
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, go]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: gomod
+    directory: /cmd/pantheonctl
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, go]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: gomod
+    directory: /cmd/collector
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, go]
+    commit-message:
+      prefix: "build"
+
+  # --- TypeScript ----------------------------------------------------------
+  # Inert until feature/dashboard-scaffold adds package.json.
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, typescript]
+    commit-message:
+      prefix: "build"
+    groups:
+      dashboard-minor:
+        update-types: [minor, patch]
+
+  # --- GitHub Actions ------------------------------------------------------
+  # Every action is pinned to a commit SHA, so this is the only thing that
+  # moves them - and it keeps the `# vX.Y.Z` comments in step.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  # --- Container base images ----------------------------------------------
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: "build"

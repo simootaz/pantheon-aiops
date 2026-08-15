@@ -1,0 +1,53 @@
+# Cut a release.
+#
+# Phase: 7 - Production Hardening
+#
+# STUB - wired but deliberately not firing. Manual dispatch only; a tag trigger
+# would cut releases of a scaffold.
+#
+# TODO: Phase 7 - on `push: tags: ['v*']`, generate the changelog from
+# conventional commits, package the Helm chart, attach the SBOM, and create the
+# GitHub release.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, e.g. v0.2.0
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release (stub)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Enabled when this actually releases:
+      # contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Explain the stub
+        # The input is passed through the environment rather than expanded into
+        # the script. A `${{ }}` expansion inside `run` is string-substituted
+        # before the shell sees it, so a crafted input becomes executable code.
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          echo "release is a stub - Phase 7 implements it."
+          echo "Requested version: ${REQUESTED_VERSION}"
+          echo ""
+          echo "Not implemented: changelog generation, helm package, SBOM"
+          echo "attachment, GitHub release creation."
+          exit 1

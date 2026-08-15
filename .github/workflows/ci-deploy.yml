@@ -1,0 +1,121 @@
+# Deploy artifacts: Helm, Terraform and Compose must all validate.
+#
+# Phase: 7 - Production Hardening
+#
+# Mirrors exactly what runs locally - three Helm value sets, five Terraform
+# modules and two environments, three Compose files plus the profile.
+name: ci-deploy
+
+on:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: ci-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm:
+    name: helm lint + template
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: helm lint and template, all value sets
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/pantheon
+          for values in "" "-f ${chart}/values-dev.yaml" "-f ${chart}/values-prod.yaml"; do
+            label="${values:-<default>}"
+            echo "::group::${label}"
+            # shellcheck disable=SC2086
+            helm lint "${chart}" ${values}
+            # shellcheck disable=SC2086
+            helm template pantheon "${chart}" ${values} > /dev/null
+            echo "::endgroup::"
+          done
+
+      - name: Production values must fail closed without credentials
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/pantheon
+          # A generated credential is re-minted on every client-side render, so
+          # the chart must refuse rather than rotate a production password.
+          if helm template pantheon "${chart}" -f "${chart}/values-prod.yaml" \
+               --set minio.external.existingSecret="" >/dev/null 2>&1; then
+            echo "::error::values-prod.yaml rendered without a credential; it must fail closed" >&2
+            exit 1
+          fi
+          echo "fail-closed behaviour confirmed"
+
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt -check -recursive
+        run: terraform -chdir=deploy/terraform fmt -check -recursive
+
+      - name: terraform validate, every module and environment
+        run: |
+          set -euo pipefail
+          for dir in deploy/terraform/modules/*/ deploy/terraform/envs/*/; do
+            echo "::group::${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false -no-color
+            terraform -chdir="${dir}" validate -no-color
+            echo "::endgroup::"
+          done
+
+  compose:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate every Compose file
+        working-directory: deploy/compose
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config -q
+          docker compose -f docker-compose.obs.yml config -q
+          docker compose -f docker-compose.yml --profile llm-local config -q
+          echo "all Compose files valid"
+
+      - name: Local models must stay optional
+        working-directory: deploy/compose
+        run: |
+          set -euo pipefail
+          # Ollama behind a profile is what lets the stack run with no API keys
+          # while staying out of the default footprint.
+          if docker compose -f docker-compose.yml config --services | grep -qx ollama; then
+            echo "::error::ollama appears without its profile; it must stay opt-in" >&2
+            exit 1
+          fi
+          docker compose -f docker-compose.yml --profile llm-local config --services | grep -qx ollama
+          echo "ollama is correctly gated behind the llm-local profile"

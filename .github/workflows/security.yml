@@ -1,0 +1,159 @@
+# Security scanning: Trivy, gitleaks, bandit and an SBOM.
+#
+# Phase: 7 - Production Hardening
+#
+# Findings are uploaded as artifacts rather than to code scanning, because a
+# fresh repository has no code-scanning setup and the upload would hard-fail.
+# Switch to github/codeql-action/upload-sarif once it is enabled.
+name: security
+
+on:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-fs:
+    name: trivy fs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan the filesystem
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-fs-sarif
+          path: trivy-fs.sarif
+          if-no-files-found: ignore
+
+  trivy-config:
+    name: trivy config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Dockerfiles, Compose, Helm templates, Terraform and Kubernetes manifests.
+      - name: Scan infrastructure as code
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          format: sarif
+          output: trivy-config.sarif
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-config-sarif
+          path: trivy-config.sarif
+          if-no-files-found: ignore
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Secret scanning needs history, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bandit:
+    name: bandit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # Run as a tool rather than a project dependency: bandit is CI-only and
+      # does not belong in everyone's dev environment.
+      - name: Scan first-party Python
+        run: |
+          uvx bandit --severity-level medium --confidence-level medium \
+            -r core agents api connectors simulator codegen \
+            -f json -o bandit.json || status=$?
+          uvx bandit --severity-level medium --confidence-level medium \
+            -r core agents api connectors simulator codegen
+          exit "${status:-0}"
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bandit-report
+          path: bandit.json
+          if-no-files-found: ignore
+
+  sbom:
+    name: sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: pantheon-sbom.spdx.json
+          output-file: pantheon-sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: pantheon-sbom.spdx.json
+          if-no-files-found: error
