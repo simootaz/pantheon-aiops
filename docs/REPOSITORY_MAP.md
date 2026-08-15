@@ -167,10 +167,13 @@ pantheon-aiops/
 | `core/contracts/export/` | ⚙️ **Generated.** JSON Schema emitted from the models. | 0 |
 | `core/orchestrator/` | **Zeus.** `router`, `classifier`, `planner`, `dispatcher`, `aggregator`. | 2 |
 | `core/registry/` | Agent manifest discovery and capability matching. | 1 |
-| `core/guardrails/` | `policy`, `approval_gate`, `budget` — every write action passes here. | 3 |
+| `core/guardrails/` | `policy`, `approval_gate`, `budget` — every write action passes here. Cerberus reuses this Approval Gate; there is no second inbox. | 3 |
+| **core/cerberus/** | **Cerberus** — the credential broker. Three heads: `store/` (custody), `policy/` (decisions), `audit/` (memory), plus `broker`, `lease`, `redemption`, `redaction`. Not an agent. | 3 |
+| `core/cerberus/store/` | ⛔ **Plaintext.** Agents must not import anything here. | 3 |
+| `core/cerberus/redemption.py` | ⛔ **The only producer of plaintext.** Connector-side only. | 3 |
 | `core/workflows/` | Temporal `workflow`, `activities`, `worker` for long-running investigations. | 5 |
 | `core/memory/` | `vector_store`, `repository`, `cache`. | 2 |
-| `core/llm/` | **Delphi** — the LLM gateway. Resolution cascade, capability probing, keyring, dialect adapters, shared `prompts/`. Not an agent. | 2 |
+| `core/llm/` | **Delphi** — the LLM gateway. Resolution cascade, capability probing, dialect adapters, shared `prompts/`. Not an agent. Credentials come from Cerberus. | 2 |
 | `core/llm/providers/` | Dialect adapters, named by wire format not vendor: `chat_completions` ★, `messages`, `generate_content`, `raw`, `custom`. | 2 |
 | `core/observability/` | OTel setup, platform metrics, structured logging. | 1 |
 | **agents/** | Python. Ten domain agents, one folder each. | 1–5 |
@@ -227,6 +230,8 @@ pantheon-aiops/
 | I am adding… | It goes in | Also do |
 |---|---|---|
 | A new **agent** | `agents/<domain>/` — `agent.py`, `manifest.yaml`, `tools.py`, `prompts/`, `tests/` | Extend `agents/_base/base_agent.py`; register capabilities in `manifest.yaml`; add the codename to the agent table above |
+| A new **credential type** | `CredentialType` in `core/contracts/credentials.py` + a handler in `core/cerberus/store/kinds.py` | Never add a field that holds the value |
+| Code that needs a **secret** | ❌ **Not in an agent.** | Request a capability via `core.cerberus.broker`; the connector redeems the lease |
 | A new **connector** | `connectors/<name>/` — Python unless it needs a Go-only client library | Build on `connectors/_base/python/base_server.py`, or `pkg/mcpserver` for Go |
 | A new **shared Go library** | `pkg/<name>/` with its own `go.mod` — never `connectors/_base/` | Add a `use` line to `go.work` |
 | A new **contract / data shape** | `core/contracts/<name>.py` — **always here first** | Run `make codegen`; commit the regenerated output |
@@ -321,6 +326,40 @@ failure: fallback chain → budget guard → hard stop, never a silent downgrade
 > settings must require zero code changes across all eleven agents. Capabilities
 > are **probed**, never hardcoded — a model table would be stale in weeks and
 > would exclude every model released after it was written.
+
+### Agents never hold credentials
+
+[ADR 0005](adr/0005-credential-brokering.md) · structure Phase 0, behaviour Phase 3
+
+`core/cerberus/` is **Cerberus**, the credential broker. Three heads: store,
+policy, audit. Infrastructure like Delphi — not an agent, no roster entry, no
+`manifest.yaml`.
+
+An agent asks for a **capability** (target, action, and the hypothesis it is
+testing). Cerberus evaluates the grant, routes to the existing Approval Gate if
+there is none, and mints a **lease bound to one connector and one
+investigation**. The connector redeems the lease; the agent receives **results
+only**.
+
+The reason is specific: a secret in an agent's context becomes part of a prompt,
+which is sent to a model provider and logged there. That is an unauditable,
+unrevocable exfiltration path — so the threat model assumes the agent is fully
+prompt-injected and requires that it cannot leak what it never held.
+
+**Data-flow claim, precisely.** `AuditEntry` is attached to `Investigation`,
+which agents *do* see. That is safe because every credential in it is a
+`CredentialRef` — an identifier, never a value — and because plaintext has no
+contract representation at all. `tests/unit/test_credential_safety.py` is what
+keeps that true: it scans the generated JSON Schema, Go **and** TypeScript for
+any secret-shaped property.
+
+**Allowed import surface for agents:** `core.cerberus.broker` and
+`core.cerberus.redaction`, and nothing else. `redemption` and `store/` are off
+limits, enforced at the import graph rather than by convention.
+
+> **The rule:** an agent that receives credential plaintext is a security bug.
+> Provider API keys are Cerberus credentials too — Delphi ships no secret store
+> of its own.
 
 ### Codegen reads JSON Schema, never OpenAPI
 
@@ -463,6 +502,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-15 | `feature/cerberus-credential-brokering` | **Cerberus.** Added `core/cerberus/` — three heads (`store/`, `policy/`, `audit/`) plus `broker`, `lease`, `redemption` and `redaction`, including `store/rotation.py` and `policy/revocation.py` (break-glass). `redaction.py` is **implemented, not stubbed**. Added `core/contracts/credentials.py` (7 contracts) and an `audit` trail on `Investigation`. **Deleted `core/llm/keyring.py`** with no shim; updated all nine references. Renamed contract fields `credential` → `credential_ref` so the name states the invariant. Added `tests/unit/test_credential_safety.py` — schema scan across JSON Schema/Go/TS, an import-graph boundary guard, and a planted-secret redaction test. Licence stated as **Apache-2.0** in `pyproject.toml` (was MIT), `Chart.yaml` and the README badge. See [ADR 0005](adr/0005-credential-brokering.md). |
 | 2026-08-15 | `feature/ci-workflows` | **CI.** Nine workflows: `ci.yml` (the single required check) plus reusable `ci-python`, `ci-go`, `ci-dashboard`, `codegen-check`, `ci-deploy`, `security`, and non-firing `build-push` / `release` stubs. Every action pinned to a commit SHA; `permissions` scoped per job with an empty default; per-workflow per-ref concurrency; uv, Go and pnpm caches. `codegen-check` asserts its generator pins equal those in `codegen/gen_*.sh` and fails loudly on divergence. `ci-deploy` additionally asserts the chart fails closed without credentials and that Ollama stays behind its profile. `dependabot.yml` covers pip, five gomod modules, npm, actions and docker. Added `tests/unit/test_ci_workflows.py` (8 guards). Gated with actionlint and zizmor — both clean. |
 | 2026-08-15 | `fix/generated-credential-policy` | **Chart fails closed on generated credentials.** The generated MinIO secret sits behind `lookup`, which is empty on any *client-side* render — `helm template`, `helm diff`, Argo CD's default mode — so each sync would mint a new password, register drift, rewrite the secret and orphan the stored data. Added `productionMode` (true in `values-prod.yaml`) and `templates/validation.yaml`, which refuses to render when a required secret is missing; annotated the generated secret `helm.sh/resource-policy: keep` plus Argo CD sync options and marked it dev-only; documented the trap in `deploy/argocd/application.yaml`. Four new structural guards. |
 | 2026-08-15 | `feature/deploy-skeleton` | **Deploy skeleton and Delphi structure.** Filled `deploy/` end to end: 7 Dockerfiles, 3 Compose files (with `minio` + `minio-init` bucket bootstrap and an optional `ollama` profile), a Helm chart that lints and templates under three value sets, kustomize base + 3 overlays, 5 Terraform modules + 2 envs, Argo CD Application/AppProject, Ansible skeleton, observability configs, network policies, and Velero + Postgres backup jobs. **Renamed `deploy/terraform/modules/s3/` → `modules/object-storage/`** and made it provider-shaped (ADR 0001, now applied). Added **Delphi** under `core/llm/` — `gateway`, `resolver`, `fallback`, `capability_matrix`, `probe`, `keyring`, `catalog` plus `providers/{chat_completions,messages,generate_content,raw,custom}` — and `core/contracts/llm.py` with six contracts flowing through codegen. **Renamed `Capability` → `AgentCapability`** in `manifest.py` to avoid a flat-namespace collision with Delphi's `Capability` in generated Go and TS. Wired `make up` / `make down`. Extended the structural guards to 13. |

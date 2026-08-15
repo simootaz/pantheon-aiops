@@ -55,10 +55,22 @@ declare `ModelRequirements`; Delphi resolves them to a model at call time.
 | Phase | Delivers |
 |---|---|
 | **0** | Structure and contracts as documented stubs; `delphi:` Helm block; Ollama Compose service; `LLM_*` env vars |
-| **2** | `gateway`, `resolver`, `catalog`, `chat_completions` adapter, `keyring`, `tracing`, `ResolutionRecord` persistence |
+| **2** | `gateway`, `resolver`, `catalog`, `chat_completions` adapter, `tracing`, `ResolutionRecord` persistence |
 | **3** | Budget guard integrated with `core/guardrails/budget.py` — Delphi supplies price, guardrails decide |
 | **4** | Settings surface: provider cards, tier pickers, per-agent overrides, **Test connection** probes, validation warnings |
 | **5** | Remaining dialect adapters (`messages`, `generate_content`, `raw`) and `custom.py` hardening |
+
+## Cerberus — the credential broker
+
+Specified in [ADR 0005](docs/adr/0005-credential-brokering.md). Agents request
+capabilities; they never hold credentials.
+
+| Phase | Delivers |
+|---|---|
+| **0** | Structure, contracts, `redaction.py` implemented, all three safety guards |
+| **3** | store, policy, audit, broker, lease, redemption; Approval Gate integration; rotation and revocation |
+| **4** | Settings surface: credential inventory, grant table, permission modes, audit viewer |
+| **5** | Rotation scheduling and the break-glass runbook |
 
 ## Deferred decisions
 
@@ -68,6 +80,7 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 |---|---|---|---|
 | **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
 | **Endpoint-surface TS types** | not generated | `codegen/gen_ts_api.sh` — paths, params, status codes from OpenAPI, additive beside the domain types | **Phase 1**, once `api/main.py` has real routes — see [ADR 0002](docs/adr/0002-codegen-from-json-schema.md) |
+| Redaction sink wiring | `redact()` implemented and tested | wired into logging, tracing and prompt assembly | Phase 2–3 |
 | Generated credentials | dev/demo only, chart fails closed in production | supplied secrets everywhere, via Sealed Secrets | Phase 7 |
 | Go event union | `Event interface{}` | hand-written typed accessors beside the generated file | Phase 6 — Go has no sum types; the generator will not invent one |
 | `make sim` | stub, exits non-zero | wired | Phase 1, once `simulator.cli` exists |
