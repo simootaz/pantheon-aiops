@@ -3,7 +3,8 @@
 > **Phase: 0 - Scaffold & Tooling.** The full guide is written on branch
 > `feature/docs-baseline`. The two sections below are binding now.
 
-Read [CLAUDE.md](CLAUDE.md) first — it is the map of this repository.
+Read [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md) first — it is the map of
+this repository.
 
 ---
 
@@ -23,12 +24,13 @@ Read [CLAUDE.md](CLAUDE.md) first — it is the map of this repository.
   git checkout develop && git merge --no-ff feature/<name> && git branch -d feature/<name>
   ```
 
-### CLAUDE.md is part of every structural change
+### The repository map is part of every structural change
 
 If you create, move, rename or delete a directory or a significant file, update
-`CLAUDE.md` **in the same commit** — the folder map, the "Where do I put X?"
+`docs/REPOSITORY_MAP.md` **in the same commit** — the folder map, the
+"Where do I put X?"
 table, and a new row in the structure changelog. A feature branch that changes
-structure without touching `CLAUDE.md` is incomplete.
+structure without touching `docs/REPOSITORY_MAP.md` is incomplete.
 
 `tests/unit/test_repo_structure.py` enforces part of this automatically. **Extend
 it on every branch that changes structure** — that is what keeps the map from

@@ -116,7 +116,7 @@ at `pkg/contracts/`:
   transport scaffolding. A future Go component that needs `Verdict` but not an
   MCP server should not drag one in.
 - **`pkg/` is already the established home** for shared Go libraries
-  ([ADR-adjacent: `feature/go-base-relocation`](../../CLAUDE.md#go-layout-and-how-to-build-it)),
+  ([ADR-adjacent: `feature/go-base-relocation`](../REPOSITORY_MAP.md#go-layout-and-how-to-build-it)),
   and it mirrors `core/contracts/` (Python) and `dashboard/types/generated/`
   (TypeScript).
 

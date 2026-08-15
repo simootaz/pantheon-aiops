@@ -1,9 +1,9 @@
 """Structural guards for the repository scaffold.
 
 Phase 0 delivers a structure, so the structure is what Phase 0 tests. These
-guards fail loudly if a future change breaks an invariant that CLAUDE.md
-promises: the agent roster, package initialisers, phase markers on every module,
-and the do-not-edit banner on generated directories.
+guards fail loudly if a future change breaks an invariant that
+docs/REPOSITORY_MAP.md promises: the agent roster, package initialisers, phase
+markers on every module, and the do-not-edit banner on generated directories.
 
 Phase: 0 - Scaffold & Tooling
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The ten domain agents. Zeus is the orchestrator and lives in core/, not here.
-# Keep in sync with the agent table in CLAUDE.md.
+# Keep in sync with the agent table in docs/REPOSITORY_MAP.md.
 AGENT_DOMAINS = frozenset(
     {
         "anomaly",
@@ -59,7 +59,7 @@ def _python_files() -> list[Path]:
     ]
 
 
-def test_agent_roster_matches_claude_md() -> None:
+def test_agent_roster_matches_repository_map() -> None:
     """agents/ holds exactly the ten domain agents, plus _base."""
     found = {
         entry.name

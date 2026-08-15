@@ -8,6 +8,7 @@ stack.
 > `feature/docs-baseline` (identity, agent table, mermaid architecture diagram,
 > quickstart).
 
-Read [CLAUDE.md](CLAUDE.md) first - it is the living map of this repository.
+Read [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md) first - it is the map of
+this repository.
 
 <!-- TODO: Phase 0 - full README on branch feature/docs-baseline -->
