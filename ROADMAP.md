@@ -22,6 +22,7 @@ is unaffected — the branches are independent.
 | 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
 | 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
 | 5 | `feature/codegen-pipeline` | ✅ merged |
+| — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
 | 6 | `feature/deploy-skeleton` | ⏳ |
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
@@ -54,7 +55,8 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 | **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
 | **Endpoint-surface TS types** | not generated | `codegen/gen_ts_api.sh` — paths, params, status codes from OpenAPI, additive beside the domain types | **Phase 1**, once `api/main.py` has real routes — see [ADR 0002](docs/adr/0002-codegen-from-json-schema.md) |
 | Go event union | `Event interface{}` | hand-written typed accessors beside the generated file | Phase 6 — Go has no sum types; the generator will not invent one |
-| `make dev` / `make sim` | stubs, exit non-zero | wired | Phase 1, once `api.main:app` and `simulator.cli` exist |
+| `make sim` | stub, exits non-zero | wired | Phase 1, once `simulator.cli` exists |
+| ~~`make dev`~~ | ✅ live — `uvicorn --factory`, `/health` serving | — | done on `feature/api-minimal` |
 | ~~`pre-commit install`~~ | ✅ wired into `make install` | — | done on `feature/codegen-pipeline` |
 | Object storage | — | MinIO everywhere, S3-compatible only | Phase 6 — see [ADR 0001](docs/adr/0001-object-storage-minio.md) |
 | `unparam` / `nilnil` Go linters | disabled | enabled | Phase 6, once the Go connector is real |
