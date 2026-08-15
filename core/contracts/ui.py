@@ -46,17 +46,19 @@ class A2UIComponentType(StrEnum):
     A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
     the catalog is chosen for what it *cannot* be abused to do.
 
+    ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
+    object key for an artifact Pantheon itself produced and stored. The agent
+    cannot express an arbitrary destination, so there is nothing to filter.
+
     Deliberately excluded, with reasons:
 
-    - ``Image``, ``Video``, ``AudioPlayer`` - each fetches an agent-supplied URL.
-      That outbound request is a data-exfiltration channel: an agent encodes
-      what it learned into the URL and the browser delivers it. Excluded even
-      though they are the most obviously useful components here.
+    - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
+      same ArtifactRef pattern when something does; the allowlist grows on
+      demand, never speculatively.
     - ``Modal`` - an agent that can force a modal can overlay a convincing fake
       credential prompt. Credential requests travel one path only, through
       Cerberus.
-    - ``Tabs``, ``Slider`` - no current use; the allowlist grows on demand and
-      never speculatively.
+    - ``Tabs``, ``Slider`` - no current use.
     """
 
     # containers
@@ -66,6 +68,7 @@ class A2UIComponentType(StrEnum):
     LIST = "List"
     # display
     TEXT = "Text"
+    IMAGE = "Image"  # ArtifactRef only - never a URL
     ICON = "Icon"
     DIVIDER = "Divider"
     # input
@@ -89,6 +92,39 @@ class A2UISurfaceKind(StrEnum):
     ACCESS_REQUEST = "access_request"
     REPORT = "report"
     NOTICE = "notice"
+
+
+class ArtifactKind(StrEnum):
+    """What an artifact is. Only images are renderable today."""
+
+    IMAGE = "image"
+
+
+class ArtifactRef(ContractModel):
+    """A reference to an artifact Pantheon produced and stored. Never a URL.
+
+    Same shape as CredentialRef, for the same reason: the agent names a thing it
+    is allowed to name, and the server resolves it. A URL field would let an
+    agent express an arbitrary destination, and the browser fetching it is a
+    data-exfiltration channel - the agent encodes what it learned into the URL
+    and the browser delivers it.
+
+    A server-side URL proxy was considered and rejected. It still accepts an
+    agent-authored URL and defends by filtering, which is one bypass away from
+    failing. A reference has nothing to filter.
+
+    Note what is absent: no URL, no host, no bucket. The bucket is fixed
+    server-side, so the agent cannot name one. Resolution happens only in
+    core.ui.artifact_resolution, which agents cannot import - the same boundary
+    as core.cerberus.redemption.
+    """
+
+    key: str = Field(description="Object key within Pantheon's own artifact bucket.")
+    investigation_id: UUID = Field(
+        description="Resolution rejects a reference from a different investigation."
+    )
+    kind: ArtifactKind = ArtifactKind.IMAGE
+    alt_text: str = Field(default="", description="Accessible description. Rendered, not fetched.")
 
 
 class A2UIAction(ContractModel):
@@ -126,6 +162,10 @@ class A2UIComponent(ContractModel):
         default=None, description="RFC 6901 JSON Pointer into the surface data model."
     )
     children: list[str] = Field(default_factory=list, description="Child component ids.")
+    artifact_ref: ArtifactRef | None = Field(
+        default=None,
+        description="For Image. A reference Pantheon resolves; never a URL an agent supplies.",
+    )
     action: A2UIAction | None = None
 
 

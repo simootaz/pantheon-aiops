@@ -24,11 +24,13 @@ from core.cerberus.redaction import PLACEHOLDER, contains_secret, redact
 from core.contracts.ui import (
     A2UI_VERSION,
     PANTHEON_CATALOG_ID,
+    A2UIAction,
     A2UIClientCapabilities,
     A2UIComponent,
     A2UIComponentType,
     A2UISurface,
     A2UISurfaceKind,
+    ArtifactRef,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -36,9 +38,12 @@ SURFACE_ID = UUID("00000000-0000-0000-0000-000000000001")
 TS_CONTRACTS = REPO_ROOT / "dashboard/types/generated/contracts.ts"
 
 # Components deliberately excluded from the allowlist, each for a stated reason.
-# Media components fetch an agent-supplied URL, and that outbound request is an
-# exfiltration channel; Modal can overlay a convincing fake credential prompt.
-EXCLUDED_ON_PURPOSE = ("Image", "Video", "AudioPlayer", "Modal")
+# Image is NOT here: it was re-admitted reference-based, taking an ArtifactRef
+# rather than a URL. Video and AudioPlayer stay out until something needs them.
+EXCLUDED_ON_PURPOSE = ("Video", "AudioPlayer", "Modal")
+
+# Property names that would let an agent name a destination the browser fetches.
+URL_SHAPED = ("url", "src", "href", "uri", "source", "endpoint", "link")
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +65,82 @@ def test_every_allowlisted_component_is_constructible() -> None:
         assert component.component is allowed
 
 
-def test_media_and_modal_are_excluded_for_stated_reasons() -> None:
+def test_speculative_and_impersonating_components_stay_excluded() -> None:
     """These are the components most likely to be re-added without thinking."""
     values = {member.value for member in A2UIComponentType}
     for excluded in EXCLUDED_ON_PURPOSE:
         assert excluded not in values, (
-            f"{excluded} is back in the allowlist. Media components exfiltrate via "
-            "the URL they fetch; Modal can impersonate a credential prompt. "
-            "See docs/adr/0006-agentic-ui-protocols.md before re-adding."
+            f"{excluded} is back in the allowlist. Modal can impersonate a credential "
+            "prompt; Video and AudioPlayer are speculative and would need the same "
+            "ArtifactRef treatment as Image. See docs/adr/0006-agentic-ui-protocols.md."
         )
+
+
+def test_image_is_allowed_but_only_by_reference() -> None:
+    """Image is renderable; a destination is not expressible."""
+    assert A2UIComponentType.IMAGE in set(A2UIComponentType)
+
+    component = A2UIComponent(
+        id="img",
+        component=A2UIComponentType.IMAGE,
+        artifact_ref=ArtifactRef(key="flame-graph.svg", investigation_id=SURFACE_ID),
+    )
+    assert component.artifact_ref is not None
+    assert component.artifact_ref.key == "flame-graph.svg"
+
+
+def test_artifact_ref_cannot_express_a_destination() -> None:
+    """No URL, no host, no bucket. The bucket is fixed server-side."""
+    fields = set(ArtifactRef.model_fields)
+    # Substring, not exact match: `image_url` is as much a destination as `url`.
+    for nameable in ("url", "bucket", "host", "endpoint", "src", "uri"):
+        offenders = [name for name in fields if nameable in name.lower()]
+        assert not offenders, (
+            f"ArtifactRef exposes {offenders}; an agent must not be able to name a "
+            "destination. See docs/adr/0006-agentic-ui-protocols.md."
+        )
+    assert "investigation_id" in fields, (
+        "ArtifactRef must carry its investigation so cross-investigation refs are refusable"
+    )
+
+
+def test_no_a2ui_component_accepts_a_free_form_url_in_any_language() -> None:
+    """The invariant must hold on the generated artifacts, not only in Python.
+
+    Surface identity (icon_url) is deliberately out of scope: it lives on
+    A2UISurface and is set by the orchestrator, never by an agent.
+    """
+    for model in (A2UIComponent, ArtifactRef, A2UIAction):
+        offenders = [
+            name for name in model.model_fields if any(t in name.lower() for t in URL_SHAPED)
+        ]
+        assert not offenders, f"{model.__name__} accepts a free-form URL: {offenders}"
+
+    schema = json.loads(
+        (REPO_ROOT / "core/contracts/export/pantheon.schema.json").read_text(encoding="utf-8")
+    )
+    for def_name in ("A2UIComponent", "ArtifactRef", "A2UIAction"):
+        properties = schema["$defs"][def_name].get("properties", {})
+        offenders = [p for p in properties if any(t in p.lower() for t in URL_SHAPED)]
+        assert not offenders, f"generated schema: {def_name} accepts a URL: {offenders}"
+
+    go_body = (REPO_ROOT / "pkg/contracts/contracts.gen.go").read_text(encoding="utf-8")
+    ts_body = TS_CONTRACTS.read_text(encoding="utf-8")
+    for language, body in (("Go", go_body), ("TypeScript", ts_body)):
+        for token in ("ArtifactUrl", "artifact_url", "ImageUrl", "image_url"):
+            assert token not in body, f"generated {language} exposes {token}"
+
+
+def test_artifact_resolution_is_off_limits_to_agents() -> None:
+    """Mirrors the redemption boundary: agents hold references, servers resolve."""
+    from tests.unit.test_credential_safety import FORBIDDEN_FOR_AGENTS
+
+    assert "core.ui.artifact_resolution" in FORBIDDEN_FOR_AGENTS
+
+    body = (REPO_ROOT / "core/ui/artifact_resolution.py").read_text(encoding="utf-8")
+    assert "cross-investigation" in body.lower(), (
+        "the cross-investigation rejection must stay documented at the point of resolution"
+    )
 
 
 def test_allowlist_reaches_typescript_so_the_renderer_cannot_drift() -> None:

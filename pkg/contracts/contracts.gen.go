@@ -92,6 +92,9 @@ type A2UIComponent struct {
 	// Action corresponds to the JSON schema field "action".
 	Action *A2UIComponentAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
 
+	// For Image. A reference Pantheon resolves; never a URL an agent supplies.
+	ArtifactRef *A2UIComponentArtifactRef `json:"artifact_ref,omitempty,omitzero" yaml:"artifact_ref,omitempty" mapstructure:"artifact_ref,omitempty"`
+
 	// Child component ids.
 	Children []string `json:"children,omitempty,omitzero" yaml:"children,omitempty" mapstructure:"children,omitempty"`
 
@@ -149,6 +152,44 @@ func (j *A2UIComponentAction) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// For Image. A reference Pantheon resolves; never a URL an agent supplies.
+type A2UIComponentArtifactRef struct {
+	// Accessible description. Rendered, not fetched.
+	AltText string `json:"alt_text,omitempty,omitzero" yaml:"alt_text,omitempty" mapstructure:"alt_text,omitempty"`
+
+	// Resolution rejects a reference from a different investigation.
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Object key within Pantheon's own artifact bucket.
+	Key string `json:"key" yaml:"key" mapstructure:"key"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind ArtifactKind `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIComponentArtifactRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var a2UIComponentArtifactRef_0 A2UIComponentArtifactRef_0
+	var errs []error
+	if err := a2UIComponentArtifactRef_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain A2UIComponentArtifactRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = A2UIComponentArtifactRef(plain)
+	return nil
+}
+
 type A2UIComponentDataPath_0 *string
 
 type A2UIComponentLabel_0 *string
@@ -165,6 +206,7 @@ const A2UIComponentTypeColumn A2UIComponentType = "Column"
 const A2UIComponentTypeDateTimeInput A2UIComponentType = "DateTimeInput"
 const A2UIComponentTypeDivider A2UIComponentType = "Divider"
 const A2UIComponentTypeIcon A2UIComponentType = "Icon"
+const A2UIComponentTypeImage A2UIComponentType = "Image"
 const A2UIComponentTypeList A2UIComponentType = "List"
 const A2UIComponentTypeRow A2UIComponentType = "Row"
 const A2UIComponentTypeText A2UIComponentType = "Text"
@@ -176,6 +218,7 @@ var enumValues_A2UIComponentType = []interface{}{
 	"Card",
 	"List",
 	"Text",
+	"Image",
 	"Icon",
 	"Divider",
 	"TextField",
@@ -660,6 +703,91 @@ func (j *ApprovalState) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ApprovalState, v)
 	}
 	*j = ApprovalState(v)
+	return nil
+}
+
+type ArtifactKind string
+
+const ArtifactKindImage ArtifactKind = "image"
+
+var enumValues_ArtifactKind = []interface{}{
+	"image",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ArtifactKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_ArtifactKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ArtifactKind, v)
+	}
+	*j = ArtifactKind(v)
+	return nil
+}
+
+// A reference to an artifact Pantheon produced and stored. Never a URL.
+//
+// Same shape as CredentialRef, for the same reason: the agent names a thing it
+// is allowed to name, and the server resolves it. A URL field would let an
+// agent express an arbitrary destination, and the browser fetching it is a
+// data-exfiltration channel - the agent encodes what it learned into the URL
+// and the browser delivers it.
+//
+// A server-side URL proxy was considered and rejected. It still accepts an
+// agent-authored URL and defends by filtering, which is one bypass away from
+// failing. A reference has nothing to filter.
+//
+// Note what is absent: no URL, no host, no bucket. The bucket is fixed
+// server-side, so the agent cannot name one. Resolution happens only in
+// core.ui.artifact_resolution, which agents cannot import - the same boundary
+// as core.cerberus.redemption.
+type ArtifactRef struct {
+	// Accessible description. Rendered, not fetched.
+	AltText string `json:"alt_text,omitempty,omitzero" yaml:"alt_text,omitempty" mapstructure:"alt_text,omitempty"`
+
+	// Resolution rejects a reference from a different investigation.
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Object key within Pantheon's own artifact bucket.
+	Key string `json:"key" yaml:"key" mapstructure:"key"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind ArtifactKind `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ArtifactRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in ArtifactRef: required")
+	}
+	if _, ok := raw["key"]; raw != nil && !ok {
+		return fmt.Errorf("field key in ArtifactRef: required")
+	}
+	type Plain ArtifactRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["alt_text"]; !ok || v == nil {
+		plain.AltText = ""
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "image"
+	}
+	*j = ArtifactRef(plain)
 	return nil
 }
 
@@ -2231,6 +2359,69 @@ type UIActionResponseContext map[string]interface{}
 
 type UIActionResponseInvestigationId_0 *string
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["action_name"]; raw != nil && !ok {
+		return fmt.Errorf("field action_name in UIActionResponse: required")
+	}
+	if _, ok := raw["source_component_id"]; raw != nil && !ok {
+		return fmt.Errorf("field source_component_id in UIActionResponse: required")
+	}
+	if _, ok := raw["surface_id"]; raw != nil && !ok {
+		return fmt.Errorf("field surface_id in UIActionResponse: required")
+	}
+	type Plain UIActionResponse
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = UIActionResponse(plain)
+	return nil
+}
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
+	return nil
+}
+
+type A2UIComponentAction_0 = A2UIAction
+
 // The orchestrator's ranked conclusion for one Investigation.
 type Verdict struct {
 	// Confidence corresponds to the JSON schema field "confidence".
@@ -2254,38 +2445,6 @@ type Verdict struct {
 
 	// Summary corresponds to the JSON schema field "summary".
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
-}
-
-type VerdictRootCause_0 *string
-
-type A2UIComponentAction_0 = A2UIAction
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
-type InvestigationVerdict_0 = Verdict
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["action_name"]; raw != nil && !ok {
-		return fmt.Errorf("field action_name in UIActionResponse: required")
-	}
-	if _, ok := raw["source_component_id"]; raw != nil && !ok {
-		return fmt.Errorf("field source_component_id in UIActionResponse: required")
-	}
-	if _, ok := raw["surface_id"]; raw != nil && !ok {
-		return fmt.Errorf("field surface_id in UIActionResponse: required")
-	}
-	type Plain UIActionResponse
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = UIActionResponse(plain)
-	return nil
 }
 
 // The aggregator reached a conclusion.
@@ -2327,35 +2486,6 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
+type VerdictRootCause_0 *string
+
+type InvestigationVerdict_0 = Verdict

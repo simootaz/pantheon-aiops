@@ -168,18 +168,62 @@ artifact**. There is no second list to keep in step, and a test asserts it.
   Pantheon itself. A test asserts the fields are absent from the component
   contract.
 
-### What is excluded from the allowlist, and why
+### Media is reference-based, never URL-based
 
-The catalog is chosen for what it **cannot** be abused to do.
+An `Image` component would ordinarily take a URL. **It does not here**, because a
+URL an agent authors is an exfiltration channel: the agent encodes what it
+learned into the URL, and the browser dutifully delivers it to whoever is
+listening. No content-security policy helps — the request is the payload.
+
+`Image` therefore takes an **`ArtifactRef`**: an object key for an artifact
+*Pantheon itself produced and stored*. The server resolves it to a short-lived
+signed URL at render time.
+
+This is the `CredentialRef` pattern applied again — **reference, never value**.
+The agent names a thing it is allowed to name; the server holds the capability.
+
+Resolution happens in `core/ui/artifact_resolution.py`, and only there. It
+mirrors `core.cerberus.redemption` exactly:
+
+- **server-side only** — never client-side (the browser could then mint a URL for
+  any key), never agent-side (an agent that could resolve could read the result);
+- the **bucket is fixed in the resolver**, not supplied by the caller, so no
+  arbitrary destination is expressible — `ArtifactRef` has no `url`, no `host`,
+  no `bucket` field;
+- the object must belong to the **same investigation** as the surface being
+  rendered. A cross-investigation reference is refused, so one run cannot
+  exfiltrate another's artifacts by naming their keys;
+- agents cannot import the resolver, enforced at the import graph.
+
+#### A URL proxy was considered and rejected
+
+The obvious alternative is to accept an agent-authored URL and proxy it
+server-side, filtering destinations against an allowlist. **This is the weaker
+fix, and someone will propose it again.**
+
+It still accepts an agent-authored URL and defends by *filtering*, so it is one
+bypass from failing — an open redirect on an allowed host, a DNS rebind, a
+parser disagreement between the filter and the fetcher, a permitted CDN that
+serves user content. Every one of those is a normal bug class.
+
+A reference has nothing to filter. The agent cannot express a destination at
+all, so there is no filter to bypass. That difference is the whole argument.
+
+### What is excluded from the allowlist, and why
 
 | Excluded | Reason |
 |---|---|
-| `Image`, `Video`, `AudioPlayer` | Each fetches an agent-supplied URL. That outbound request **is** an exfiltration channel: the agent encodes what it learned into the URL and the browser delivers it. Excluded despite being the most obviously useful components for an incident console. |
+| `Video`, `AudioPlayer` | Nothing needs them yet. They would follow the same `ArtifactRef` treatment when something does; the allowlist grows on demand, never speculatively. |
 | `Modal` | An agent that can force a modal can overlay a convincing fake credential prompt. Credential requests travel one path only. |
-| `Tabs`, `Slider` | No current use. The allowlist grows on demand, never speculatively. |
+| `Tabs`, `Slider` | No current use. |
 
-Allowed: `Row` `Column` `Card` `List` · `Text` `Icon` `Divider` · `TextField`
-`CheckBox` `ChoicePicker` `DateTimeInput` · `Button`.
+Allowed: `Row` `Column` `Card` `List` · `Text` `Image` (ArtifactRef only) `Icon`
+`Divider` · `TextField` `CheckBox` `ChoicePicker` `DateTimeInput` · `Button`.
+
+A guard asserts that **no A2UI component accepts a free-form URL field in any
+language**, checked on the generated JSON Schema, Go and TypeScript. Surface
+identity (`icon_url`) is out of scope: it lives on `A2UISurface` and is
+orchestrator-set.
 
 ## ⚠️ Unresolved: the A2UI-over-AG-UI envelope
 
@@ -207,11 +251,16 @@ which is the entire point of isolating it. Tracked in the ROADMAP.
 An A2UI payload is **agent-authored and reaches a human**, which makes it a sink
 in exactly the sense ADR 0005 means.
 
-- **Redaction** runs on surfaces before emission. The schema scan catches
-  secret-shaped *field names*; it cannot catch a secret pasted into a `Text`
-  component's body, and redaction is what covers that. A test builds a surface
-  containing a planted secret and asserts it does not survive.
 - **The schema scan** covers `core/contracts/ui.py` like every other contract.
+- **Redaction** runs on surfaces before emission. A test builds a surface
+  containing a planted secret and asserts it does not survive.
+
+**These two guards cover different halves of the same threat, and neither is
+redundant.** The schema scan reads *field names* — it catches a contract that
+declares somewhere to put a secret. Redaction reads *values* — it catches a
+secret pasted into a field whose name is entirely innocent, such as a `Text`
+component's body. A contract can pass the scan and still carry a secret. Anyone
+later tempted to drop one as duplicated effort should read this paragraph first.
 - Cerberus `AccessRequest` surfaces carry the stated reason, exact scope, lease
   TTL and investigation id — the same fields ADR 0005 requires, rendered rather
   than restated.

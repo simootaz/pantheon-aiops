@@ -237,6 +237,16 @@ trace attribute mapping, and a prompt.
 Redaction is the last line of defence, not the first. The first is never giving
 the agent the secret.
 
+**Guards 1 and 3 cover different halves and neither is redundant.** The schema
+scan reads *field names*: it catches a contract that declares somewhere to put a
+secret. Redaction reads *values*: it catches a secret pasted into a field whose
+name is entirely innocent — a log line, a prompt, an A2UI `Text` body. A contract
+can pass the scan and still carry a secret, so dropping either leaves a real half
+of the threat uncovered.
+
+The same pair covers agent-authored UI, which is a sink in exactly this sense —
+see [ADR 0006](0006-agentic-ui-protocols.md).
+
 ## Consequence for Delphi
 
 **`core/llm/keyring.py` is deleted.** Provider API keys are just another
