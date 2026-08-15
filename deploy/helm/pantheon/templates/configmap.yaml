@@ -1,0 +1,47 @@
+{{/* Non-secret application configuration. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pantheon.fullname" . }}-config
+  labels:
+    {{- include "pantheon.labels" . | nindent 4 }}
+data:
+  PANTHEON_ENV: {{ .Release.Namespace | quote }}
+  PANTHEON_API_PORT: {{ .Values.api.port | quote }}
+
+  S3_ENDPOINT_URL: {{ include "pantheon.s3Endpoint" . | quote }}
+  S3_REGION: {{ include "pantheon.s3Region" . | quote }}
+  S3_USE_SSL: {{ if .Values.minio.enabled }}"false"{{ else }}{{ .Values.minio.external.useSSL | quote }}{{ end }}
+  S3_BUCKET_REPORTS: {{ .Values.minio.buckets.reports | quote }}
+  S3_BUCKET_ARTIFACTS: {{ .Values.minio.buckets.artifacts | quote }}
+  S3_BUCKET_BACKUPS: {{ .Values.minio.buckets.backups | quote }}
+
+  {{- if .Values.delphi.enabled }}
+  LLM_GLOBAL_DEFAULT_TIER: {{ .Values.delphi.globalDefaultTier | quote }}
+  LLM_TIER_CHEAP_MODEL: {{ .Values.delphi.tiers.cheap | quote }}
+  LLM_TIER_BALANCED_MODEL: {{ .Values.delphi.tiers.balanced | quote }}
+  LLM_TIER_FRONTIER_MODEL: {{ .Values.delphi.tiers.frontier | quote }}
+  LLM_MAX_TOKENS: {{ .Values.delphi.limits.maxTokens | quote }}
+  LLM_REQUEST_TIMEOUT_SECONDS: {{ .Values.delphi.limits.requestTimeoutSeconds | quote }}
+  {{- with .Values.delphi.limits.maxCostPerCall }}
+  LLM_MAX_COST_PER_CALL: {{ . | quote }}
+  {{- end }}
+  LLM_PROBE_ON_STARTUP: {{ .Values.delphi.probe.onStartup | quote }}
+  LLM_PROBE_REFRESH_INTERVAL_HOURS: {{ .Values.delphi.probe.refreshIntervalHours | quote }}
+  delphi-providers.yaml: |
+    providers:
+    {{- range .Values.delphi.providers }}
+      - id: {{ .id }}
+        displayName: {{ .displayName | quote }}
+        dialect: {{ .dialect }}
+        baseUrl: {{ .baseUrl | quote }}
+        authMode: {{ .authMode }}
+        secretRef: {{ .secretRef | quote }}
+        enabled: {{ .enabled }}
+    {{- end }}
+  {{- end }}
+
+  {{- with .Values.observability.otlpEndpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  OTEL_SERVICE_NAME: {{ .Values.observability.serviceName | quote }}

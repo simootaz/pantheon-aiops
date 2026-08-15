@@ -1,0 +1,21 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pantheon.fullname" . }}-minio
+  labels:
+    {{- include "pantheon.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    {{- include "pantheon.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+{{- end }}
