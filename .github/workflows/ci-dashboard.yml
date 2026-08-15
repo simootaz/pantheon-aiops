@@ -1,10 +1,9 @@
-# Dashboard checks: biome, tsc and vitest.
+# Dashboard checks: biome, tsc, vitest and the production build.
 #
 # Phase: 7 - Production Hardening
 #
-# Authored ahead of the dashboard itself. The detect job below no-ops cleanly
-# until feature/dashboard-scaffold lands a package.json, so this reports success
-# without pretending to have run checks that do not exist yet.
+# The presence check this workflow used to carry is gone: the dashboard exists,
+# so a job that might silently skip is now a liability rather than a courtesy.
 name: ci-dashboard
 
 on:
@@ -17,34 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect:
-    name: is the dashboard scaffolded?
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      scaffolded: ${{ steps.check.outputs.scaffolded }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check for dashboard/package.json
-        id: check
-        run: |
-          if [ -f dashboard/package.json ]; then
-            echo "scaffolded=true" >> "$GITHUB_OUTPUT"
-            echo "dashboard present - running checks"
-          else
-            echo "scaffolded=false" >> "$GITHUB_OUTPUT"
-            echo "dashboard not scaffolded yet (feature/dashboard-scaffold) - skipping"
-          fi
-
   dashboard:
-    name: biome, tsc, vitest
-    needs: detect
-    if: needs.detect.outputs.scaffolded == 'true'
+    name: biome, tsc, vitest, build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -57,6 +30,9 @@ jobs:
         with:
           persist-credentials: false
 
+      # No version pinned here on purpose: action-setup reads `packageManager`
+      # from dashboard/package.json, so CI uses exactly the pnpm a developer
+      # uses locally. Pinning it twice is how the two drift.
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
@@ -74,7 +50,7 @@ jobs:
         run: pnpm run lint
 
       - name: Type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm run typecheck
 
       - name: Tests
         run: pnpm run test
@@ -82,8 +58,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      # Generated types are committed; a stale checkout here means someone
-      # edited them by hand or skipped `make codegen`.
+      # Generated types are committed. A change here means someone hand-edited
+      # them or skipped `make codegen`.
       - name: Generated types must not be hand-edited
         run: |
           if [ -n "$(git status --porcelain types/generated)" ]; then

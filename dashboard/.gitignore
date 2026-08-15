@@ -1,0 +1,6 @@
+# Dashboard-local ignores. The repo root .gitignore covers the rest.
+.next/
+out/
+node_modules/
+next-env.d.ts
+*.tsbuildinfo

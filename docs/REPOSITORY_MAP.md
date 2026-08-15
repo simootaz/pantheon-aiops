@@ -77,6 +77,11 @@ Tooling per language:
 - **Go** — Go workspace (`go.work`), `golangci-lint`
 - **TypeScript** — `pnpm`, `biome` (no ESLint, no Prettier), `vitest`
 
+`pnpm` is installed **globally via npm**, not corepack (corepack's `enable`
+needs an elevated shell on Windows). The version is pinned once, as
+`packageManager` in `dashboard/package.json`; CI's `pnpm/action-setup` reads
+it from there rather than pinning a second time, so local and CI cannot drift.
+
 ### Go layout and how to build it
 
 **Shared Go libraries live in `pkg/`.** That is the idiomatic home for
@@ -201,6 +206,8 @@ pantheon-aiops/
 | `core/ui/artifact_resolution.py` | ⛔ **Resolves an ArtifactRef to a signed URL.** Server-side only; agents must not import it. | 4 |
 | **dashboard/** | TypeScript. Next.js 15 App Router — the only TS in the repo. | 4 |
 | `dashboard/app/` | Routes: `investigations/`, `agents/`, `approvals/`, `settings/`. | 4 |
+| `dashboard/lib/agui/` | AG-UI client (`@ag-ui/client` `HttpAgent`) and the Investigation state store: `StateSnapshot` then RFC 6902 `StateDelta`. | 4 |
+| `dashboard/components/a2ui/` | The A2UI renderer. Rejects anything outside the allowlist at runtime; `allowlist.ts` asserts at compile time that the allowlist and the **generated** union are the same set, in both directions. | 4 |
 | `dashboard/components/` | Shared React components. | 4 |
 | `dashboard/lib/` | API client, formatters, hooks. | 4 |
 | `dashboard/types/generated/` | ⚙️ **Generated.** TS types from the OpenAPI schema. | 0 |
@@ -539,6 +546,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-15 | `feature/dashboard-scaffold` | **Dashboard scaffolded.** Next.js 15.5.23 App Router, React 19, TypeScript 5.9 strict (`noUncheckedIndexedAccess`), Tailwind 4, biome 2.5 (no ESLint/Prettier), vitest 4. Four route pages plus a root layout. Added `dashboard/lib/agui/` — `@ag-ui/client` `HttpAgent` and an `InvestigationStore` applying `StateSnapshot` then RFC 6902 `StateDelta` — and `dashboard/components/a2ui/` — the renderer, switching exhaustively over the generated `A2UIComponentType` with a `never` exhaustiveness check, plus `allowlist.ts` which re-exports rather than restates the generated union. 12 TypeScript tests including the out-of-allowlist rejection. `ci-dashboard.yml` no longer no-ops; `make lint-ts`, `test-ts` and `install` wired. pnpm pinned once via `packageManager`. Declared `sharp` build script off — `next/image` is unused because A2UI images resolve through an ArtifactRef. |
 | 2026-08-15 | `feature/artifact-backed-media` | **Media re-admitted, reference-based.** `Image` returns to the allowlist taking an `ArtifactRef` — an object key for an artifact Pantheon produced — never a URL. Added `ArtifactRef`/`ArtifactKind` to `core/contracts/ui.py` and `core/ui/artifact_resolution.py`, whose import is forbidden to agents, mirroring `core.cerberus.redemption`. `Video` and `AudioPlayer` stay out. New guards: `ArtifactRef` cannot express a destination, no A2UI component accepts a free-form URL in **any** language, and the resolver is off limits to agents — all verified against planted violations. ADR 0006 records that a URL proxy was considered and rejected. Both ADR 0005 and 0006 now state that the schema scan and redaction cover different halves of one threat. |
 | 2026-08-15 | `feature/agentic-ui-protocols` | **Agentic UI protocols.** Added `core/contracts/ui.py` (A2UI allowlist as a generated contract, surface, component, action, client capabilities), `api/agui/` (endpoint, translator, and the isolated A2UI envelope seam) and `core/ui/` (surface builders, Approval Gate and Cerberus access-request surfaces). **Deleted `api/ws/`** — the bespoke WebSocket protocol is superseded by AG-UI. Pinned `ag-ui-protocol>=0.1.20,<0.2`; A2UI **v0.9.1**, not the v1.0 release candidate. Added `tests/unit/test_agentic_ui.py` (13 guards): allowlist rejection, media/Modal exclusions, allowlist reaches TypeScript, capabilities equal the allowlist, identity not settable by agents, no bespoke WS returns, AG-UI events not redefined, envelope guess isolated to one seam, and redaction covering A2UI payloads. See [ADR 0006](adr/0006-agentic-ui-protocols.md). |
 | 2026-08-15 | `feature/cerberus-credential-brokering` | **Cerberus.** Added `core/cerberus/` — three heads (`store/`, `policy/`, `audit/`) plus `broker`, `lease`, `redemption` and `redaction`, including `store/rotation.py` and `policy/revocation.py` (break-glass). `redaction.py` is **implemented, not stubbed**. Added `core/contracts/credentials.py` (7 contracts) and an `audit` trail on `Investigation`. **Deleted `core/llm/keyring.py`** with no shim; updated all nine references. Renamed contract fields `credential` → `credential_ref` so the name states the invariant. Added `tests/unit/test_credential_safety.py` — schema scan across JSON Schema/Go/TS, an import-graph boundary guard, and a planted-secret redaction test. Licence stated as **Apache-2.0** in `pyproject.toml` (was MIT), `Chart.yaml` and the README badge. See [ADR 0005](adr/0005-credential-brokering.md). |

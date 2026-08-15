@@ -1,0 +1,23 @@
+# pnpm policy for the dashboard.
+#
+# Phase: 4 - Delivery Flow
+
+# Native postinstall scripts are opt-in. Each entry is a deliberate decision,
+# because a build script runs arbitrary code at install time - in CI too.
+allowBuilds:
+  # Next's image optimiser. Not needed: Pantheon renders A2UI images through a
+  # plain <img> pointing at a server-resolved signed URL, never through
+  # next/image, because the URL comes from an ArtifactRef the server resolves
+  # (docs/adr/0006-agentic-ui-protocols.md). Flip to true if next/image is ever
+  # adopted.
+  sharp: false
+
+# pnpm 11 withholds packages younger than its minimum release age. The AG-UI
+# SDK publishes frequently and its current release is newer than that window, so
+# these are excluded explicitly rather than by lowering the policy for
+# everything.
+minimumReleaseAgeExclude:
+  - '@ag-ui/client@0.0.58'
+  - '@ag-ui/core@0.0.58'
+  - '@ag-ui/encoder@0.0.58'
+  - '@ag-ui/proto@0.0.58'

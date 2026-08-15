@@ -27,9 +27,9 @@ help:
 install:
 	@uv sync
 	@uv run pre-commit install
-	@echo "install: python ready (uv, 3.12), git hooks installed."
+	@cd dashboard && pnpm install --frozen-lockfile
+	@echo "install: python (uv, 3.12), git hooks, and dashboard deps ready."
 	@echo "         go modules have no external dependencies."
-	@echo "         dashboard deps land on branch feature/dashboard-scaffold."
 
 ## dev: run the API locally with reload
 dev:
@@ -53,7 +53,7 @@ test-go:
 
 ## test-ts: run the dashboard test suite
 test-ts:
-	@echo "test-ts: not wired yet - branch feature/dashboard-scaffold"; exit 1
+	@cd dashboard && pnpm run test
 
 ## lint: lint and format-check Python
 lint:
@@ -67,9 +67,9 @@ lint-go:
 		( cd "$$dir" && go vet ./... && golangci-lint run --config "$$root/.golangci.yml" ./... ) || exit 1; \
 	done
 
-## lint-ts: run biome against the dashboard
+## lint-ts: biome and tsc against the dashboard
 lint-ts:
-	@echo "lint-ts: not wired yet - branch feature/dashboard-scaffold"; exit 1
+	@cd dashboard && pnpm run lint && pnpm run typecheck
 
 ## typecheck: run mypy --strict over the Python tree
 typecheck:

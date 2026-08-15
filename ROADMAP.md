@@ -20,7 +20,7 @@ is unaffected — the branches are independent.
 | 2 | `feature/go-workspace` | ✅ merged *(was 3rd)* |
 | — | `feature/go-base-relocation` | ✅ merged — unplanned; moved the shared Go library to `pkg/mcpserver` |
 | 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
-| 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
+| 4 | `feature/dashboard-scaffold` | ✅ merged |
 | 5 | `feature/codegen-pipeline` | ✅ merged |
 | — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
 | 6 | `feature/deploy-skeleton` | ✅ merged |
@@ -35,7 +35,7 @@ On a fresh clone, all of the following must pass.
 |---|---|
 | Python | `make install && make lint && make typecheck && make test` |
 | Go | `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...` |
-| TypeScript | `pnpm --dir dashboard build` |
+| TypeScript | `make lint-ts && make test-ts`, and `pnpm --dir dashboard build` |
 | Codegen | `make codegen-verify` — must exit non-zero on planted drift, not merely exit zero on a clean tree |
 | CI | `actionlint` and `zizmor` clean; `ci.yml` is the only required status and depends on every other check |
 | Deploy | `helm lint deploy/helm/pantheon`, `terraform fmt -check`, `docker compose config` |
