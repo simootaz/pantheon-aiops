@@ -1,0 +1,33 @@
+# Argo CD Application for Pantheon.
+#
+# Phase: 7 - Production Hardening
+#
+# Points at the Helm chart in this repository. Per-environment values are
+# selected with valueFiles.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pantheon
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: pantheon
+  source:
+    repoURL: https://github.com/simootaz/pantheon-aiops.git
+    targetRevision: main
+    path: deploy/helm/pantheon
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pantheon
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+# TODO: Phase 7 - add an ApplicationSet once there is more than one environment

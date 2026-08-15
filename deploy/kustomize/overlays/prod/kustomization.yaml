@@ -1,0 +1,21 @@
+# Kustomize prod overlay.
+#
+# Phase: 6 - Go Port & Platform Binaries
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pantheon-prod
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/simootaz/pantheon
+    newTag: prod
+
+replicas:
+  - name: pantheon-api
+    count: 3
+
+# TODO: Phase 6 - add environment patches once the base is rendered
+patches: []

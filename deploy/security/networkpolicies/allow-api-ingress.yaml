@@ -1,0 +1,23 @@
+# Allow ingress to the API from the ingress controller only.
+#
+# Phase: 7 - Production Hardening
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: pantheon
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+# TODO: Phase 7 - add egress policies for connectors and Delphi

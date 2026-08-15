@@ -1,0 +1,8 @@
+# Baseline packages and hardening shared by every Pantheon host.
+#
+# Phase: 7 - Production Hardening
+- name: Ensure base packages are present
+  ansible.builtin.package:
+    name: "{{ pantheon_base_packages }}"
+    state: present
+# TODO: Phase 7 - add sysctl tuning, time sync and log shipping

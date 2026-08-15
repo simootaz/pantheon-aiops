@@ -1,0 +1,13 @@
+# Alertmanager routing for the local stack.
+#
+# Phase: 7 - Production Hardening
+route:
+  receiver: default
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: default
+# TODO: Phase 7 - route Pantheon platform alerts separately from tenant alerts

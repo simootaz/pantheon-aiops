@@ -1,0 +1,21 @@
+# Argo CD AppProject scoping what Pantheon may deploy.
+#
+# Phase: 7 - Production Hardening
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: pantheon
+  namespace: argocd
+spec:
+  description: Pantheon AIOps platform
+  sourceRepos:
+    - https://github.com/simootaz/pantheon-aiops.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: 'pantheon*'
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

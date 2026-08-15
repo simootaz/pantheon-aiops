@@ -1,0 +1,18 @@
+# Alerting rules for Pantheon's own health.
+#
+# Phase: 7 - Production Hardening
+#
+# These watch the platform, not the systems it investigates.
+groups:
+  - name: pantheon-platform
+    rules:
+      - alert: PantheonAPIDown
+        expr: up{job="pantheon-api"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Pantheon API is not being scraped
+          description: The API has been unreachable for 5 minutes.
+
+      # TODO: Phase 7 - investigation latency, agent failure rate, Delphi spend

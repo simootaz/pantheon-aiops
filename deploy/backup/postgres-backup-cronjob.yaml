@@ -1,0 +1,41 @@
+# Nightly Postgres dump into object storage.
+#
+# Phase: 7 - Production Hardening
+#
+# Targets MinIO by default and any S3-compatible endpoint via S3_ENDPOINT_URL,
+# exactly like the application - see ADR 0001.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pantheon-postgres-backup
+  namespace: pantheon
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dump
+              image: postgres:16-alpine
+              envFrom:
+                - configMapRef:
+                    name: pantheon-pantheon-config
+                - secretRef:
+                    name: pantheon-postgres
+                - secretRef:
+                    name: pantheon-object-storage
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                  pg_dump --format=custom --no-owner > "/tmp/pantheon-${stamp}.dump"
+                  # TODO: Phase 7 - upload with an S3 client, not mc, so any
+                  # S3-compatible endpoint works identically.
+                  echo "dump written: /tmp/pantheon-${stamp}.dump"

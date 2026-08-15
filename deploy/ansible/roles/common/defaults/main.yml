@@ -1,0 +1,7 @@
+# Defaults for the common role.
+#
+# Phase: 7 - Production Hardening
+pantheon_base_packages:
+  - ca-certificates
+  - curl
+  - jq

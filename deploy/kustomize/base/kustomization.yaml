@@ -1,0 +1,19 @@
+# Kustomize base.
+#
+# Phase: 6 - Go Port & Platform Binaries
+#
+# The Helm chart is the primary deployment path; kustomize exists for operators
+# who render manifests and patch them in GitOps. Generate the base with:
+#   helm template pantheon deploy/helm/pantheon > deploy/kustomize/base/rendered.yaml
+#
+# TODO: Phase 6 - commit the rendered base and split it into resource files.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pantheon
+
+commonLabels:
+  app.kubernetes.io/name: pantheon
+  app.kubernetes.io/managed-by: kustomize
+
+resources: []
