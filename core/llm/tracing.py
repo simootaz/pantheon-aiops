@@ -3,9 +3,9 @@
 Emits a span per model call carrying the resolved model, token counts and
 measured cost, so an Investigation can explain what it spent and where.
 
-Credentials are redacted here before anything is emitted. Provider keys must
-never reach a log line, a span attribute or a ResolutionRecord - see
-core.llm.keyring.
+Credentials are redacted here before anything is emitted, using
+core.cerberus.redaction. Provider keys must never reach a log line, a span
+attribute or a ResolutionRecord.
 
 Phase: 2 - Orchestrator & Investigation Flow
 """
