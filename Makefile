@@ -31,9 +31,10 @@ install:
 	@echo "         go modules have no external dependencies."
 	@echo "         dashboard deps land on branch feature/dashboard-scaffold."
 
-## dev: run the API and worker locally with reload
+## dev: run the API locally with reload
 dev:
-	@echo "dev: needs api.main:app, which lands in Phase 1"; exit 1
+	@uv run uvicorn api.main:create_app --factory --reload \
+		--host $${PANTHEON_API_HOST:-127.0.0.1} --port $${PANTHEON_API_PORT:-8000}
 
 ## sim: run a simulator scenario against the local stack
 sim:

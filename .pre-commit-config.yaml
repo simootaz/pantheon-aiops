@@ -16,19 +16,25 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.0
+  # mypy runs from the project environment, not from a pre-commit-managed venv.
+  #
+  # mirrors-mypy installs its own isolated venv, which means every runtime
+  # dependency has to be duplicated into additional_dependencies. That list
+  # drifts silently: adding fastapi to the project made the hook fail with
+  # "Cannot find implementation or library stub" while `make typecheck` stayed
+  # green - a divergence that only shows up at commit time. Running `uv run
+  # mypy` uses the same environment and the same pyproject config as the
+  # Makefile, so the two can never disagree.
+  - repo: local
     hooks:
       - id: mypy
+        name: mypy (strict, project env)
+        entry: uv run mypy
+        language: system
+        types: [python]
         # mypy is configured entirely in pyproject.toml, including which trees
         # it walks, so it must not be handed the staged file list.
         pass_filenames: false
-        args: ["--config-file=pyproject.toml"]
-        # The hook runs in its own isolated venv, so runtime dependencies that
-        # contracts import must be declared here too or every model becomes
-        # "Cannot find implementation or library stub".
-        additional_dependencies:
-          - pydantic>=2.9
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0

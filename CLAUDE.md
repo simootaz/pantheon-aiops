@@ -186,7 +186,7 @@ pantheon-aiops/
 | **cmd/** | Go binaries. | 6 |
 | `cmd/pantheonctl/` | Operator CLI. | 6 |
 | `cmd/collector/` | Signal-shipping sidecar. | 6 |
-| **api/** | Python. FastAPI: `main.py`, `routers/`, `ws/`, `auth/`, `schemas/`. | 1–3 |
+| **api/** | Python. FastAPI: `main.py` (`create_app()` factory), `routers/`, `ws/`, `auth/`, `schemas/`. `/health` is live. | 1–3 |
 | **dashboard/** | TypeScript. Next.js 15 App Router — the only TS in the repo. | 4 |
 | `dashboard/app/` | Routes: `investigations/`, `agents/`, `approvals/`, `settings/`. | 4 |
 | `dashboard/components/` | Shared React components. | 4 |
@@ -342,7 +342,7 @@ target that is not yet wired says so and exits non-zero.
 |---|---|---|
 | `make help` | List every target (default goal) | ✅ |
 | `make install` | `uv sync` + `pre-commit install`. Go has no external deps; dashboard deps land on branch 4 | ✅ |
-| `make dev` | Run the API and worker locally with reload | ⏳ needs `api.main:app` (Phase 1) |
+| `make dev` | Run the API locally with reload (`uvicorn --factory`, `/health` live) | ✅ |
 | `make sim` | Run a simulator scenario against the local stack | ⏳ needs `simulator.cli` (Phase 1) |
 | `make test` | `pytest` with coverage | ✅ |
 | `make test-go` | `go build` + `go test` in every module listed in `go.work` | ✅ |
@@ -399,7 +399,8 @@ could not. See [ROADMAP.md](ROADMAP.md#phase-0-branch-order).
 | — | `feature/go-base-relocation` | ✅ merged — unplanned; moved the shared Go library to `pkg/mcpserver` |
 | 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
 | 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
-| 5 | `feature/codegen-pipeline` | ⏳ next |
+| 5 | `feature/codegen-pipeline` | ✅ merged |
+| — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
 | 6 | `feature/deploy-skeleton` | ⏳ |
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
@@ -412,6 +413,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-15 | `feature/api-minimal` | **API skeleton.** `api/main.py` gains `create_app()`; `api/routers/health.py` serves `GET /health`; `api/schemas/common.py` gains `HealthResponse`; `api/__init__.py` gains `__version__`. Added `tests/unit/test_api_health.py` (3 tests, incl. asserting the OpenAPI document builds — Phase 1's `gen_ts_api.sh` depends on it). Added `fastapi` + `uvicorn` runtime deps and `httpx` dev dep. **`make dev` is now live**, verified serving 200 on `/health`. Switched the pre-commit mypy hook from `mirrors-mypy` to a local `uv run mypy` hook — the isolated venv's `additional_dependencies` drifted from the project's every time a dependency was added, failing at commit time while `make typecheck` stayed green. |
 | 2026-08-15 | `feature/codegen-pipeline` | **Codegen pipeline live.** Filled `core/contracts/` with minimal-but-real Pydantic v2 models, added `core/contracts/base.py` (`ContractModel`, `extra="forbid"`). Implemented `export_schemas.py`, `gen_go.sh`, `gen_ts.sh`, `verify.sh`. New generated artifacts: `core/contracts/export/pantheon.schema.json`, `pkg/contracts/contracts.gen.go`, `dashboard/types/generated/contracts.ts`. **Added module `pkg/contracts/`** (5th Go module) and **deleted `connectors/kubernetes/pkg/`** — shared contracts must not live inside one connector. Wired `make codegen` / `codegen-verify`, enabled the codegen pre-commit hook and added `pre-commit install` to `make install`. Extended `tests/unit/test_repo_structure.py` with three codegen guards. See [ADR 0002](docs/adr/0002-codegen-from-json-schema.md). |
 | 2026-08-15 | `feature/codegen-pipeline` | **Spec corrected.** `gen_ts.sh` generates from JSON Schema, not from the FastAPI OpenAPI document. Endpoint-surface types become a separate additive generator, `codegen/gen_ts_api.sh`, at Phase 1. |
 | 2026-08-14 | `feature/python-tooling` | **Python toolchain.** Filled `pyproject.toml` (ruff `E,F,I,B,UP,SIM,RUF` @ 100, mypy `strict`, pytest + coverage, `dependency-groups.dev`) and `.pre-commit-config.yaml` (ruff-check, ruff-format, mypy, gitleaks, codegen drift). Added `.python-version` (3.12) and `uv.lock`, both committed. Added `tests/unit/test_repo_structure.py` — five guards over the agent roster, package initialisers, phase markers and generated-directory banners. Wired `make install`, `test`, `lint`, `typecheck`; `dev` and `sim` stay stubs until Phase 1 supplies `api.main:app` and `simulator.cli`. Rewrapped five over-length docstrings in `api/`, `core/` flagged by ruff. |
