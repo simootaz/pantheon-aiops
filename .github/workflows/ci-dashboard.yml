@@ -1,0 +1,93 @@
+# Dashboard checks: biome, tsc and vitest.
+#
+# Phase: 7 - Production Hardening
+#
+# Authored ahead of the dashboard itself. The detect job below no-ops cleanly
+# until feature/dashboard-scaffold lands a package.json, so this reports success
+# without pretending to have run checks that do not exist yet.
+name: ci-dashboard
+
+on:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: ci-dashboard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: is the dashboard scaffolded?
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      scaffolded: ${{ steps.check.outputs.scaffolded }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for dashboard/package.json
+        id: check
+        run: |
+          if [ -f dashboard/package.json ]; then
+            echo "scaffolded=true" >> "$GITHUB_OUTPUT"
+            echo "dashboard present - running checks"
+          else
+            echo "scaffolded=false" >> "$GITHUB_OUTPUT"
+            echo "dashboard not scaffolded yet (feature/dashboard-scaffold) - skipping"
+          fi
+
+  dashboard:
+    name: biome, tsc, vitest
+    needs: detect
+    if: needs.detect.outputs.scaffolded == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: biome
+        run: pnpm run lint
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Tests
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      # Generated types are committed; a stale checkout here means someone
+      # edited them by hand or skipped `make codegen`.
+      - name: Generated types must not be hand-edited
+        run: |
+          if [ -n "$(git status --porcelain types/generated)" ]; then
+            echo "::error::dashboard/types/generated changed during the build" >&2
+            git --no-pager diff -- types/generated
+            exit 1
+          fi

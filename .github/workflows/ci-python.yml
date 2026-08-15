@@ -1,0 +1,68 @@
+# Python checks: ruff, mypy --strict, pytest.
+#
+# Phase: 7 - Production Hardening
+#
+# Reusable. Triggers live in ci.yml so every check reports through one required
+# status; declaring them here too would run every job twice per PR.
+name: ci-python
+
+on:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: ci-python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: lint, typecheck, test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # .python-version pins 3.12; requires-python is >=3.12,<3.13. Reading the
+      # pin rather than restating it keeps CI and local on the same interpreter.
+      - name: Install the pinned interpreter
+        run: uv python install
+
+      - name: Assert the interpreter is 3.12
+        run: |
+          version="$(uv run python -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+          echo "interpreter: ${version}"
+          if [ "${version}" != "3.12" ]; then
+            echo "::error::expected Python 3.12, got ${version}" >&2
+            exit 1
+          fi
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: make lint
+        run: make lint
+
+      - name: make typecheck
+        run: make typecheck
+
+      - name: make test
+        run: make test
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore

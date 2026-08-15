@@ -24,7 +24,7 @@ is unaffected — the branches are independent.
 | 5 | `feature/codegen-pipeline` | ✅ merged |
 | — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
 | 6 | `feature/deploy-skeleton` | ✅ merged |
-| 7 | `feature/ci-workflows` | ⏳ |
+| 7 | `feature/ci-workflows` | ✅ merged |
 | 8 | `feature/docs-baseline` | ⏳ |
 
 ## Definition of done — Phase 0
@@ -37,6 +37,7 @@ On a fresh clone, all of the following must pass.
 | Go | `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...` |
 | TypeScript | `pnpm --dir dashboard build` |
 | Codegen | `make codegen-verify` — must exit non-zero on planted drift, not merely exit zero on a clean tree |
+| CI | `actionlint` and `zizmor` clean; `ci.yml` is the only required status and depends on every other check |
 | Deploy | `helm lint deploy/helm/pantheon`, `terraform fmt -check`, `docker compose config` |
 | Docs | docs/REPOSITORY_MAP.md accurately describes every directory that exists |
 

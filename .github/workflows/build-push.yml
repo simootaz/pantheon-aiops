@@ -1,0 +1,49 @@
+# Build and publish container images.
+#
+# Phase: 7 - Production Hardening
+#
+# STUB - wired but deliberately not firing. It runs only on manual dispatch
+# until the images build something worth publishing; adding a push trigger now
+# would publish empty scaffolding on every merge.
+#
+# TODO: Phase 7 - add `push: tags: ['v*']`, build the seven images from
+# deploy/docker/ with buildx + provenance, and push to ghcr.io.
+name: build-push
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "yes" to acknowledge this stub does not publish anything
+        required: true
+        default: "no"
+
+permissions: {}
+
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    name: build and push (stub)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Enabled when this actually publishes:
+      # packages: write
+      # id-token: write   # keyless signing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Explain the stub
+        run: |
+          echo "build-push is a stub - Phase 7 implements it."
+          echo "Images to publish, from deploy/docker/:"
+          ls -1 deploy/docker/
+          echo ""
+          echo "Not implemented: buildx matrix, ghcr login, provenance, signing."
+          exit 1

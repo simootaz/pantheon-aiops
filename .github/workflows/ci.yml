@@ -1,0 +1,77 @@
+# The one required check.
+#
+# Phase: 7 - Production Hardening
+#
+# Every other CI workflow is reusable (`workflow_call` only) and is invoked from
+# here. That is deliberate: if each also declared its own pull_request/push
+# triggers, every job would run twice per PR. Owning the triggers in one place
+# means one run and one status to require in branch protection - point branch
+# protection at "CI" (the `gate` job below) and nothing else.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    uses: ./.github/workflows/ci-python.yml
+
+  go:
+    uses: ./.github/workflows/ci-go.yml
+
+  dashboard:
+    uses: ./.github/workflows/ci-dashboard.yml
+
+  codegen:
+    uses: ./.github/workflows/codegen-check.yml
+
+  deploy:
+    uses: ./.github/workflows/ci-deploy.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+
+  gate:
+    name: CI
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: always()
+    needs:
+      - python
+      - go
+      - dashboard
+      - codegen
+      - deploy
+      - security
+    steps:
+      # `needs.*.result` is checked explicitly because a `needs` dependency that
+      # is skipped or cancelled does NOT fail the dependent job by default - a
+      # green gate over a skipped suite would be worse than no gate.
+      - name: Require every check to have succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "results: ${RESULTS}"
+          IFS=',' read -ra values <<< "${RESULTS}"
+          failed=0
+          for value in "${values[@]}"; do
+            if [ "${value}" != "success" ]; then
+              echo "::error::a required check reported '${value}'" >&2
+              failed=1
+            fi
+          done
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
+          echo "all checks passed"
