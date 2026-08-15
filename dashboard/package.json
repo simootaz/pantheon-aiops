@@ -1,0 +1,47 @@
+{
+  "name": "pantheon-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Pantheon investigation console. AG-UI client, A2UI renderer.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simootaz/pantheon-aiops.git",
+    "directory": "dashboard"
+  },
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ag-ui/client": "0.0.58",
+    "@ag-ui/core": "0.0.58",
+    "next": "15.5.23",
+    "react": "19.0.8",
+    "react-dom": "19.0.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@tailwindcss/postcss": "4.3.3",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "jsdom": "30.0.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
