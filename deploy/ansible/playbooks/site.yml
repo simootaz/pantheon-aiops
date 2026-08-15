@@ -1,0 +1,11 @@
+# Host-level provisioning for a self-hosted Pantheon deployment.
+#
+# Phase: 7 - Production Hardening
+#
+# Only needed when running Pantheon outside Kubernetes, on plain hosts.
+- name: Provision Pantheon hosts
+  hosts: pantheon
+  become: true
+  roles:
+    - common
+# TODO: Phase 7 - add container runtime, storage and firewall roles

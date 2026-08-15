@@ -1,4 +1,22 @@
-# Helm chart metadata for the Pantheon platform.
-#
-# Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6
+apiVersion: v2
+name: pantheon
+description: Polyglot multi-agent AIOps platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/simootaz/pantheon-aiops
+sources:
+  - https://github.com/simootaz/pantheon-aiops
+keywords:
+  - aiops
+  - observability
+  - incident-response
+  - multi-agent
+maintainers:
+  - name: simootaz
+    url: https://github.com/simootaz
+annotations:
+  # Phase: 6 - Go Port & Platform Binaries
+  # Templates are a minimal but valid skeleton; workloads are filled in as the
+  # components they deploy become real.
+  pantheon.io/phase: "6"

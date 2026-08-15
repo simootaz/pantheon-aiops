@@ -1,4 +1,64 @@
-# Development Helm values overlay.
+# Development overlay.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - fill in dev overrides
+#
+# Everything in-cluster and disposable: bundled MinIO with no persistence, a
+# generated credential, and Delphi pointed at a local model runtime so the
+# install needs no API keys at all.
+#
+#   helm install pantheon deploy/helm/pantheon -f deploy/helm/pantheon/values-dev.yaml
+
+image:
+  tag: dev
+  pullPolicy: Always
+
+api:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+minio:
+  enabled: true
+  existingSecret: ""      # generated; fine for a scratch cluster
+  persistence:
+    enabled: false        # disposable
+
+delphi:
+  enabled: true
+  existingSecret: ""
+  providers:
+    - id: local-ollama
+      displayName: Local Ollama
+      dialect: chat_completions
+      baseUrl: http://ollama:11434/v1
+      authMode: none
+      secretRef: ""
+      enabled: true
+  tiers:
+    cheap: qwen2.5:3b
+    balanced: qwen2.5:14b
+    frontier: qwen2.5:14b
+  probe:
+    onStartup: true
+    refreshIntervalHours: 1
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: false
+
+ingress:
+  enabled: false

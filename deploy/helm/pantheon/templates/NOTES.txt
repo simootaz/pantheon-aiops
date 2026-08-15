@@ -1,0 +1,25 @@
+Pantheon {{ .Chart.AppVersion }} installed as {{ .Release.Name }}.
+
+API:  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "pantheon.fullname" . }}-api {{ .Values.api.port }}
+      then open http://localhost:{{ .Values.api.port }}/health
+
+Object storage:
+{{- if .Values.minio.enabled }}
+  Bundled MinIO. Console:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "pantheon.fullname" . }}-minio 9001
+  Buckets: {{ .Values.minio.buckets.reports }}, {{ .Values.minio.buckets.artifacts }}, {{ .Values.minio.buckets.backups }}
+{{- else }}
+  External S3-compatible endpoint: {{ .Values.minio.external.endpoint }}
+{{- end }}
+
+Delphi (LLM gateway):
+{{- if .Values.delphi.enabled }}
+  Tier defaults - cheap: {{ .Values.delphi.tiers.cheap }}, balanced: {{ .Values.delphi.tiers.balanced }}, frontier: {{ .Values.delphi.tiers.frontier }}
+  Providers configured: {{ len .Values.delphi.providers }}
+  {{- if not .Values.delphi.existingSecret }}
+  NOTE: delphi.existingSecret is empty. Providers requiring credentials will
+        fail until a secret is supplied.
+  {{- end }}
+{{- else }}
+  Disabled.
+{{- end }}

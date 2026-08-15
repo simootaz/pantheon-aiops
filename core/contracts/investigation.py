@@ -20,6 +20,7 @@ from pydantic import Field
 
 from core.contracts.base import ContractModel
 from core.contracts.finding import Finding
+from core.contracts.llm import ResolutionRecord
 from core.contracts.verdict import Verdict
 
 
@@ -64,6 +65,10 @@ class Investigation(ContractModel):
     findings: list[Finding] = Field(default_factory=list)
     verdict: Verdict | None = Field(
         default=None, description="Absent until the run reaches a conclusion."
+    )
+    resolutions: list[ResolutionRecord] = Field(
+        default_factory=list,
+        description="Every Delphi model resolution made during this run, in order.",
     )
 
 

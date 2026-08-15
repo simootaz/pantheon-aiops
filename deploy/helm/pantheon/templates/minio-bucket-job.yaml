@@ -1,0 +1,51 @@
+{{/*
+One-shot bucket bootstrap, mirroring the Compose minio-init service.
+
+mc is permitted here and in deploy/scripts/ only. Application code speaks plain
+S3 so that any S3-compatible provider works - see ADR 0001.
+*/}}
+{{- if .Values.minio.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pantheon.fullname" . }}-minio-init
+  labels:
+    {{- include "pantheon.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio-init
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "pantheon.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: "{{ .Values.minio.mcImage.repository }}:{{ .Values.minio.mcImage.tag }}"
+          env:
+            - name: S3_ACCESS_KEY
+              value: {{ .Values.minio.rootUser | quote }}
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pantheon.minioSecretName" . }}
+                  key: {{ .Values.minio.secretKeys.secretKey }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              until mc alias set pantheon "http://{{ include "pantheon.fullname" . }}-minio:9000" "$S3_ACCESS_KEY" "$S3_SECRET_KEY"; do
+                echo "waiting for minio..."
+                sleep 3
+              done
+              for bucket in {{ .Values.minio.buckets.reports }} {{ .Values.minio.buckets.artifacts }} {{ .Values.minio.buckets.backups }}; do
+                mc mb --ignore-existing "pantheon/$bucket"
+              done
+              echo "minio-init: buckets ready"
+{{- end }}

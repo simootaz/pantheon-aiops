@@ -1,4 +1,45 @@
-# Development overlay: source mounts, hot reload, exposed debug ports.
+# Development overlay: source mounts, reload, exposed datastore ports.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - define the development overrides
+#
+# Composed on top of docker-compose.yml by `make up`.
+
+name: pantheon
+
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  api:
+    environment:
+      PANTHEON_LOG_LEVEL: DEBUG
+    volumes:
+      - ../../api:/app/api:ro
+      - ../../core:/app/core:ro
+      - ../../agents:/app/agents:ro
+    command:
+      - uvicorn
+      - api.main:create_app
+      - --factory
+      - --reload
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+
+  worker:
+    environment:
+      PANTHEON_LOG_LEVEL: DEBUG
+    volumes:
+      - ../../core:/app/core:ro
+      - ../../agents:/app/agents:ro
+
+  # Local models are on by default in development, so a contributor with no API
+  # keys still gets a working stack.
+  ollama:
+    profiles: ["llm-local", "dev"]

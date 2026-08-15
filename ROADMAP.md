@@ -23,7 +23,7 @@ is unaffected — the branches are independent.
 | 4 | `feature/dashboard-scaffold` | 🚧 **blocked** — `corepack enable` needs an elevated shell; pnpm unavailable |
 | 5 | `feature/codegen-pipeline` | ✅ merged |
 | — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
-| 6 | `feature/deploy-skeleton` | ⏳ |
+| 6 | `feature/deploy-skeleton` | ✅ merged |
 | 7 | `feature/ci-workflows` | ⏳ |
 | 8 | `feature/docs-baseline` | ⏳ |
 
@@ -71,7 +71,7 @@ Things deliberately set to a scaffold-friendly value now, to be tightened later.
 | `make sim` | stub, exits non-zero | wired | Phase 1, once `simulator.cli` exists |
 | ~~`make dev`~~ | ✅ live — `uvicorn --factory`, `/health` serving | — | done on `feature/api-minimal` |
 | ~~`pre-commit install`~~ | ✅ wired into `make install` | — | done on `feature/codegen-pipeline` |
-| Object storage | — | MinIO everywhere, S3-compatible only | Phase 6 — see [ADR 0001](docs/adr/0001-object-storage-minio.md) |
+| ~~Object storage~~ | ✅ MinIO everywhere, S3-compatible only; `modules/object-storage` renamed and applied | — | done on `feature/deploy-skeleton` |
 | `unparam` / `nilnil` Go linters | disabled | enabled | Phase 6, once the Go connector is real |
 
 <!-- TODO: Phase 0 - full roadmap with per-phase exit criteria on branch feature/docs-baseline -->

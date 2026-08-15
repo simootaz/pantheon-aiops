@@ -1,0 +1,35 @@
+# Velero backup schedule, targeting MinIO.
+#
+# Phase: 7 - Production Hardening
+#
+# Per docs/adr/0001-object-storage-minio.md, backups land in the same
+# S3-compatible storage as everything else - no cloud account required.
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: pantheon-daily
+  namespace: velero
+spec:
+  schedule: "0 2 * * *"
+  template:
+    includedNamespaces:
+      - pantheon
+    storageLocation: pantheon-minio
+    ttl: 720h
+---
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: pantheon-minio
+  namespace: velero
+spec:
+  provider: aws            # the S3 API plugin, not the AWS service
+  objectStorage:
+    bucket: pantheon-backups
+  config:
+    region: us-east-1
+    s3ForcePathStyle: "true"
+    s3Url: http://pantheon-pantheon-minio.pantheon.svc:9000
+  credential:
+    name: pantheon-object-storage
+    key: cloud

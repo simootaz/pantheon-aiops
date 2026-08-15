@@ -1,4 +1,29 @@
 # Container image: FastAPI API server.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - write the api image build
+#
+# Built from the repo root: docker build -f deploy/docker/Dockerfile.api .
+
+FROM python:3.12-slim AS base
+ENV PYTHONUNBUFFERED=1     PYTHONDONTWRITEBYTECODE=1     UV_COMPILE_BYTECODE=1     UV_LINK_MODE=copy
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+FROM base AS deps
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+FROM base AS runtime
+COPY --from=deps /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+COPY pyproject.toml ./
+COPY api ./api
+COPY core ./core
+COPY agents ./agents
+COPY connectors ./connectors
+RUN useradd --system --uid 10001 pantheon && chown -R pantheon:pantheon /app
+USER pantheon
+EXPOSE 8000
+
+# TODO: Phase 6 - pin the base image by digest and add a healthcheck
+CMD ["uvicorn", "api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

@@ -85,13 +85,17 @@ codegen:
 codegen-verify:
 	@bash codegen/verify.sh
 
-## up: start the local Compose stack
+## up: start the local Compose stack (add PROFILE=llm-local for local models)
 up:
-	@echo "up: not wired yet - branch feature/deploy-skeleton"; exit 1
+	@cd deploy/compose && [ -f .env ] || cp .env.example .env
+	@cd deploy/compose && docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+		$(if $(PROFILE),--profile $(PROFILE),) up -d
+	@echo "up: API http://localhost:8000  MinIO console http://localhost:9001"
 
 ## down: stop the local Compose stack
 down:
-	@echo "down: not wired yet - branch feature/deploy-skeleton"; exit 1
+	@cd deploy/compose && docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+		--profile llm-local down
 
 ## clean: remove build artifacts and tooling caches
 clean:

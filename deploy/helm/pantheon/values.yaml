@@ -1,4 +1,169 @@
-# Default Helm values.
+# Default values for the Pantheon chart.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - fill in real defaults
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: simootaz/pantheon
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+api:
+  enabled: true
+  replicas: 1
+  port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+worker:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: ""
+
+# ---------------------------------------------------------------------------
+# Object storage - see docs/adr/0001-object-storage-minio.md
+#
+# MinIO ships enabled so the chart installs with no cloud account. Set
+# `enabled: false` and fill in `external` to point at real S3, Ceph RGW, Wasabi,
+# B2, R2 or anything else that speaks the S3 API. Application code is identical
+# either way - it only ever reads S3_ENDPOINT_URL.
+# ---------------------------------------------------------------------------
+minio:
+  enabled: true
+
+  image:
+    repository: minio/minio
+    tag: latest
+  mcImage:
+    repository: minio/mc
+    tag: latest
+
+  rootUser: pantheon
+
+  # Secret holding S3_SECRET_KEY (and S3_ACCESS_KEY if you prefer). Leave empty
+  # to have the chart generate one for evaluation only - never in production.
+  existingSecret: ""
+  secretKeys:
+    accessKey: S3_ACCESS_KEY
+    secretKey: S3_SECRET_KEY
+
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+
+  buckets:
+    reports: pantheon-reports
+    artifacts: pantheon-artifacts
+    backups: pantheon-backups
+
+  # Used when `enabled: false`. Any S3-compatible provider.
+  external:
+    endpoint: ""       # e.g. https://s3.eu-west-1.amazonaws.com
+    region: us-east-1
+    useSSL: true
+    existingSecret: ""
+
+# ---------------------------------------------------------------------------
+# Delphi - the LLM gateway. See docs/adr/0004-llm-provider-abstraction.md
+#
+# Agents declare requirements and never name a model; these values seed the
+# bootstrap providers and the tier defaults. Everything else is configured from
+# the settings UI at Phase 4.
+# ---------------------------------------------------------------------------
+delphi:
+  enabled: true
+
+  # Credentials for every provider below, keyed by each provider's `secretRef`.
+  # Never put an API key in values.yaml.
+  existingSecret: ""
+
+  # Bootstrap providers. More can be added from settings with no code, which is
+  # what makes "any provider" real - custom.py handles them.
+  providers:
+    - id: local-ollama
+      displayName: Local Ollama
+      # chat_completions | messages | generate_content | raw
+      dialect: chat_completions
+      baseUrl: http://ollama:11434/v1
+      authMode: none
+      secretRef: ""
+      enabled: true
+
+  # Agents ask for a tier, never a model.
+  tiers:
+    cheap: qwen2.5:3b
+    balanced: qwen2.5:14b
+    frontier: qwen2.5:32b
+
+  globalDefaultTier: balanced
+
+  limits:
+    maxTokens: 8192
+    requestTimeoutSeconds: 120
+    maxCostPerCall: ""     # empty = no per-call ceiling
+
+  # Capabilities are probed, never tabulated - a model table would be stale in
+  # weeks. This controls how often the matrix is refreshed.
+  probe:
+    onStartup: true
+    refreshIntervalHours: 24
+
+# ---------------------------------------------------------------------------
+# Datastores. Disable and point at managed services in production.
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  database: pantheon
+  username: pantheon
+  existingSecret: ""
+  persistence:
+    enabled: true
+    size: 10Gi
+  external:
+    host: ""
+    port: 5432
+
+redis:
+  enabled: true
+  external:
+    url: ""
+
+observability:
+  otlpEndpoint: ""
+  serviceName: pantheon
+
+ingress:
+  enabled: false
+  className: ""
+  host: pantheon.local
+  tls: []
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

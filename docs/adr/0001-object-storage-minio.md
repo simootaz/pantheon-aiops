@@ -96,12 +96,24 @@ one-shot and in operator-facing scripts under `deploy/scripts/`, never in
 
 ## Implementation checklist
 
-Tracked so the decision is not lost between now and Phase 6.
+Applied on `feature/deploy-skeleton`, 2026-08-15.
 
-- [ ] `deploy/compose/docker-compose.yml` + `.dev.yml` — `minio` and `minio-init` services
-- [ ] `deploy/helm/pantheon/values.yaml` — `minio:` block
-- [ ] `deploy/helm/pantheon/templates/minio-*.yaml` behind `.Values.minio.enabled`
-- [ ] `deploy/terraform/modules/s3/` → `modules/object-storage/`, made provider-shaped
-- [ ] `deploy/terraform/envs/dev` → MinIO; `envs/prod` pluggable
-- [ ] `.env.example` — the eight `S3_*` variables
-- [ ] `deploy/backup/` — Velero and Postgres CronJob target MinIO
+- [x] `deploy/compose/docker-compose.yml` + `.dev.yml` — `minio` and `minio-init` services
+- [x] `deploy/helm/pantheon/values.yaml` — `minio:` block
+- [x] `deploy/helm/pantheon/templates/minio-*.yaml` behind `.Values.minio.enabled`
+- [x] `deploy/terraform/modules/s3/` → `modules/object-storage/`, made provider-shaped
+- [x] `deploy/terraform/envs/dev` → MinIO; `envs/prod` pluggable
+- [x] `.env.example` — the eight `S3_*` variables
+- [x] `deploy/backup/` — Velero and Postgres CronJob target MinIO
+
+### Verified on application
+
+`helm template` proves the passthrough rather than asserting it:
+
+| Values | `S3_ENDPOINT_URL` renders as | MinIO objects rendered |
+|---|---|---|
+| default | `http://pantheon-pantheon-minio:9000` | 8 |
+| `values-prod.yaml` | `https://s3.example.com` | 0 |
+
+Application configuration is identical in both cases - only the endpoint moves,
+which is the whole point of the decision.

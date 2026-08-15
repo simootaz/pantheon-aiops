@@ -1,4 +1,104 @@
-# Production Helm values overlay.
+# Production overlay.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - fill in prod overrides
+#
+# Demonstrates the external passthrough from ADR 0001: the bundled MinIO is
+# switched off and any S3-compatible provider takes its place. Application code
+# is byte-identical either way - it only ever reads S3_ENDPOINT_URL.
+#
+# Every credential here comes from a pre-created secret. Nothing in this file is
+# sensitive; see deploy/security/sealed-secrets/.
+#
+#   helm install pantheon deploy/helm/pantheon -f deploy/helm/pantheon/values-prod.yaml
+
+image:
+  pullPolicy: IfNotPresent
+
+api:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+worker:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+# Bundled MinIO off; point at the operator's own object storage. This can be
+# AWS S3, Ceph RADOS Gateway, Wasabi, Backblaze B2, Cloudflare R2, or a MinIO
+# cluster you run yourself - the S3 API is the only contract.
+minio:
+  enabled: false
+  buckets:
+    reports: pantheon-reports
+    artifacts: pantheon-artifacts
+    backups: pantheon-backups
+  external:
+    endpoint: https://s3.example.com
+    region: eu-west-1
+    useSSL: true
+    existingSecret: pantheon-object-storage
+
+delphi:
+  enabled: true
+  # Holds one entry per provider secretRef below.
+  existingSecret: pantheon-llm-credentials
+  providers:
+    - id: gateway-primary
+      displayName: Primary gateway
+      dialect: chat_completions
+      baseUrl: https://gateway.example.com/v1
+      authMode: bearer
+      secretRef: GATEWAY_PRIMARY_API_KEY
+      enabled: true
+    - id: gateway-secondary
+      displayName: Secondary gateway
+      dialect: messages
+      baseUrl: https://alt-gateway.example.com/v1
+      authMode: bearer
+      secretRef: GATEWAY_SECONDARY_API_KEY
+      enabled: true
+  tiers:
+    cheap: gateway/small
+    balanced: gateway/medium
+    frontier: gateway/large
+  globalDefaultTier: balanced
+  limits:
+    maxTokens: 8192
+    requestTimeoutSeconds: 120
+    maxCostPerCall: "0.50"
+  probe:
+    onStartup: true
+    refreshIntervalHours: 24
+
+postgres:
+  enabled: false
+  existingSecret: pantheon-postgres
+  external:
+    host: postgres.internal
+    port: 5432
+
+redis:
+  enabled: false
+  external:
+    url: redis://redis.internal:6379/0
+
+observability:
+  otlpEndpoint: http://otel-collector.observability:4317
+
+ingress:
+  enabled: true
+  className: nginx
+  host: pantheon.example.com
+  tls:
+    - secretName: pantheon-tls
+      hosts:
+        - pantheon.example.com

@@ -1,4 +1,148 @@
-# Base Compose stack: API, worker, connectors, Postgres, Redis.
+# Base Compose stack: datastores, object storage, API and worker.
 #
 # Phase: 6 - Go Port & Platform Binaries
-# TODO: Phase 6 - define the base service topology
+#
+# Application images are built but not yet functional - Phase 1 onward fills
+# them in. The datastores, MinIO and Ollama are real and usable today, which is
+# what makes `make up` worth running during Phase 0.
+#
+# `make up` composes this with docker-compose.dev.yml.
+
+name: pantheon
+
+x-pantheon-env: &pantheon-env
+  PANTHEON_ENV: ${PANTHEON_ENV:-local}
+  PANTHEON_LOG_LEVEL: ${PANTHEON_LOG_LEVEL:-INFO}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-pantheon}
+  POSTGRES_USER: ${POSTGRES_USER:-pantheon}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pantheon}
+  REDIS_URL: redis://redis:6379/0
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-pantheon}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-pantheon123}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET_REPORTS: ${S3_BUCKET_REPORTS:-pantheon-reports}
+  S3_BUCKET_ARTIFACTS: ${S3_BUCKET_ARTIFACTS:-pantheon-artifacts}
+  S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-pantheon-backups}
+  S3_USE_SSL: ${S3_USE_SSL:-false}
+  LLM_PROVIDER_ID: ${LLM_PROVIDER_ID:-local-ollama}
+  LLM_DIALECT: ${LLM_DIALECT:-chat_completions}
+  LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+  LLM_AUTH_MODE: ${LLM_AUTH_MODE:-none}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_TIER_CHEAP_MODEL: ${LLM_TIER_CHEAP_MODEL:-qwen2.5:3b}
+  LLM_TIER_BALANCED_MODEL: ${LLM_TIER_BALANCED_MODEL:-qwen2.5:14b}
+  LLM_TIER_FRONTIER_MODEL: ${LLM_TIER_FRONTIER_MODEL:-qwen2.5:32b}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pantheon}
+      POSTGRES_USER: ${POSTGRES_USER:-pantheon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pantheon}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pantheon}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- object storage: MinIO, per ADR 0001 -------------------------------
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-pantheon}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-pantheon123}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot bucket bootstrap. mc is permitted here and in deploy/scripts/
+  # only - never in application code, which speaks plain S3.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *pantheon-env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mc alias set pantheon "$${S3_ENDPOINT_URL}" "$${S3_ACCESS_KEY}" "$${S3_SECRET_KEY}"
+        for bucket in "$${S3_BUCKET_REPORTS}" "$${S3_BUCKET_ARTIFACTS}" "$${S3_BUCKET_BACKUPS}"; do
+          mc mb --ignore-existing "pantheon/$${bucket}"
+        done
+        echo "minio-init: buckets ready"
+    restart: "no"
+
+  # --- Delphi's local model runtime --------------------------------------
+  # Optional. Enabled with `--profile llm-local`, which is what lets the whole
+  # stack run with zero API keys.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm-local"]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+  # --- application ---------------------------------------------------------
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    environment:
+      <<: *pantheon-env
+    ports:
+      - "${PANTHEON_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.worker
+    environment:
+      <<: *pantheon-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  ollama-models:

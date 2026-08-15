@@ -1,0 +1,14 @@
+# Default-deny ingress for the Pantheon namespace.
+#
+# Phase: 7 - Production Hardening
+#
+# Everything else opens holes in this deliberately.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: pantheon
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
