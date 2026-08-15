@@ -89,17 +89,69 @@ self-hosted one.
 ## Enforcement
 
 This is checked, not remembered. `tests/unit/test_repo_neutrality.py` walks
-every file reported by `git ls-files` and fails if a forbidden substring appears
-in any path or any file's contents. It also asserts that the repository map is
-tracked and still contains all nine sections — so a "neutralisation" that
-quietly deleted the map instead of moving it would fail rather than pass.
+every file reported by `git ls-files` and fails if an **authorship-attribution
+pattern** appears in any path or any file's contents. It also asserts that the
+repository map is tracked and still contains all nine sections — so a
+"neutralisation" that quietly deleted the map instead of moving it would fail
+rather than pass.
 
-The scanner necessarily spells the forbidden terms out, so it excludes itself
-and nothing else. Untracked and gitignored files are deliberately out of scope:
-they never enter the repository.
+The scanner necessarily spells the patterns out, so it excludes itself and
+nothing else. Untracked and gitignored files are deliberately out of scope: they
+never enter the repository.
 
 Commit messages are **not** covered by the test — git history is not a file
 tree. They are covered by the tool configuration described in the addendum.
+
+---
+
+## Amendment — the ban targets attribution, not the vendor namespace
+
+_2026-08-15, on branch `feature/neutrality-guard-narrowing`._
+
+The guard was first implemented as a **substring ban** on a handful of words,
+including a vendor name. That was the wrong shape, and it surfaced the moment
+[ADR 0004](0004-llm-provider-abstraction.md) needed to document which providers
+Pantheon supports.
+
+**The problem.** One vendor name was doing double duty: it identified both an
+assistant tool *and* a legitimate API dialect the product must support. A
+substring ban therefore blocked real product content — a supported-providers
+table, example model identifiers in tier defaults, dialect documentation,
+endpoint hosts — while catching nothing a pattern ban would miss.
+
+**The distinction.** What must not appear is a claim that this repository was
+*authored by* a tool. That is a phrase, not a word:
+
+| Banned — attribution | Allowed — product content |
+|---|---|
+| A co-author trailer naming an assistant | A supported-providers table naming vendors |
+| "Generated with …", "Created by …", emoji sign-offs | Example model identifiers in tier defaults |
+| An assistant's local pointer filename | API endpoint hosts and dialect names |
+| An assistant's config directory | Provider adapter modules and their docs |
+
+Nobody infers AI authorship from a provider list — every tool in this space
+ships one. Pantheon is an LLM platform, so naming providers is describing the
+software, which is exactly what a public repository is *for*. This is the same
+line ADR 0001 already sits on: it names MinIO, AWS S3, Ceph, Wasabi and R2
+freely, because those are the product's supported backends.
+
+**The rule, restated.** The guard matches attribution patterns:
+
+- a co-author trailer naming an assistant,
+- authorship or generation attributed to an assistant,
+- an emoji sign-off,
+- an assistant's pointer filename or config directory.
+
+Vendor names, model identifiers, API hosts and provider documentation are
+explicitly permitted, anywhere.
+
+**Pinned against regression.** `test_guard_permits_provider_documentation` feeds
+the scanner a realistic provider table — several vendors, model ids and endpoint
+URLs — and asserts it produces no findings.
+`test_guard_catches_authorship_attribution` asserts the patterns that matter are
+still caught. Between them, the guard's own behaviour is now tested in both
+directions, so it cannot be quietly re-broadened into a vendor ban or quietly
+hollowed out.
 
 ## Consequences
 
