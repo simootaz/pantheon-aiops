@@ -2,7 +2,7 @@
 
 > **Phase: 0 - Scaffold & Tooling.** The full phase breakdown with exit criteria
 > is written on branch `feature/docs-baseline`. The authoritative phase list
-> currently lives in [CLAUDE.md](CLAUDE.md#phase-roadmap).
+> currently lives in [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md#phase-roadmap).
 
 ## Phase 0 branch order
 
@@ -38,7 +38,7 @@ On a fresh clone, all of the following must pass.
 | TypeScript | `pnpm --dir dashboard build` |
 | Codegen | `make codegen-verify` — must exit non-zero on planted drift, not merely exit zero on a clean tree |
 | Deploy | `helm lint deploy/helm/pantheon`, `terraform fmt -check`, `docker compose config` |
-| Docs | CLAUDE.md accurately describes every directory that exists |
+| Docs | docs/REPOSITORY_MAP.md accurately describes every directory that exists |
 
 > **Note on the Go commands.** `go build ./...` is *not* used and must not be
 > reintroduced. The repo root has no `go.mod`, so the pattern is invalid there,
