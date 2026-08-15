@@ -6,11 +6,20 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "access_request": {
+      "$ref": "#/$defs/AccessRequest"
+    },
     "action": {
       "$ref": "#/$defs/Action"
     },
     "agent_manifest": {
       "$ref": "#/$defs/AgentManifest"
+    },
+    "audit_entry": {
+      "$ref": "#/$defs/AuditEntry"
+    },
+    "credential_ref": {
+      "$ref": "#/$defs/CredentialRef"
     },
     "event_envelope": {
       "$ref": "#/$defs/EventEnvelope"
@@ -21,8 +30,14 @@
     "finding": {
       "$ref": "#/$defs/Finding"
     },
+    "grant": {
+      "$ref": "#/$defs/Grant"
+    },
     "investigation": {
       "$ref": "#/$defs/Investigation"
+    },
+    "lease": {
+      "$ref": "#/$defs/Lease"
     },
     "model_descriptor": {
       "$ref": "#/$defs/ModelDescriptor"
@@ -41,6 +56,60 @@
     }
   },
   "$defs": {
+    "AccessRequest": {
+      "additionalProperties": false,
+      "description": "An agent asking for a capability, with the reason it is asking.\n\n`reason` is not decoration. Approving \"an agent wants database access\" is\nnot a decision; approving a stated hypothesis is.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/CredentialAction"
+        },
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "credential_ref": {
+          "$ref": "#/$defs/CredentialRef"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "reason": {
+          "description": "The hypothesis this access would test, in the agent's own words.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "requested_ttl_seconds": {
+          "description": "How long the agent expects to need it.",
+          "exclusiveMinimum": 0,
+          "title": "Requested Ttl Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "investigation_id",
+        "agent",
+        "credential_ref",
+        "action",
+        "reason",
+        "requested_ttl_seconds",
+        "requested_at"
+      ],
+      "title": "AccessRequest",
+      "type": "object"
+    },
     "Action": {
       "additionalProperties": false,
       "description": "A remediation Pantheon proposes, and may later execute.",
@@ -228,6 +297,105 @@
       "title": "ApprovalState",
       "type": "string"
     },
+    "AuditEntry": {
+      "additionalProperties": false,
+      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/CredentialAction",
+          "default": "not_applicable",
+          "description": "NOT_APPLICABLE for events that concern no single access."
+        },
+        "actor": {
+          "description": "Agent codename, user, or 'system'.",
+          "title": "Actor",
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "credential_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CredentialRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "detail": {
+          "default": "",
+          "description": "Human-readable context. Never a credential.",
+          "title": "Detail",
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/$defs/AuditEvent"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Investigation Id"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lease Id"
+        }
+      },
+      "required": [
+        "id",
+        "at",
+        "event",
+        "actor"
+      ],
+      "title": "AuditEntry",
+      "type": "object"
+    },
+    "AuditEvent": {
+      "description": "Everything Cerberus records. The log is append-only.",
+      "enum": [
+        "requested",
+        "granted",
+        "denied",
+        "approval_requested",
+        "lease_minted",
+        "lease_used",
+        "lease_renewed",
+        "lease_expired",
+        "lease_revoked",
+        "grant_revoked",
+        "break_glass",
+        "rotated"
+      ],
+      "title": "AuditEvent",
+      "type": "string"
+    },
     "AuthMode": {
       "description": "How credentials are presented to a provider.",
       "enum": [
@@ -259,6 +427,106 @@
         "streaming"
       ],
       "title": "Capability",
+      "type": "string"
+    },
+    "CredentialAction": {
+      "description": "Read and write are separate grants.\n\nApproving read never implies write, mirroring the connector split between\ninternal/readonly and internal/write.\n\nNOT_APPLICABLE exists for audit entries that concern no single access -\nbreak-glass and rotation, for instance. It is meaningful only on AuditEntry;\na Grant, Lease or AccessRequest carrying it is invalid, and Phase 3\nvalidation rejects it.\n\nIt is also why AuditEntry.action is not simply nullable: a nullable enum\nemits `anyOf: [$ref, null]`, which go-jsonschema v0.24.1 turns into two\nconflicting UnmarshalJSON methods on the same Go type. Stating \"not\napplicable\" explicitly is clearer than an implicit null convention anyway.",
+      "enum": [
+        "read",
+        "write",
+        "not_applicable"
+      ],
+      "title": "CredentialAction",
+      "type": "string"
+    },
+    "CredentialRef": {
+      "additionalProperties": false,
+      "description": "A reference to a stored credential. Never the credential.\n\nSafe to persist, to attach to an Investigation and to render in the\ndashboard, because it identifies without disclosing.",
+      "properties": {
+        "id": {
+          "description": "Opaque identifier of the stored credential.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable label, e.g. 'prod-postgres'.",
+          "title": "Name",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/CredentialScope"
+        },
+        "type": {
+          "$ref": "#/$defs/CredentialType"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "title": "CredentialRef",
+      "type": "object"
+    },
+    "CredentialScope": {
+      "additionalProperties": false,
+      "description": "Where a credential applies: a server, a service, an environment.",
+      "properties": {
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'prod'. Drives defaults.",
+          "title": "Environment"
+        },
+        "server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Host or cluster, e.g. 'db-01'.",
+          "title": "Server"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Logical service, e.g. 'checkout'.",
+          "title": "Service"
+        }
+      },
+      "title": "CredentialScope",
+      "type": "object"
+    },
+    "CredentialType": {
+      "description": "What kind of credential this is. Governs how the store handles it.",
+      "enum": [
+        "database",
+        "ssh",
+        "kubeconfig",
+        "http_auth",
+        "cloud_key",
+        "tls",
+        "key_value"
+      ],
+      "title": "CredentialType",
       "type": "string"
     },
     "Dialect": {
@@ -490,10 +758,112 @@
       "title": "FindingProducedEvent",
       "type": "object"
     },
+    "Grant": {
+      "additionalProperties": false,
+      "description": "Standing permission for one agent to reach one credential one way.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/CredentialAction"
+        },
+        "agent": {
+          "description": "Agent codename the grant applies to, e.g. 'argus'.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "credential_ref": {
+          "$ref": "#/$defs/CredentialRef"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set when mode is ALLOW_UNTIL.",
+          "title": "Expires At"
+        },
+        "granted_at": {
+          "format": "date-time",
+          "title": "Granted At",
+          "type": "string"
+        },
+        "granted_by": {
+          "description": "Who approved it.",
+          "title": "Granted By",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set when mode is ALLOW_FOR_INVESTIGATION.",
+          "title": "Investigation Id"
+        },
+        "mode": {
+          "$ref": "#/$defs/PermissionMode"
+        },
+        "override_ask_default": {
+          "default": false,
+          "description": "Explicit override allowing ALLOW_UNTIL on a production or write grant.",
+          "title": "Override Ask Default",
+          "type": "boolean"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set when revoked.",
+          "title": "Revoked At"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "credential_ref",
+        "action",
+        "mode",
+        "granted_by",
+        "granted_at"
+      ],
+      "title": "Grant",
+      "type": "object"
+    },
     "Investigation": {
       "additionalProperties": false,
       "description": "One end-to-end run, from trigger to Verdict.",
       "properties": {
+        "audit": {
+          "description": "Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.",
+          "items": {
+            "$ref": "#/$defs/AuditEntry"
+          },
+          "title": "Audit",
+          "type": "array"
+        },
         "completed_at": {
           "anyOf": [
             {
@@ -595,6 +965,72 @@
       ],
       "title": "InvestigationState",
       "type": "string"
+    },
+    "Lease": {
+      "additionalProperties": false,
+      "description": "Permission to use a credential, bound to one connector and one run.\n\nA lease is not a credential. It is redeemable only by the named connector,\nonly for the named investigation, and only until it expires - so a leaked\nlease is worthless anywhere else.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/CredentialAction"
+        },
+        "connector": {
+          "description": "The only connector that may redeem this lease.",
+          "title": "Connector",
+          "type": "string"
+        },
+        "credential_ref": {
+          "$ref": "#/$defs/CredentialRef"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "renewable": {
+          "default": true,
+          "description": "Auto-renews while the underlying grant is valid and the run is live.",
+          "title": "Renewable",
+          "type": "boolean"
+        },
+        "renewed_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Renewed Count",
+          "type": "integer"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "request_id",
+        "investigation_id",
+        "connector",
+        "credential_ref",
+        "action",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "Lease",
+      "type": "object"
     },
     "ModelDescriptor": {
       "additionalProperties": false,
@@ -724,6 +1160,17 @@
       "title": "ModelRequirements",
       "type": "object"
     },
+    "PermissionMode": {
+      "description": "How a grant answers a request.\n\nALLOW_UNTIL is refused for production targets and for any write action\nunless an explicit override is set - see core.cerberus.policy.defaults.",
+      "enum": [
+        "deny",
+        "ask_each_time",
+        "allow_for_investigation",
+        "allow_until"
+      ],
+      "title": "PermissionMode",
+      "type": "string"
+    },
     "ProviderConfig": {
       "additionalProperties": false,
       "description": "A configured provider. Added from settings, never from code.",
@@ -785,7 +1232,7 @@
             }
           ],
           "default": null,
-          "description": "Name of the credential in the keyring. Never the credential itself.",
+          "description": "Cerberus credential reference. Never the credential itself.",
           "title": "Secret Ref"
         }
       },

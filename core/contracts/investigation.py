@@ -19,6 +19,7 @@ from uuid import UUID
 from pydantic import Field
 
 from core.contracts.base import ContractModel
+from core.contracts.credentials import AuditEntry
 from core.contracts.finding import Finding
 from core.contracts.llm import ResolutionRecord
 from core.contracts.verdict import Verdict
@@ -69,6 +70,13 @@ class Investigation(ContractModel):
     resolutions: list[ResolutionRecord] = Field(
         default_factory=list,
         description="Every Delphi model resolution made during this run, in order.",
+    )
+    audit: list[AuditEntry] = Field(
+        default_factory=list,
+        description=(
+            "Cerberus credential audit for this run. Safe to expose: every credential "
+            "here is a CredentialRef, never a value."
+        ),
     )
 
 

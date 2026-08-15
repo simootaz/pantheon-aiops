@@ -5,8 +5,8 @@ requirements to a concrete `ModelDescriptor` at call time and records the
 decision as a `ResolutionRecord`, which travels with the Investigation.
 
 Nothing here ever carries an API key. `ProviderConfig.secret_ref` names a key in
-the keyring; the key itself lives only in `core.llm.keyring` and is redacted in
-traces. A credential reaching one of these models would be a security bug, since
+Cerberus; the credential itself lives only in the Cerberus store and is
+redacted in traces. A credential reaching one of these models would be a security bug, since
 they are persisted, exported in reports and rendered in the dashboard.
 
 See docs/adr/0004-llm-provider-abstraction.md.
@@ -111,7 +111,7 @@ class ProviderConfig(ContractModel):
     auth_mode: AuthMode = AuthMode.BEARER
     secret_ref: str | None = Field(
         default=None,
-        description="Name of the credential in the keyring. Never the credential itself.",
+        description="Cerberus credential reference. Never the credential itself.",
     )
     models_endpoint: str | None = Field(
         default=None, description="Path used to enumerate models, when the provider offers one."
