@@ -41,6 +41,13 @@ jobs:
 
   security:
     uses: ./.github/workflows/security.yml
+    # A called workflow cannot hold more permission than the job that calls it,
+    # so the SARIF upload has to be granted here as well as inside security.yml.
+    # Without this the uploads fail with 403 while every scan still reports
+    # green - findings would exist and reach nobody.
+    permissions:
+      contents: read
+      security-events: write # the called workflow uploads SARIF; it cannot exceed this
 
   gate:
     name: CI

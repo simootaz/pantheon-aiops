@@ -125,7 +125,6 @@ changing it. Nothing here is forgotten; each row is a debt with a due date.
 | `Video` / `AudioPlayer` | excluded from the allowlist | admitted with the same `ArtifactRef` treatment as `Image` | when something needs them; the allowlist grows on demand, never speculatively |
 | Redaction sink wiring | `redact()` implemented and tested | wired into logging, tracing, prompt assembly | Phase 2–3 |
 | Generated credentials | dev/demo only; chart fails closed in production | supplied secrets everywhere via Sealed Secrets | Phase 7 |
-| SARIF upload | uploaded as artifacts | `github/codeql-action/upload-sarif` | once code scanning is enabled on the repository |
 | Go event union | flattened by the generator | a tagged union | Phase 6, if the Go connector needs to consume events |
 
 ## Definition of done — Phase 0
