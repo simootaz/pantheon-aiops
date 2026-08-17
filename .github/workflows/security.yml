@@ -2,9 +2,12 @@
 #
 # Phase: 7 - Production Hardening
 #
-# Findings are uploaded as artifacts rather than to code scanning, because a
-# fresh repository has no code-scanning setup and the upload would hard-fail.
-# Switch to github/codeql-action/upload-sarif once it is enabled.
+# Findings go to GitHub code scanning as SARIF. Each upload sets a distinct
+# `category`: without one, the second upload of a run replaces the first, and
+# the alerts from every scanner but the last vanish silently.
+#
+# The SBOM stays an artifact. It is an inventory, not a set of findings, and
+# SARIF has nowhere sensible to put it.
 name: security
 
 on:
@@ -22,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write # upload SARIF findings to code scanning
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,6 +33,8 @@ jobs:
           persist-credentials: false
 
       - name: Scan the filesystem
+        id: scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
@@ -40,19 +46,27 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
 
-      - name: Upload findings
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Uploaded even when the scan failed - the findings are the reason it
+      # failed, so dropping them here would hide exactly what needs looking at.
+      - name: Upload to code scanning
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef # codeql-bundle-v2.26.3
         with:
-          name: trivy-fs-sarif
-          path: trivy-fs.sarif
-          if-no-files-found: ignore
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Fail on findings
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::trivy found CRITICAL or HIGH issues; see the code scanning alerts" >&2
+          exit 1
 
   trivy-config:
     name: trivy config
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write # upload SARIF findings to code scanning
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +75,8 @@ jobs:
 
       # Dockerfiles, Compose, Helm templates, Terraform and Kubernetes manifests.
       - name: Scan infrastructure as code
+        id: scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
@@ -70,19 +86,25 @@ jobs:
           format: sarif
           output: trivy-config.sarif
 
-      - name: Upload findings
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload to code scanning
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef # codeql-bundle-v2.26.3
         with:
-          name: trivy-config-sarif
-          path: trivy-config.sarif
-          if-no-files-found: ignore
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: Fail on findings
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::trivy config found CRITICAL or HIGH misconfigurations" >&2
+          exit 1
 
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write # upload SARIF findings to code scanning
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,15 +114,51 @@ jobs:
           persist-credentials: false
 
       - name: Scan for committed secrets
+        id: scan
+        continue-on-error: true
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # We upload to code scanning below rather than attaching an artifact.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+      # The action writes results.sarif by convention rather than by documented
+      # contract, so this reports what it found instead of assuming. A missing
+      # file is surfaced as a notice, not swallowed - an upload step that
+      # quietly does nothing is the failure mode this whole repo is built to
+      # avoid.
+      - name: Locate the SARIF report
+        if: always()
+        id: sarif
+        run: |
+          if [ -f results.sarif ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "results.sarif found"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::gitleaks produced no results.sarif; findings are in the step log only"
+            ls -1 ./*.sarif 2>/dev/null || true
+          fi
+
+      - name: Upload to code scanning
+        if: always() && steps.sarif.outputs.found == 'true'
+        uses: github/codeql-action/upload-sarif@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef # codeql-bundle-v2.26.3
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+
+      - name: Fail on findings
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::gitleaks found committed secrets" >&2
+          exit 1
 
   bandit:
     name: bandit
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write # upload SARIF findings to code scanning
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,23 +172,30 @@ jobs:
           cache-dependency-glob: uv.lock
 
       # Run as a tool rather than a project dependency: bandit is CI-only and
-      # does not belong in everyone's dev environment.
+      # does not belong in everyone's dev environment. SARIF comes from
+      # bandit-sarif-formatter, since bandit itself emits only
+      # csv/html/json/screen/txt/xml/yaml.
       - name: Scan first-party Python
+        id: scan
+        continue-on-error: true
         run: |
-          uvx bandit --severity-level medium --confidence-level medium \
+          uvx --with bandit_sarif_formatter bandit \
+            --severity-level medium --confidence-level medium \
             -r core agents api connectors simulator codegen \
-            -f json -o bandit.json || status=$?
-          uvx bandit --severity-level medium --confidence-level medium \
-            -r core agents api connectors simulator codegen
-          exit "${status:-0}"
+            -f sarif -o bandit.sarif
 
-      - name: Upload findings
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload to code scanning
+        if: always() && hashFiles('bandit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef # codeql-bundle-v2.26.3
         with:
-          name: bandit-report
-          path: bandit.json
-          if-no-files-found: ignore
+          sarif_file: bandit.sarif
+          category: bandit
+
+      - name: Fail on findings
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::bandit found medium-or-higher issues; see the code scanning alerts" >&2
+          exit 1
 
   sbom:
     name: sbom
@@ -151,6 +216,7 @@ jobs:
           artifact-name: pantheon-sbom.spdx.json
           output-file: pantheon-sbom.spdx.json
 
+      # An inventory, not findings - so it stays an artifact rather than SARIF.
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

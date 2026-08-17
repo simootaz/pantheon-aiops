@@ -161,6 +161,55 @@ def test_go_workflow_avoids_the_impossible_build_command() -> None:
     assert "github.com/simootaz/pantheon-aiops/..." in executable
 
 
+def test_sarif_uploads_use_distinct_categories() -> None:
+    """Two uploads sharing a category silently replace one another.
+
+    GitHub keys code-scanning results by (tool, category). Upload two SARIF
+    files under the same category in one run and the second wins - the first
+    scanner's alerts disappear with no error anywhere. That is a false green of
+    exactly the kind this repository is built to refuse.
+    """
+    security = _load(WORKFLOWS / "security.yml")
+    jobs = security["jobs"]
+    assert isinstance(jobs, dict)
+
+    categories: list[str] = []
+    for job in jobs.values():
+        for step in job.get("steps", []):
+            if "upload-sarif" in str(step.get("uses", "")):
+                category = step.get("with", {}).get("category")
+                assert category, f"a SARIF upload in {job.get('name')} sets no category"
+                categories.append(str(category))
+
+    assert categories, "no SARIF uploads found; findings would never reach code scanning"
+    assert len(categories) == len(set(categories)), (
+        f"duplicate SARIF categories would overwrite each other: {sorted(categories)}"
+    )
+
+
+def test_sarif_uploading_jobs_can_actually_write() -> None:
+    """security-events: write, on the job *and* on the caller.
+
+    A called workflow cannot exceed its caller's permissions, so granting it in
+    only one place fails the upload with a 403 while the scan still reports
+    green.
+    """
+    security = _load(WORKFLOWS / "security.yml")
+    for name, job in security["jobs"].items():
+        uploads = any("upload-sarif" in str(step.get("uses", "")) for step in job.get("steps", []))
+        if uploads:
+            granted = job.get("permissions", {})
+            assert granted.get("security-events") == "write", (
+                f"security.yml job '{name}' uploads SARIF without security-events: write"
+            )
+
+    caller = _load(WORKFLOWS / "ci.yml")["jobs"]["security"]
+    assert caller.get("permissions", {}).get("security-events") == "write", (
+        "ci.yml does not grant security-events: write to the security job, so every "
+        "SARIF upload would 403 while the scans still reported green"
+    )
+
+
 def test_dependabot_covers_every_go_module() -> None:
     """Dependabot does not walk go.work; each module needs its own entry."""
     config = yaml.safe_load((REPO_ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
