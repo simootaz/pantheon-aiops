@@ -103,9 +103,12 @@ addopts = [
     "--cov=codegen",
     "--cov-report=term-missing",
     "--cov-report=xml",
-    # Phase 0 is a scaffold: there is almost nothing to cover yet, so the gate
-    # is off. ROADMAP.md tracks raising this to 80 at Phase 1.
-    "--cov-fail-under=0",
+    "--cov-report=json:coverage.json",
+    # Set from what the code measures, not from an aspiration. The aggregate is
+    # flattered - 61% of statements are Pydantic field declarations, covered by
+    # import alone - so this is a backstop and tests/coverage_floor.py enforces
+    # a per-module floor over the modules that actually branch. See ROADMAP.
+    "--cov-fail-under=95",
 ]
 
 [tool.coverage.run]

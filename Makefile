@@ -40,9 +40,10 @@ dev:
 sim:
 	@echo "sim: needs simulator.cli, which lands in Phase 1"; exit 1
 
-## test: run the Python test suite
+## test: run the Python test suite and the per-module coverage floor
 test:
 	@uv run pytest
+	@uv run python -m tests.coverage_floor
 
 ## test-go: build and test every Go module in the workspace
 test-go:
