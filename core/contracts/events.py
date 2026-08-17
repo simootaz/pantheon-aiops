@@ -33,8 +33,22 @@ from core.contracts.action import Action
 from core.contracts.base import ContractModel
 from core.contracts.credentials import AccessRequest, AuditEntry
 from core.contracts.finding import Finding
+from core.contracts.investigation import Trigger
 from core.contracts.root_cause import RootCauseHypothesis
 from core.contracts.verdict import Verdict
+
+
+class TriggerReceivedEvent(ContractModel):
+    """An inbound trigger was accepted and an Investigation created for it.
+
+    Distinct from `investigation_started`, which marks the run leaving PENDING.
+    A webhook can be accepted seconds before anything plans it, and collapsing
+    the two would lose the gap where a backlog becomes visible.
+    """
+
+    type: Literal["trigger_received"] = "trigger_received"
+    investigation_id: UUID
+    trigger: Trigger
 
 
 class InvestigationStartedEvent(ContractModel):
@@ -142,7 +156,8 @@ class BreakGlassEvent(ContractModel):
 
 
 Event = Annotated[
-    InvestigationStartedEvent
+    TriggerReceivedEvent
+    | InvestigationStartedEvent
     | InvestigationCompletedEvent
     | StepStartedEvent
     | StepFinishedEvent

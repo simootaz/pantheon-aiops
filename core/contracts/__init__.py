@@ -45,6 +45,7 @@ from core.contracts.events import (
     LeaseExpiredEvent,
     StepFinishedEvent,
     StepStartedEvent,
+    TriggerReceivedEvent,
     VerdictReadyEvent,
 )
 from core.contracts.evidence import (
@@ -191,6 +192,7 @@ __all__ = [
     "Tier",
     "Trigger",
     "TriggerKind",
+    "TriggerReceivedEvent",
     "UIActionResponse",
     "Verdict",
     "VerdictConfidence",
