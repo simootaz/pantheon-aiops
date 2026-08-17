@@ -11,6 +11,7 @@ Phase: 0 - Scaffold & Tooling
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -275,30 +276,77 @@ def test_production_values_refuse_generated_credentials() -> None:
         assert delphi.get("existingSecret"), "prod with Delphi enabled needs delphi.existingSecret"
 
 
+def _mechanism_only(text: str) -> str:
+    """Strip comments, so a guard cannot be satisfied by prose describing it.
+
+    Asserting a substring against a whole file is a trap: `"fail" in body` is
+    true because the *comment* says "fail closed", so deleting every real
+    `fail()` call still passes. Three guards had exactly that bug. Everything
+    that checks for a mechanism runs through here first.
+    """
+    without_helm_comments = re.sub(r"\{\{-?/\*.*?\*/-?\}\}", "", text, flags=re.DOTALL)
+    return "\n".join(
+        line for line in without_helm_comments.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
 def test_chart_has_a_validation_template_that_fails_closed() -> None:
     """The refusal is enforced by the chart, not only by the values file."""
-    validation = (CHART / "templates" / "validation.yaml").read_text(encoding="utf-8")
-    assert "fail" in validation, "validation.yaml must call `fail`"
-    assert "productionMode" in validation
+    body = _mechanism_only((CHART / "templates" / "validation.yaml").read_text(encoding="utf-8"))
+
+    calls = re.findall(r"\{\{-?\s*fail\s", body)
+    assert len(calls) >= 3, (
+        f"validation.yaml makes {len(calls)} fail() calls; one is needed per guarded "
+        "credential (bundled MinIO, external storage, Delphi)"
+    )
+    assert "productionMode" in body
     for guarded in ("minio.existingSecret", "external.existingSecret", "delphi.existingSecret"):
-        assert guarded in validation, f"validation.yaml does not guard {guarded}"
+        assert guarded in body, f"validation.yaml does not guard {guarded}"
 
 
 def test_generated_secret_is_marked_and_protected() -> None:
-    """The generated secret is labelled dev-only and survives uninstall."""
-    secret = (CHART / "templates" / "minio-secret.yaml").read_text(encoding="utf-8")
-    assert "helm.sh/resource-policy: keep" in secret
-    assert "pantheon.io/credential-policy: generated-dev-only" in secret
-    assert "lookup" in secret and "client-side" in secret.lower(), (
+    """The generated secret is labelled dev-only and survives uninstall.
+
+    The annotations are checked against the template body with comments removed,
+    because this file's header *describes* `resource-policy: keep` - so a check
+    against the whole file passes even after the real annotation is deleted.
+    """
+    raw = (CHART / "templates" / "minio-secret.yaml").read_text(encoding="utf-8")
+    body = _mechanism_only(raw)
+
+    for annotation in (
+        "helm.sh/resource-policy: keep",
+        "pantheon.io/credential-policy: generated-dev-only",
+        "argocd.argoproj.io/compare-options",
+    ):
+        assert annotation in body, f"minio-secret.yaml no longer sets {annotation}"
+
+    # The caveat is documentation, so it is checked against the raw file.
+    assert "lookup" in raw and "client-side" in raw.lower(), (
         "the lookup caveat must stay documented at the point of use"
     )
 
 
 def test_argocd_application_documents_client_side_rendering() -> None:
-    """The trap is recorded where an operator would hit it."""
+    """The trap is recorded where an operator would hit it.
+
+    Checks the whole warning, not just the phrase: one incidental mention of
+    "client-side" elsewhere in the file would otherwise satisfy this while the
+    explanation an operator needs had been deleted.
+    """
     app = (REPO_ROOT / "deploy" / "argocd" / "application.yaml").read_text(encoding="utf-8")
-    assert "client-side" in app.lower()
-    assert "productionMode" in app
+    lowered = app.lower()
+
+    for required in (
+        "client-side",
+        "productionmode",
+        "lookup",  # names the mechanism, not just the symptom
+        "rotat",  # rotating the password on each sync is the actual consequence
+    ):
+        assert required in lowered, (
+            f"deploy/argocd/application.yaml no longer explains {required!r}; "
+            "the client-side rendering trap must stay documented in full"
+        )
 
 
 # ---------------------------------------------------------------------------
