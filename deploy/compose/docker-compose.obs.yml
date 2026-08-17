@@ -1,21 +1,20 @@
-# Observability overlay: Prometheus, Grafana, Loki, Tempo, OTel collector.
+# Observability overlay: Grafana, Tempo and the OTel collector.
 #
 # Phase: 7 - Production Hardening
 #
-# Brought up alongside the base stack when you want Pantheon to observe itself.
+# ADDITIVE, not alternative. Prometheus and Loki come from the dev overlay, so
+# this file layers visualisation and tracing on top rather than defining a
+# second copy of them - two overlays declaring the same service is how a merge
+# nobody predicted happens.
+#
+# Compose it after dev:
+#   -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.obs.yml
+#
 # Configuration files live in deploy/observability/.
 
 name: pantheon
 
 services:
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
-    volumes:
-      - ../observability/prometheus:/etc/prometheus:ro
-      - prometheus-data:/prometheus
-
   grafana:
     image: grafana/grafana:latest
     ports:
@@ -26,13 +25,6 @@ services:
     volumes:
       - ../observability/grafana:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
-
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "${LOKI_PORT:-3100}:3100"
-    volumes:
-      - loki-data:/loki
 
   tempo:
     image: grafana/tempo:latest
@@ -50,7 +42,5 @@ services:
       - ../observability/otel:/etc/otel:ro
 
 volumes:
-  prometheus-data:
   grafana-data:
-  loki-data:
   tempo-data:

@@ -1035,11 +1035,15 @@
               "lease_expired": "#/$defs/LeaseExpiredEvent",
               "step_finished": "#/$defs/StepFinishedEvent",
               "step_started": "#/$defs/StepStartedEvent",
+              "trigger_received": "#/$defs/TriggerReceivedEvent",
               "verdict_ready": "#/$defs/VerdictReadyEvent"
             },
             "propertyName": "type"
           },
           "oneOf": [
+            {
+              "$ref": "#/$defs/TriggerReceivedEvent"
+            },
             {
               "$ref": "#/$defs/InvestigationStartedEvent"
             },
@@ -2816,6 +2820,32 @@
       ],
       "title": "TriggerKind",
       "type": "string"
+    },
+    "TriggerReceivedEvent": {
+      "additionalProperties": false,
+      "description": "An inbound trigger was accepted and an Investigation created for it.\n\nDistinct from `investigation_started`, which marks the run leaving PENDING.\nA webhook can be accepted seconds before anything plans it, and collapsing\nthe two would lose the gap where a backlog becomes visible.",
+      "properties": {
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "trigger": {
+          "$ref": "#/$defs/Trigger"
+        },
+        "type": {
+          "const": "trigger_received",
+          "default": "trigger_received",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "trigger"
+      ],
+      "title": "TriggerReceivedEvent",
+      "type": "object"
     },
     "UIActionResponse": {
       "additionalProperties": false,

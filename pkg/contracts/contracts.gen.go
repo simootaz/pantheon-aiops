@@ -3605,8 +3605,49 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type InvestigationVerdict_0 = Verdict
+
+type A2UIComponentAction_0 = A2UIAction
+
+type EvidenceSubject_0 = ResourceRef
+
+type FindingSubject_0 = ResourceRef
+
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *TriggerReceivedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in TriggerReceivedEvent: required")
+	}
+	if _, ok := raw["trigger"]; raw != nil && !ok {
+		return fmt.Errorf("field trigger in TriggerReceivedEvent: required")
+	}
+	type Plain TriggerReceivedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "trigger_received"
+	}
+	if plain.Type != "trigger_received" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "trigger_received")
+	}
+	*j = TriggerReceivedEvent(plain)
+	return nil
+}
+
 // Verbatim, unparsed.
 type TriggerPayload map[string]interface{}
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Trigger) UnmarshalJSON(value []byte) error {
@@ -3635,17 +3676,23 @@ func (j *Trigger) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
-type A2UIComponentAction_0 = A2UIAction
-
 type A2UIComponentArtifactRef_0 = ArtifactRef
 
-type FindingSubject_0 = ResourceRef
+// An inbound trigger was accepted and an Investigation created for it.
+//
+// Distinct from `investigation_started`, which marks the run leaving PENDING.
+// A webhook can be accepted seconds before anything plans it, and collapsing
+// the two would lose the gap where a backlog becomes visible.
+type TriggerReceivedEvent struct {
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
 
-type AuditEntryCredentialRef_0 = CredentialRef
+	// Trigger corresponds to the JSON schema field "trigger".
+	Trigger Trigger `json:"trigger" yaml:"trigger" mapstructure:"trigger"`
 
-type InvestigationVerdict_0 = Verdict
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
 
 // The orchestrator's ranked conclusion for one Investigation.
 type Verdict struct {
@@ -3680,11 +3727,7 @@ type Verdict struct {
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
 
-type EvidenceSubject_0 = ResourceRef
-
 type UIActionResponseContext map[string]interface{}
-
-type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
 
 type UIActionResponseInvestigationId_0 *string
 

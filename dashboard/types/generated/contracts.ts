@@ -336,6 +336,7 @@ export type InvestigationId3 = string | null;
 export type LeaseId1 = string | null;
 export type EmittedAt = string;
 export type Event =
+  | TriggerReceivedEvent
   | InvestigationStartedEvent
   | InvestigationCompletedEvent
   | StepStartedEvent
@@ -348,8 +349,23 @@ export type Event =
   | LeaseExpiredEvent
   | BreakGlassEvent;
 export type InvestigationId4 = string;
-export type Type = "investigation_started";
+/**
+ * What set an Investigation off.
+ */
+export type TriggerKind = "alert" | "webhook" | "schedule" | "human_question" | "simulation";
+export type ReceivedAt = string;
+/**
+ * Who sent it, e.g. 'alertmanager'.
+ */
+export type Source = string;
+/**
+ * One line, as the source described it.
+ */
+export type Title = string;
+export type Type = "trigger_received";
 export type InvestigationId5 = string;
+export type Type1 = "investigation_started";
+export type InvestigationId6 = string;
 /**
  * True when any agent reported DEGRADED.
  */
@@ -358,14 +374,14 @@ export type Partial = boolean;
  * The terminal InvestigationState value.
  */
 export type State = string;
-export type Type1 = "investigation_completed";
+export type Type2 = "investigation_completed";
 export type Agent1 = string;
-export type InvestigationId6 = string;
-export type Type2 = "step_started";
+export type InvestigationId7 = string;
+export type Type3 = "step_started";
 export type Agent2 = string;
 export type FindingCount = number;
-export type InvestigationId7 = string;
-export type Type3 = "step_finished";
+export type InvestigationId8 = string;
+export type Type4 = "step_finished";
 /**
  * Codename of the agent that produced it, e.g. 'argus'.
  */
@@ -380,7 +396,7 @@ export type Id6 = string;
  * When the thing happened, not when it was fetched.
  */
 export type ObservedAt = string;
-export type Payload =
+export type Payload1 =
   MetricWindowPayload | LogClusterPayload | ManifestDiffPayload | K8SEventPayload | PipelineRunPayload;
 export type BaselineMean = number | null;
 export type BaselineStddev = number | null;
@@ -497,14 +513,14 @@ export type Tags = string[];
 /**
  * One line, specific enough to act on.
  */
-export type Title = string;
+export type Title1 = string;
 export type WindowEnd = string | null;
 /**
  * Start of the period this claim is about.
  */
 export type WindowStart = string | null;
-export type InvestigationId8 = string;
-export type Type4 = "finding_produced";
+export type InvestigationId9 = string;
+export type Type5 = "finding_produced";
 /**
  * The closed vocabulary shared by agents, verdicts and scenario ground truth.
  *
@@ -553,10 +569,10 @@ export type HypothesisStatus = "proposed" | "supported" | "refuted" | "inconclus
  */
 export type Subject = string | null;
 export type SupportingFindingIds = string[];
-export type InvestigationId9 = string;
-export type Type5 = "hypothesis_proposed";
 export type InvestigationId10 = string;
-export type Type6 = "verdict_ready";
+export type Type6 = "hypothesis_proposed";
+export type InvestigationId11 = string;
+export type Type7 = "verdict_ready";
 /**
  * Confidence in the leading hypothesis.
  */
@@ -568,7 +584,7 @@ export type DecidedAt = string;
  */
 export type Hypotheses = RootCauseHypothesis[];
 export type Id9 = string;
-export type InvestigationId11 = string;
+export type InvestigationId12 = string;
 /**
  * True when an agent reported DEGRADED, so the conclusion rests on incomplete evidence. Surfaced to the reader rather than buried.
  */
@@ -578,19 +594,19 @@ export type RecommendedActions = Action[];
  * What happened, in one paragraph, for a human.
  */
 export type Summary1 = string;
-export type InvestigationId12 = string;
-export type Type7 = "approval_requested";
 export type InvestigationId13 = string;
-export type Type8 = "access_requested";
-export type Agent4 = string;
+export type Type8 = "approval_requested";
 export type InvestigationId14 = string;
+export type Type9 = "access_requested";
+export type Agent4 = string;
+export type InvestigationId15 = string;
 export type LeaseId2 = string;
 export type Reason3 = "expired" | "revoked";
-export type Type9 = "lease_expired";
+export type Type10 = "lease_expired";
 export type InvokedBy = string;
 export type LeasesRevoked = number;
 export type Reason4 = string;
-export type Type10 = "break_glass";
+export type Type11 = "break_glass";
 export type Id10 = string;
 /**
  * Monotonic within an investigation. Replay depends on order, so it is carried rather than inferred from arrival.
@@ -613,7 +629,7 @@ export type Id11 = string;
 /**
  * Set when mode is ALLOW_FOR_INVESTIGATION.
  */
-export type InvestigationId15 = string | null;
+export type InvestigationId16 = string | null;
 /**
  * How a grant answers a request.
  *
@@ -727,25 +743,12 @@ export type StartedAt1 = string | null;
 export type InvestigationState =
   "pending" | "planning" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
 /**
- * What set an Investigation off.
- */
-export type TriggerKind = "alert" | "webhook" | "schedule" | "human_question" | "simulation";
-export type ReceivedAt = string;
-/**
- * Who sent it, e.g. 'alertmanager'.
- */
-export type Source = string;
-/**
- * One line, as the source described it.
- */
-export type Title1 = string;
-/**
  * The only connector that may redeem this lease.
  */
 export type Connector2 = string;
 export type ExpiresAt1 = string;
 export type Id14 = string;
-export type InvestigationId16 = string;
+export type InvestigationId17 = string;
 export type IssuedAt = string;
 /**
  * Auto-renews while the underlying grant is valid and the run is live.
@@ -793,7 +796,7 @@ export type ModelsEndpoint = string | null;
  */
 export type SecretRef = string | null;
 export type ActionName = string;
-export type InvestigationId17 = string | null;
+export type InvestigationId18 = string | null;
 export type SourceComponentId = string;
 export type SurfaceId = string;
 
@@ -1060,28 +1063,56 @@ export interface EventEnvelope {
   sequence?: Sequence;
 }
 /**
+ * An inbound trigger was accepted and an Investigation created for it.
+ *
+ * Distinct from `investigation_started`, which marks the run leaving PENDING.
+ * A webhook can be accepted seconds before anything plans it, and collapsing
+ * the two would lose the gap where a backlog becomes visible.
+ */
+export interface TriggerReceivedEvent {
+  investigation_id: InvestigationId4;
+  trigger: Trigger;
+  type?: Type;
+}
+/**
+ * The inbound event that started everything.
+ */
+export interface Trigger {
+  kind: TriggerKind;
+  payload?: Payload;
+  received_at: ReceivedAt;
+  source: Source;
+  title?: Title;
+}
+/**
+ * Verbatim, unparsed.
+ */
+export interface Payload {
+  [k: string]: unknown;
+}
+/**
  * An Investigation moved out of PENDING.
  */
 export interface InvestigationStartedEvent {
-  investigation_id: InvestigationId4;
-  type?: Type;
+  investigation_id: InvestigationId5;
+  type?: Type1;
 }
 /**
  * A run reached a terminal state, successfully or not.
  */
 export interface InvestigationCompletedEvent {
-  investigation_id: InvestigationId5;
+  investigation_id: InvestigationId6;
   partial?: Partial;
   state: State;
-  type?: Type1;
+  type?: Type2;
 }
 /**
  * Zeus dispatched an agent.
  */
 export interface StepStartedEvent {
   agent: Agent1;
-  investigation_id: InvestigationId6;
-  type?: Type2;
+  investigation_id: InvestigationId7;
+  type?: Type3;
 }
 /**
  * An agent returned, with or without findings.
@@ -1089,16 +1120,16 @@ export interface StepStartedEvent {
 export interface StepFinishedEvent {
   agent: Agent2;
   finding_count?: FindingCount;
-  investigation_id: InvestigationId7;
-  type?: Type3;
+  investigation_id: InvestigationId8;
+  type?: Type4;
 }
 /**
  * An agent returned a Finding.
  */
 export interface FindingProducedEvent {
   finding: Finding;
-  investigation_id: InvestigationId8;
-  type?: Type4;
+  investigation_id: InvestigationId9;
+  type?: Type5;
 }
 /**
  * One agent's supported claim about what it observed.
@@ -1117,7 +1148,7 @@ export interface Finding {
    */
   subject?: ResourceRef | null;
   tags?: Tags;
-  title: Title;
+  title: Title1;
   window_end?: WindowEnd;
   window_start?: WindowStart;
 }
@@ -1127,7 +1158,7 @@ export interface Finding {
 export interface Evidence1 {
   id: Id6;
   observed_at: ObservedAt;
-  payload: Payload;
+  payload: Payload1;
   source: EvidenceSource;
   /**
    * What this is about, when it is about one thing.
@@ -1221,8 +1252,8 @@ export interface EvidenceSource {
  */
 export interface HypothesisProposedEvent {
   hypothesis: RootCauseHypothesis;
-  investigation_id: InvestigationId9;
-  type?: Type5;
+  investigation_id: InvestigationId10;
+  type?: Type6;
 }
 /**
  * One candidate explanation, and how well it survived contact with evidence.
@@ -1243,8 +1274,8 @@ export interface RootCauseHypothesis {
  * The aggregator reached a conclusion.
  */
 export interface VerdictReadyEvent {
-  investigation_id: InvestigationId10;
-  type?: Type6;
+  investigation_id: InvestigationId11;
+  type?: Type7;
   verdict: Verdict;
 }
 /**
@@ -1256,7 +1287,7 @@ export interface Verdict {
   decided_at: DecidedAt;
   hypotheses?: Hypotheses;
   id: Id9;
-  investigation_id: InvestigationId11;
+  investigation_id: InvestigationId12;
   partial?: Partial1;
   recommended_actions?: RecommendedActions;
   summary: Summary1;
@@ -1266,16 +1297,16 @@ export interface Verdict {
  */
 export interface ApprovalRequestedEvent {
   action: Action;
-  investigation_id: InvestigationId12;
-  type?: Type7;
+  investigation_id: InvestigationId13;
+  type?: Type8;
 }
 /**
  * An agent asked Cerberus for a capability it has no standing grant for.
  */
 export interface AccessRequestedEvent {
-  investigation_id: InvestigationId13;
+  investigation_id: InvestigationId14;
   request: AccessRequest;
-  type?: Type8;
+  type?: Type9;
 }
 /**
  * A lease could not be renewed, so the work behind it stopped.
@@ -1287,10 +1318,10 @@ export interface AccessRequestedEvent {
  */
 export interface LeaseExpiredEvent {
   agent: Agent4;
-  investigation_id: InvestigationId14;
+  investigation_id: InvestigationId15;
   lease_id: LeaseId2;
   reason?: Reason3;
-  type?: Type9;
+  type?: Type10;
 }
 /**
  * Every grant revoked and every live lease invalidated, immediately.
@@ -1304,7 +1335,7 @@ export interface BreakGlassEvent {
   invoked_by: InvokedBy;
   leases_revoked?: LeasesRevoked;
   reason: Reason4;
-  type?: Type10;
+  type?: Type11;
 }
 /**
  * Standing permission for one agent to reach one credential one way.
@@ -1317,7 +1348,7 @@ export interface Grant {
   granted_at: GrantedAt;
   granted_by: GrantedBy;
   id: Id11;
-  investigation_id?: InvestigationId15;
+  investigation_id?: InvestigationId16;
   mode: PermissionMode;
   override_ask_default?: OverrideAskDefault;
   revoked_at?: RevokedAt;
@@ -1397,22 +1428,6 @@ export interface ModelRequirements {
   tier?: Tier;
 }
 /**
- * The inbound event that started everything.
- */
-export interface Trigger {
-  kind: TriggerKind;
-  payload?: Payload1;
-  received_at: ReceivedAt;
-  source: Source;
-  title?: Title1;
-}
-/**
- * Verbatim, unparsed.
- */
-export interface Payload1 {
-  [k: string]: unknown;
-}
-/**
  * Permission to use a credential, bound to one connector and one run.
  *
  * A lease is not a credential. It is redeemable only by the named connector,
@@ -1425,7 +1440,7 @@ export interface Lease {
   credential_ref: CredentialRef;
   expires_at: ExpiresAt1;
   id: Id14;
-  investigation_id: InvestigationId16;
+  investigation_id: InvestigationId17;
   issued_at: IssuedAt;
   renewable?: Renewable;
   renewed_count?: RenewedCount;
@@ -1455,7 +1470,7 @@ export interface ProviderConfig {
 export interface UIActionResponse {
   action_name: ActionName;
   context?: Context1;
-  investigation_id?: InvestigationId17;
+  investigation_id?: InvestigationId18;
   source_component_id: SourceComponentId;
   surface_id: SurfaceId;
 }

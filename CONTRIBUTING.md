@@ -87,6 +87,24 @@ and was passing continuously:
 - three guards asserted a substring that also appeared in the *comment*
   describing it, so deleting the real mechanism left them green.
 
+### The rule has a guard of its own
+
+Fifteen branches into a project with *"if you have not seen it red, you have not
+tested it"* as its central rule, an assertion ending in `or True` still got
+written. Vigilance did not catch it. So it is now enforced:
+
+- ruff's `SIM221`/`SIM222` catch `x or not x` and `... or True` at lint time;
+- `tests/unit/test_no_tautological_assertions.py` catches what ruff does not —
+  `assert True`, `assert 1`, `assert "literal"`, comparisons of two constants,
+  empty test bodies, and test functions with no assertion mechanism at all.
+
+Both directions are pinned: the detector has tests proving it fires on each
+pattern *and* does not fire on real assertions.
+
+The original escaped because the iteration loop ran
+`ruff check --fix -q … >/dev/null 2>&1`. **A linter whose output you discard is
+not a linter** — which is the same mistake as a guard that only ever passes.
+
 ### Fixing the code beats narrowing the guard
 
 When a guard fires, the default is to fix what it found.

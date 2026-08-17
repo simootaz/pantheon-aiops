@@ -59,6 +59,7 @@ CUSTOM_EVENTS = ("pantheon.break_glass",)
 #: has a corresponding member of the Event union, so the table cannot describe
 #: something imaginary again.
 DOMAIN_EVENT_MAPPING: dict[str, str] = {
+    "trigger_received": "StateSnapshot - the Investigation appears before it runs",
     "investigation_started": "RunStarted + StateSnapshot",
     "investigation_completed": "RunFinished",
     "step_started": "StepStarted",
