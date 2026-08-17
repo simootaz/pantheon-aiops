@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -135,6 +136,55 @@ def test_generated_artifacts_declare_they_are_generated() -> None:
         assert "do not edit" in head or "not edit" in head, (
             f"{relative} does not warn against hand-editing"
         )
+
+
+def test_line_endings_are_enforced_repository_wide() -> None:
+    """`.gitattributes` makes LF a property of the repo, not of each clone.
+
+    Checks the **index**, not the working tree. A working copy may legitimately
+    hold CRLF - that is what checkout does on some platforms - but a committed
+    blob with CRLF is the defect, because it is what every other clone receives.
+
+    Without `.gitattributes` this depends on each contributor's local
+    `core.autocrlf`. That is a coincidence, not a guarantee: it holds until
+    someone clones with Windows' default of `true` and commits CRLF. A shell
+    script that acquires CRLF fails with `bad interpreter: No such file or
+    directory`, which is a genuinely confusing way to spend an afternoon.
+    """
+    attributes = REPO_ROOT / ".gitattributes"
+    assert attributes.is_file(), ".gitattributes is missing; LF is not enforced"
+
+    declared = attributes.read_text(encoding="utf-8")
+    assert re.search(r"^\*\s+text=auto\s+eol=lf\s*$", declared, re.MULTILINE), (
+        ".gitattributes does not declare `* text=auto eol=lf`, so normalisation "
+        "falls back to each contributor's core.autocrlf"
+    )
+    for extension in (".sh", ".py", ".go", ".ts"):
+        assert re.search(rf"^\*{re.escape(extension)}\s+text\s+eol=lf", declared, re.MULTILINE), (
+            f"{extension} files are not explicitly pinned to LF"
+        )
+
+    listing = subprocess.run(
+        ["git", "ls-files", "--eol"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout
+
+    offenders: list[str] = []
+    for line in listing.splitlines():
+        if not line.strip():
+            continue
+        index_eol, _, remainder = line.partition(" ")
+        if "crlf" in index_eol or "mixed" in index_eol:
+            offenders.append(f"{remainder.split()[-1]} ({index_eol})")
+
+    assert not offenders, (
+        "tracked files carry CRLF in the index:\n  "
+        + "\n  ".join(offenders)
+        + "\nRun `git add --renormalize .` and commit."
+    )
 
 
 def test_every_exported_contract_model_is_closed() -> None:
