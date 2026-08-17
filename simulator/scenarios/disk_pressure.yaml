@@ -1,4 +1,64 @@
-# Scenario: Node disk filling until eviction thresholds trip.
+# Slow-burn, and the one most likely to be caught before it hurts: disk fills
+# steadily until the kubelet starts evicting.
+#
+# This is Moira's case rather than Argus's - the interesting question is not
+# "is something wrong now" but "when does this cross the line".
 #
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - define the disk_pressure signal timeline and expected Verdict
+
+name: disk_pressure
+title: "Disk pressure on node-a"
+description: >-
+  Log and image accumulation fills node-a's disk over three days. Nothing fails
+  until eviction thresholds trip, at which point pods are evicted and restart
+  elsewhere.
+
+baseline_seconds: 172800
+
+phases:
+  - name: disk_fills
+    start_seconds: 0
+    duration_seconds: 216000
+    target: node-a
+    note: "Disk climbs steadily towards the eviction threshold."
+    deviations:
+      - metric: disk_used
+        factor: 2.6
+        shape: ramp
+    logs:
+      - template: disk_warning
+        per_minute: 2
+        level: warn
+
+  - name: eviction_threshold
+    start_seconds: 194400
+    duration_seconds: 21600
+    target: node-a
+    note: "The kubelet begins evicting; pods restart and latency jumps."
+    deviations:
+      - metric: restarts
+        offset: 8.0
+        shape: step
+      - metric: latency
+        factor: 2.2
+        shape: spike
+    logs:
+      - template: disk_warning
+        per_minute: 15
+        level: warn
+      - template: request_error
+        per_minute: 6
+        level: error
+
+expected_root_cause:
+  category: disk_exhaustion
+  subject: node-a
+  statement: >-
+    Node-a's disk fills over three days through log and image accumulation until
+    the kubelet crosses its eviction threshold and begins evicting pods. The
+    restarts and latency are consequences of the eviction, not independent faults.
+  supporting_signals:
+    - "node disk usage rising monotonically over days"
+    - "disk usage high warnings preceding any failure"
+    - "pod restarts confined to node-a"
+    - "no corresponding rise in request rate or memory"

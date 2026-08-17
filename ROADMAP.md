@@ -48,14 +48,17 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 The first end-to-end slice: an alert produces a Finding.
 
-- `core/contracts/` filled out beyond the codegen-exercising minimum
+- ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
 - `core/registry/` — manifest discovery, capability matching
 - `agents/_base/` — `BaseAgent`, tool binding, test fixtures
 - **Argus** (anomaly detection) — the first real agent
 - Prometheus and Alertmanager connectors
 - `api/routers/` — investigations, agents, health
-- Simulator: metric and log generation
-- **Raise the coverage floor to 80** (see deferred, below)
+- ✅ Simulator: metric, log and pipeline generation, five scenarios, `pantheon-sim`
+- ✅ **Coverage floor raised.** Set from what the code measures rather than an
+  aspiration: 95 aggregate, plus a per-module floor of 90 over the modules that
+  actually branch (`tests/coverage_floor.py`). The aggregate alone is flattered
+  because most statements are Pydantic field declarations covered by import.
 
 ## Phase 2 — Orchestrator & Investigation Flow
 
@@ -115,9 +118,11 @@ changing it. Nothing here is forgotten; each row is a debt with a due date.
 | Item | Now | Target | When |
 |---|---|---|---|
 | `pre-commit install` | wired into `make install` | — | ✅ done once `verify.sh` became real |
-| `make dev` / `make sim` | stubs | wired | Phase 1, once `api.main:app` and `simulator.cli` exist |
+| `make dev` / `make sim` | wired | — | ✅ done at Phase 1, once `api.main:app` and `simulator.cli` became real |
+| **Simulator compression ceiling** | ~`tick_seconds / 0.29` — a tick costs two HTTP round trips whatever it covers | batched or in-process ingestion if a scenario ever needs more | **When a scenario cannot be expressed within it.** Not a defect: `RunReport.achieved_speed` and `kept_up` report the shortfall instead of hiding it, and the gate asserts on the speed actually delivered. Raising `tick_seconds` buys compression linearly and costs phase-boundary resolution |
 | **`gen_ts_api.sh`** | does not exist | additive generator for endpoint-surface types (paths, params, status codes) from OpenAPI | **Phase 1**, alongside real routes. Separate from `gen_ts.sh`: domain types come from JSON Schema so they are not shaped by routing accidents |
 | **`remote_write` for metrics** | pushgateway + compressed time | Prometheus `remote_write` with explicit timestamps | **Phase 6, when Moira lands.** Pushgateway discards timestamps by design, so a baseline only exists in elapsed time. Capacity forecasting needs ~30 days of history to predict the next 30, and no scrape interval can compress that — a 30-day window at 1s scrape is 2.6M samples per series. This becomes necessary, not optional |
+| **Counter rates scale with `speed`** | `rate()` returns the simulated rate × the compression factor | explicit timestamps remove the distortion entirely | **Same trigger as the row above.** Counters accumulate simulated increments while Prometheus scrapes in wall time. Correct — the alternative loses the simulated totals — but it means absolute counter thresholds only hold at `speed=1`. Ratios and within-run comparisons are unaffected, because the factor cancels; the gate uses those deliberately. Documented at the top of `simulator/metrics_generator.py` |
 | **A2UI envelope** | `Custom` event named `a2ui`, isolated to `api/agui/a2ui_channel.py` | whatever the specs standardise | **Revisit each AG-UI/A2UI release.** No canonical envelope is documented; cost of being wrong is one constant and one function |
 | **A2UI v1.0** | pinned to v0.9.1 | v1.0 | once released — it is a *release candidate*, and the spec recommends 0.9.1 for production |
 | **ag-ui#1169** | pinned `>=0.1.20,<0.2` with the bug present | upstream fix | `ReasoningMessageStartEvent.role` is `"assistant"` in Python and `"reasoning"` in TypeScript. **Will bite when reasoning events are wired at Phase 4** |

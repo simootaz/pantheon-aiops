@@ -1,4 +1,51 @@
-# Scenario: Intermittent CI failures with no underlying code regression.
+# Hephaestus and Themis: CI is red, but nothing is broken. The same job fails
+# and passes on unchanged code.
 #
-# Phase: 4 - Delivery Flow
-# TODO: Phase 4 - define the flaky_test_storm signal timeline and expected Verdict
+# The distinguishing evidence is that failures do NOT correlate with a change,
+# and that retries succeed. A triage agent that assumes red means broken will get
+# this wrong and waste an engineer's afternoon.
+#
+# Phase: 1 - Contracts & First Agent Path
+
+name: flaky_test_storm
+title: "Flaky integration tests block the pipeline"
+description: >-
+  The integration suite starts failing intermittently across unrelated branches.
+  Retries pass, no deploy correlates with onset, and production metrics stay flat.
+
+baseline_seconds: 86400
+
+phases:
+  - name: flakes_begin
+    start_seconds: 0
+    duration_seconds: 21600
+    target: checkout
+    note: "CI failures with no production symptom - the metrics stay normal."
+    logs:
+      - template: test_flake
+        per_minute: 3
+        level: error
+
+  - name: flake_storm
+    start_seconds: 10800
+    duration_seconds: 14400
+    target: checkout
+    note: "Failure rate rises; still nothing wrong in production."
+    logs:
+      - template: test_flake
+        per_minute: 9
+        level: error
+
+expected_root_cause:
+  category: flaky_test
+  subject: "integration.CheckoutFlow"
+  statement: >-
+    The integration suite is flaky, not broken. Failures appear across unrelated
+    branches, retries of the same commit pass, and no production metric deviates -
+    so the pipeline is reporting a test-infrastructure problem rather than a
+    regression.
+  supporting_signals:
+    - "the same job failing and passing on identical commits"
+    - "failures spread across unrelated branches"
+    - "no error-rate or latency deviation in production"
+    - "timeout-shaped failures rather than assertion failures"

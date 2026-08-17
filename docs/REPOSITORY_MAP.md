@@ -216,7 +216,15 @@ pantheon-aiops/
 | `dashboard/lib/` | API client, formatters, hooks. | 4 |
 | `dashboard/types/generated/` | ⚙️ **Generated.** TS types from the OpenAPI schema. | 0 |
 | **simulator/** | Python. Synthetic metrics, logs and pipelines; scenario runner. | 1 |
-| `simulator/scenarios/` | Five YAML scenarios driving the demo and e2e tests. | 1 |
+| `simulator/cluster.py` | The fake topology: 3 nodes, 12 pods, 5 services. Metrics and logs describe **these** entities, so the two streams correlate. Fixed rather than randomised, because a failed scenario has to reproduce. | 1 |
+| `simulator/clock.py` | Compression as a parameter. `SimClock(speed)` maps simulated seconds to wall seconds; `speed=1` is real time. | 1 |
+| `simulator/scenario.py` | Scenario model and YAML loader. Phases carry deviations (`factor` xor `offset`, one of four shapes) and log patterns; `expected_root_cause.category` is a `RootCauseCategory` from the contracts, not a free string. | 1 |
+| `simulator/metrics_generator.py` | Baselines with **daily seasonality, a weekly cycle and gaussian noise** — never flat lines. Pushes a full snapshot per tick to the pushgateway. | 1 |
+| `simulator/log_generator.py` | Structured logs to Loki for the same pods. Volume is **uniformly sampled** at high compression, never clipped per pod: a per-pod ceiling would erase the daily cycle and the busy/quiet gap. Ratio is reported on the run report. | 1 |
+| `simulator/pipeline_generator.py` | GitLab Pipeline and Merge Request hook payloads, posted to the **real** webhook over real HTTP. No simulator-only route. | 1 |
+| `simulator/runner.py` | The run loop. Reports `achieved_speed` and `kept_up` — pushing costs wall time, so beyond `tick_seconds / 0.29` a run silently falls behind, and silence is the failure worth preventing. | 1 |
+| `simulator/cli.py` | `pantheon-sim run <scenario> [--speed N]`, `baseline`, `list`. | 1 |
+| `simulator/scenarios/` | Five YAML scenarios driving the demo and e2e tests, one per root-cause category. | 1 |
 | **codegen/** | The contract pipeline: `export_schemas.py`, `gen_go.sh`, `gen_ts.sh`, `verify.sh`. | 0 |
 | **tests/** | Cross-cutting `unit/`, `integration/`, `e2e/`, `fixtures/`. Agent-local tests live in `agents/*/tests/`. | 1–5 |
 | **deploy/** | Everything needed to run Pantheon somewhere. | 6–7 |
@@ -481,18 +489,19 @@ target that is not yet wired says so and exits non-zero.
 | `make help` | List every target (default goal) | ✅ |
 | `make install` | `uv sync` + `pre-commit install`. Go has no external deps; dashboard deps land on branch 4 | ✅ |
 | `make dev` | Run the API locally with reload (`uvicorn --factory`, `/health` live) | ✅ |
-| `make sim` | Run a simulator scenario against the local stack | ⏳ needs `simulator.cli` (Phase 1) |
-| `make test` | `pytest` with coverage | ✅ |
+| `make sim` | Run a simulator scenario against the local stack (`SCENARIO=`, `SPEED=`) | ✅ |
+| `make test` | `pytest -m "not integration"` with coverage, then the per-module floor | ✅ |
+| `make test-sim` | Run the simulator against a live stack and assert on the **data** it produces — variance, seasonality, separability, timing | ✅ |
 | `make test-go` | `go build` + `go test` in every module listed in `go.work` | ✅ |
-| `make test-ts` | Dashboard test suite (`vitest`) | ⏳ branch 4 |
+| `make test-ts` | Dashboard test suite (`vitest`) | ✅ |
 | `make lint` | `ruff check` + `ruff format --check` | ✅ |
 | `make lint-go` | `go vet` + `golangci-lint` in every module listed in `go.work` | ✅ |
-| `make lint-ts` | `biome` against the dashboard | ⏳ branch 4 |
+| `make lint-ts` | `biome` + `tsc --noEmit` against the dashboard | ✅ |
 | `make typecheck` | `mypy --strict` over the Python tree | ✅ |
 | `make codegen` | Regenerate JSON Schema, Go structs and TS types | ✅ |
 | `make codegen-verify` | Fail if generated output has drifted | ✅ |
-| `make up` | Start the local Compose stack | ⏳ branch 6 |
-| `make down` | Stop the local Compose stack | ⏳ branch 6 |
+| `make up` | Start the local Compose stack (`PROFILE=llm-local` for local models) | ✅ |
+| `make down` | Stop the local Compose stack | ✅ |
 | `make clean` | Remove build artifacts and tooling caches | ✅ |
 
 A target that is not live names what it is waiting on and exits non-zero. None
@@ -551,6 +560,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-17 | `feature/simulator` | **The simulator, gated on its data rather than its shape.** Added `cluster.py` (3 nodes, 12 pods, 5 services — metrics and logs describe the same entities), `clock.py`, `scenario.py`, `metrics_generator.py`, `log_generator.py`, `pipeline_generator.py`, `runner.py`, `cli.py`, five scenarios covering five distinct `RootCauseCategory` values, `make sim` and `make test-sim`. Baselines carry a skewed diurnal cycle, a weekly cycle, per-pod phase jitter and per-metric gaussian noise. **Three defects were found only because the gate asserts on data:** `RESTARTS` was absent from all three metric tables, so the generator raised `KeyError` on its first push; log volume was clipped per pod, which at any real compression makes the busiest service at 14:00 emit exactly what the quietest emits at 04:00 — the flat line the metrics avoid, moved into the log domain, fixed with a uniform sampling ratio that is reported on the run report; and the run loop slept a fixed duration per tick, so OS timer overshoot (~16ms, and `sleep` can only overshoot) accumulated 554 times and silently turned a requested 2880x into 1880x. `RunReport` now carries `achieved_speed`/`kept_up`, pacing is against an absolute schedule, and the pushgateway push reuses a connection (290ms → 102ms per tick). 33 unit guards, 15 planted in both directions — **one of which failed its own planting** and was rewritten a level up, recorded in `docs/guard-verification.md`. Added a `simulator` CI job that brings the stack up and asserts readiness, because a gate that skips when the stack is missing would otherwise report a pass. |
 | 2026-08-17 | `feature/sim-observability-stack` | **The stack the simulator writes into, plus a guard for the project's own rule.** Added `prometheus`, `loki`, `pushgateway` to the **dev** overlay and made **obs** additive, so all three Compose files stay independently valid rather than two of them defining the same services. Added `deploy/observability/prometheus/prometheus.sim.yml` (1s scrape, `honor_labels`) kept separate from the production config, with a guard that fails if it is referenced from `deploy/helm`, `kustomize`, `argocd` or `terraform`. Added `core/bus.py` and `api/routers/webhooks.py` (GitLab Pipeline and Merge Request hooks → `TriggerReceivedEvent`), with a guard asserting the endpoint contains no simulator-specific code. Added `tests/unit/test_no_tautological_assertions.py` — the `or True` slip means the central rule now has mechanical enforcement rather than vigilance. **Empirical gate found a real break `docker compose config` could not: Loki exited on a root-owned volume; fixed with a `loki-init` one-shot.** |
 | 2026-08-16 | `feature/contracts-expansion` | **Phase 1 domain model.** `Evidence.payload` became a discriminated union over five per-kind models (`EvidenceKind` and the union are guarded to stay the same set). Promoted `RootCauseHypothesis` with a closed `RootCauseCategory` vocabulary, replacing `Verdict.root_cause: str` — prose cannot be scored against ground truth. Added `ResourceRef`, `PlanStep`, `ActionReceipt`, `FindingKind.DEGRADED`, and validators on Finding/Action/Verdict/Investigation. Added the event members the ADRs already promised but the bus could not emit: `LeaseExpiredEvent` (ADR 0005) and `BreakGlassEvent` (ADR 0006), plus step/completion events. Filled the **ten agent manifests** and added a guard validating each against `AgentManifest` rather than merely asserting the file exists. Added `tests/unit/test_contracts.py` (20 guards) and `tests/unit/test_export_schemas.py` (34) — the exporter had sat at 0%. Coverage floor 0 → **95 aggregate**, plus a **per-module floor of 90** in `tests/coverage_floor.py` over modules that actually branch, because 61% of statements are declarations covered by import alone. |
 | 2026-08-15 | `fix/enforce-lf-line-endings` | **Line endings enforced by the repository, not by each clone.** Added `.gitattributes`: `* text=auto eol=lf`, explicit LF for shell/source/config, CRLF for `.bat`/`.cmd`/`.ps1` (forcing LF there is the mirror-image bug), binary rules, and `linguist-generated` on the four generated artifacts and two lockfiles. Content was already clean — `core.autocrlf=input` had been normalising it — but that is a per-machine coincidence, and a clone with Windows' default `true` would have committed CRLF. Added a guard checking the **index** rather than the working tree, verified against three planted violations: a CRLF blob written straight into the index with `hash-object --no-filters`, the catch-all rule removed, and `.gitattributes` deleted. |

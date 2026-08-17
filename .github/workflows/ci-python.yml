@@ -66,3 +66,74 @@ jobs:
           name: coverage-xml
           path: coverage.xml
           if-no-files-found: ignore
+
+  # Separate job because it needs Docker and takes minutes. `make test` above
+  # deselects these with `-m "not integration"`, so the fast suite stays fast.
+  #
+  # This is the only check that looks at the DATA rather than the code. A
+  # simulator emitting flat lines passes every structural test in the repository
+  # and is worthless, so the assertions here are statistical: variance,
+  # seasonality by autocorrelation, separability by z-score and effect size, and
+  # fault timing against the scenario definition.
+  simulator:
+    name: simulator data gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the pinned interpreter
+        run: uv python install
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Start Prometheus, Loki and the pushgateway
+        working-directory: deploy/compose
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+            up -d prometheus loki pushgateway
+
+      # The gate skips loudly rather than failing when the stack is unreachable,
+      # which is right for a laptop and wrong for CI: a skipped gate would be
+      # reported as a pass. So readiness is asserted here, before pytest runs.
+      - name: Wait for the stack, and fail if it never arrives
+        run: |
+          for service in \
+            "prometheus http://localhost:9090/-/ready" \
+            "loki http://localhost:3100/ready" \
+            "pushgateway http://localhost:9091/-/ready"; do
+            name="${service%% *}"; url="${service#* }"
+            for attempt in $(seq 1 60); do
+              if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
+                echo "${name}: ready after ${attempt}s"
+                break
+              fi
+              if [ "$attempt" -eq 60 ]; then
+                echo "::error::${name} never became ready at ${url}" >&2
+                docker compose -f deploy/compose/docker-compose.yml \
+                  -f deploy/compose/docker-compose.dev.yml logs "$name" >&2 || true
+                exit 1
+              fi
+              sleep 1
+            done
+          done
+
+      - name: make test-sim
+        run: make test-sim
+
+      - name: Stack logs on failure
+        if: failure()
+        working-directory: deploy/compose
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 200
