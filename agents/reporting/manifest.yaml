@@ -1,4 +1,27 @@
-# Clio capability manifest, loaded by core.registry.loader.
+# Clio - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 5 - Proactive Flow
-# TODO: Phase 5 - declare Clio capabilities, required tools, budgets and output contract
+
+codename: clio
+domain: reporting
+description: >-
+  Writes incident timelines, postmortems and executive summaries.
+
+capabilities:
+  - name: write_timeline
+    description: Order what happened into a readable sequence.
+  - name: write_postmortem
+    description: Draft a postmortem from an investigation.
+  - name: summarise_for_executives
+    description: Compress a verdict to its decisions and cost.
+tools:
+  []
+budget:
+  max_tokens: 32768
+  max_seconds: 180
+  max_tool_calls: 5

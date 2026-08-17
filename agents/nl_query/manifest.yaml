@@ -1,4 +1,28 @@
-# Hermes capability manifest, loaded by core.registry.loader.
+# Hermes - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 2 - Orchestrator & Investigation Flow
-# TODO: Phase 2 - declare Hermes capabilities, required tools, budgets and output contract
+
+codename: hermes
+domain: nl_query
+description: >-
+  Translates natural language questions into connector queries and answers back.
+
+capabilities:
+  - name: translate_question
+    description: Turn a question into one or more connector queries.
+  - name: summarise_result
+    description: Render a query result as an answer with its caveats.
+tools:
+  - prometheus.query_instant
+  - loki.query_range
+  - kubernetes.list
+  - kubernetes.get
+budget:
+  max_tokens: 16384
+  max_seconds: 90
+  max_tool_calls: 15

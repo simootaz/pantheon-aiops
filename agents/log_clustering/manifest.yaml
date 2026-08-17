@@ -1,4 +1,28 @@
-# Lethe capability manifest, loaded by core.registry.loader.
+# Lethe - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 2 - Orchestrator & Investigation Flow
-# TODO: Phase 2 - declare Lethe capabilities, required tools, budgets and output contract
+
+codename: lethe
+domain: log_clustering
+description: >-
+  Clusters high-volume logs into representative signatures and surfaces novelty.
+
+capabilities:
+  - name: cluster_logs
+    description: Reduce a log window to templates with counts.
+  - name: detect_novel_pattern
+    description: Identify templates unseen in the reference window.
+  - name: extract_stack_traces
+    description: Pull and group exception traces out of a stream.
+tools:
+  - loki.query_range
+  - loki.labels
+budget:
+  max_tokens: 16384
+  max_seconds: 180
+  max_tool_calls: 25

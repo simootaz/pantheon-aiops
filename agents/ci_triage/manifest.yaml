@@ -1,4 +1,31 @@
-# Hephaestus capability manifest, loaded by core.registry.loader.
+# Hephaestus - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 4 - Delivery Flow
-# TODO: Phase 4 - declare Hephaestus capabilities, required tools, budgets and output contract
+
+codename: hephaestus
+domain: ci_triage
+description: >-
+  Triages failing CI pipelines and separates flake from real regression.
+
+capabilities:
+  - name: triage_pipeline_failure
+    description: Classify a failed pipeline by likely cause.
+  - name: detect_flake
+    description: Judge whether a job fails non-deterministically.
+  - name: correlate_with_change
+    description: Link a failure to the change that introduced it.
+tools:
+  - gitlab.pipeline
+  - gitlab.jobs
+  - gitlab.diff
+  - github.actions_run
+  - github.diff
+budget:
+  max_tokens: 16384
+  max_seconds: 180
+  max_tool_calls: 30

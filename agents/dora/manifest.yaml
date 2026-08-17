@@ -1,4 +1,28 @@
-# Themis capability manifest, loaded by core.registry.loader.
+# Themis - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 4 - Delivery Flow
-# TODO: Phase 4 - declare Themis capabilities, required tools, budgets and output contract
+
+codename: themis
+domain: dora
+description: >-
+  Computes DORA metrics and judges delivery health.
+
+capabilities:
+  - name: compute_dora
+    description: Calculate the four DORA metrics over a window.
+  - name: assess_delivery_trend
+    description: Judge whether delivery health is improving.
+tools:
+  - gitlab.pipeline
+  - gitlab.merge_requests
+  - github.actions_run
+  - github.pull_requests
+budget:
+  max_tokens: 8192
+  max_seconds: 180
+  max_tool_calls: 25

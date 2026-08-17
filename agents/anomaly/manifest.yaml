@@ -1,4 +1,29 @@
-# Argus capability manifest, loaded by core.registry.loader.
+# Argus - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - declare Argus capabilities, required tools, budgets and output contract
+
+codename: argus
+domain: anomaly
+description: >-
+  Detects metric anomalies and correlates them into candidate findings.
+
+capabilities:
+  - name: detect_metric_anomaly
+    description: Find points where a series departs from its baseline.
+  - name: correlate_series
+    description: Group anomalies that move together across workloads.
+  - name: establish_baseline
+    description: Compute a seasonal baseline for a metric and window.
+tools:
+  - prometheus.query_range
+  - prometheus.query_instant
+  - prometheus.series
+budget:
+  max_tokens: 8192
+  max_seconds: 120
+  max_tool_calls: 20
