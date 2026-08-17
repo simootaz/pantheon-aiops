@@ -1,8 +1,24 @@
-# Development overlay: source mounts, reload, exposed datastore ports.
+# Development overlay: source mounts, reload, exposed ports, and the
+# observability stack the simulator writes into.
 #
 # Phase: 6 - Go Port & Platform Binaries
 #
 # Composed on top of docker-compose.yml by `make up`.
+#
+# WHY PROMETHEUS, LOKI AND PUSHGATEWAY LIVE HERE RATHER THAN IN A FOURTH FILE
+# ---------------------------------------------------------------------------
+# The simulator needs somewhere to write and something to read back. The
+# alternative was a `docker-compose.sim.yml`, but that would define `prometheus`
+# and `loki` a second time alongside docker-compose.obs.yml, and two overlays
+# defining the same service means either a merge nobody predicted or a
+# mutual-exclusion rule to remember.
+#
+# Putting them here makes obs purely *additive* - it layers Grafana, Tempo and
+# the OTel collector on top - so all three files stay independently valid under
+# `docker compose config`, which is what CI checks. See docs/REPOSITORY_MAP.md.
+#
+# Prometheus runs the SIM config: a 1s scrape, which must never reach a real
+# cluster. The separation is guarded by test.
 
 name: pantheon
 
@@ -43,3 +59,55 @@ services:
   # keys still gets a working stack.
   ollama:
     profiles: ["llm-local", "dev"]
+
+  # --- what the simulator writes into --------------------------------------
+  # Metrics arrive here because a pushgateway is the only push path Prometheus
+  # offers without remote_write. It discards timestamps, which is why the scrape
+  # is fast and a simulated day is compressed - see prometheus.sim.yml.
+  pushgateway:
+    image: prom/pushgateway:v1.11.1
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    command:
+      - --config.file=/etc/prometheus/prometheus.sim.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=6h
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ../observability/prometheus/prometheus.sim.yml:/etc/prometheus/prometheus.sim.yml:ro
+      - prometheus-sim-data:/prometheus
+    depends_on:
+      - pushgateway
+
+  # Loki runs as uid 10001, and a fresh named volume is created root-owned, so
+  # the container cannot create /loki/chunks and exits immediately. Compose
+  # validated the file and the service was still dead - which is why the gate for
+  # this stack brings it up rather than only linting it.
+  #
+  # Same one-shot idiom as minio-init: fix ownership, then start.
+  loki-init:
+    image: busybox:1.37
+    command: ["sh", "-c", "mkdir -p /loki/chunks /loki/rules && chown -R 10001:10001 /loki"]
+    volumes:
+      - loki-sim-data:/loki
+    restart: "no"
+
+  loki:
+    image: grafana/loki:3.6.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    user: "10001:10001"
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki-sim-data:/loki
+    depends_on:
+      loki-init:
+        condition: service_completed_successfully
+
+volumes:
+  prometheus-sim-data:
+  loki-sim-data:
