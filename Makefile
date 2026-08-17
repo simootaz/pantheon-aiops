@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -37,18 +37,30 @@ dev:
 		--host $${PANTHEON_API_HOST:-127.0.0.1} --port $${PANTHEON_API_PORT:-8000}
 
 ## sim: run a simulator scenario (SCENARIO=name SPEED=n), e.g. make sim SCENARIO=memory_leak
+# 500x, not 4320x. A tick costs two HTTP round trips whatever span it covers, so
+# the ceiling is tick_seconds/cost - see simulator.runner.max_honest_speed, which
+# a guard holds this default under. Defaulting to 4320x made the honest "fell
+# behind" warning fire on every single run, and a warning that always fires is
+# one nobody reads.
 sim:
-	@uv run pantheon-sim run $(or $(SCENARIO),bad_deploy_5xx) --speed $(or $(SPEED),4320)
+	@uv run pantheon-sim run $(or $(SCENARIO),bad_deploy_5xx) --speed $(or $(SPEED),500)
 
 ## test: run the Python test suite and the per-module coverage floor
 test:
 	@uv run pytest -m "not integration"
 	@uv run python -m tests.coverage_floor
 
-## test-sim: assert on the DATA the simulator produces, against a live stack
-##           (needs `make up`; takes minutes, because it runs real scenarios)
+## test-sim: assert on the DATA the simulator produces against a live stack
+# `make help` parses one "## name: text" line per target; a second ## line
+# rendered as a row with no target name.
+#
+# PANTHEON_REQUIRE_STACK turns the fixture's skip into a failure. Without it an
+# unreachable Loki makes all nine tests skip and pytest exit 0, so this target
+# reports success having asserted nothing. That is not hypothetical - it
+# happened on this machine, right after `make sim` loaded Loki with 240k lines.
 test-sim:
-	@uv run pytest tests/integration -m integration --no-cov -v -s
+	@echo "test-sim: needs the stack up; runs real scenarios, so it takes minutes."
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration -m integration --no-cov -v -s
 
 ## test-go: build and test every Go module in the workspace
 test-go:

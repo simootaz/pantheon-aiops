@@ -114,7 +114,7 @@ guard alone, require it red, restore, require it green.
 | two scenarios sharing one root cause | `test_the_five_scenarios_cover_five_distinct_root_causes` |
 | a duration passed where a deadline was needed | `test_the_run_loop_honours_speed_across_many_ticks` |
 
-### One guard failed its own planting
+### Aim a guard at the level where the defect can exist
 
 The pacing guard was written first as a direct test of `_sleep_until`, calling it
 with a series of absolute deadlines. Planting the original bug left it **green**.
@@ -122,16 +122,39 @@ with a series of absolute deadlines. Planting the original bug left it **green**
 The reason is worth recording, because the guard looked entirely reasonable. The
 bug was never inside `_sleep_until` — it was in the *caller*, which passed a
 duration where a deadline was needed. A helper that takes a deadline recomputes
-the remaining wait from that absolute point every call, so it self-corrects
-however its internals are written. The guard was testing the half of the system
-that could not hold the defect.
+the remaining wait from that absolute point on every call, so it self-corrects
+however its internals are written. **The defect was not expressible at the layer
+the guard was testing.** No amount of care inside that test could have found it.
 
 Rewritten to drive `run()` with the I/O stubbed and assert `kept_up` over 42
 ticks, it catches the planted duration immediately. Same invariant, tested one
 level up, where the invariant actually lives.
 
-> A guard aimed at the wrong layer passes for the same reason a correct one
-> does. Only the planting tells them apart.
+> **Aim a guard at the level where the defect can exist.**
+>
+> Before writing one, ask where the mistake would actually be made. A unit that
+> sanitises its own inputs cannot demonstrate a caller that supplies the wrong
+> ones; a function that normalises a path cannot show a caller passing a
+> relative one. Guard the seam, not the well-behaved component next to it.
+>
+> A guard aimed at the wrong layer passes for exactly the same reason a correct
+> one does. Only the planting tells them apart.
+
+This is the second distinct way a guard can be unfailable, and it is worth
+separating from the first. A guard can be satisfied by *documentation* — the
+`_mechanism_only()` class, where prose describing a mechanism matches a check
+meant to prove the mechanism is present. Or it can be aimed at the *wrong layer*,
+where the invariant holds trivially because the defect belongs somewhere else.
+The first is caught by stripping comments. The second is caught only by asking
+where the bug would live, and then planting it there.
+
+Both were hit again while writing the Makefile guards on `fix/makefile-verification`:
+`test_test_sim_requires_the_stack_rather_than_skipping` extracted its "recipe" by
+splitting the file on `"test-sim:"`, which matches the `## test-sim:` help line
+first — so the comment block explaining `PANTHEON_REQUIRE_STACK` satisfied a check
+meant to prove the variable was actually set. Planting removal of the mechanism,
+comment left intact, exposed it. `recipe_for()` now takes only tab-indented
+command lines and drops comments among them.
 
 ## How the audit was run
 
