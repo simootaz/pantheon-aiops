@@ -105,6 +105,32 @@ The original escaped because the iteration loop ran
 `ruff check --fix -q … >/dev/null 2>&1`. **A linter whose output you discard is
 not a linter** — which is the same mistake as a guard that only ever passes.
 
+### A check whose output is suppressed is not a check
+
+A distinct failure from a guard that cannot fail, and the more instructive one:
+**the rule existed, was selected, and fired — and the result was thrown away.**
+
+`assert … or True` reached a commit because the iteration loop ran
+`ruff check --fix -q … >/dev/null 2>&1`. Ruff's `SIM222` flagged it correctly.
+Nobody saw.
+
+So:
+
+- Never discard a checker's **verdict**. `|| true`, `; true` and a bare `exit 0`
+  after a check turn a failure into a pass.
+- Discarding **chatter** is fine when the exit code still decides. `verify.sh`
+  sends generator stdout to `/dev/null` under `set -e` and prints every captured
+  diff to stderr on failure — the noise goes, the verdict stays.
+- `continue-on-error` must always be paired with a later step reading
+  `steps.<id>.outcome`. `security.yml` uses it correctly, so SARIF uploads before
+  the job fails; without the later step it would mean "ignore this result".
+- If you capture output to a file, **print it on failure**. Drift detected and
+  not reported is drift nobody fixes.
+
+Guarded by `tests/unit/test_checks_are_not_suppressed.py`, which checks Makefile
+check targets, every workflow's `continue-on-error` usage, and that `verify.sh`
+prints as many diffs as it captures.
+
 ### Fixing the code beats narrowing the guard
 
 When a guard fires, the default is to fix what it found.
