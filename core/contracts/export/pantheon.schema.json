@@ -57,6 +57,9 @@
     "resolution_record": {
       "$ref": "#/$defs/ResolutionRecord"
     },
+    "root_cause_hypothesis": {
+      "$ref": "#/$defs/RootCauseHypothesis"
+    },
     "u_i_action_response": {
       "$ref": "#/$defs/UIActionResponse"
     },
@@ -388,6 +391,32 @@
       "title": "AccessRequest",
       "type": "object"
     },
+    "AccessRequestedEvent": {
+      "additionalProperties": false,
+      "description": "An agent asked Cerberus for a capability it has no standing grant for.",
+      "properties": {
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/AccessRequest"
+        },
+        "type": {
+          "const": "access_requested",
+          "default": "access_requested",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "request"
+      ],
+      "title": "AccessRequestedEvent",
+      "type": "object"
+    },
     "Action": {
       "additionalProperties": false,
       "description": "A remediation Pantheon proposes, and may later execute.",
@@ -405,17 +434,50 @@
           "title": "Dry Run",
           "type": "boolean"
         },
+        "execution_state": {
+          "$ref": "#/$defs/ExecutionState",
+          "default": "proposed"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
           "type": "string"
         },
         "operation": {
-          "description": "What it does, e.g. 'rollout_restart'.",
+          "description": "What it does, e.g. 'rollout_restart', 'scale'.",
           "title": "Operation",
           "type": "string"
         },
+        "parameters": {
+          "additionalProperties": true,
+          "description": "Operation arguments, e.g. {'replicas': 4}.",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "proposed_at": {
+          "format": "date-time",
+          "title": "Proposed At",
+          "type": "string"
+        },
+        "proposed_by": {
+          "description": "Agent codename, or 'zeus'.",
+          "title": "Proposed By",
+          "type": "string"
+        },
         "reason": {
+          "description": "Why this Action was proposed, in terms of the Verdict.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "receipts": {
+          "description": "Append-only execution history.",
+          "items": {
+            "$ref": "#/$defs/ActionReceipt"
+          },
+          "title": "Receipts",
+          "type": "array"
+        },
+        "rollback": {
           "anyOf": [
             {
               "type": "string"
@@ -425,22 +487,69 @@
             }
           ],
           "default": null,
-          "description": "Why this Action was proposed.",
-          "title": "Reason"
+          "description": "How to undo it. Required for anything wider than a single workload.",
+          "title": "Rollback"
         },
         "target": {
-          "description": "What it acts on, e.g. 'deployment/checkout'.",
-          "title": "Target",
-          "type": "string"
+          "$ref": "#/$defs/ResourceRef"
         }
       },
       "required": [
         "id",
         "target",
         "operation",
-        "blast_radius"
+        "blast_radius",
+        "reason",
+        "proposed_by",
+        "proposed_at"
       ],
       "title": "Action",
+      "type": "object"
+    },
+    "ActionReceipt": {
+      "additionalProperties": false,
+      "description": "What happened when an Action ran. Written once, never amended.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "connector": {
+          "description": "Which connector executed it.",
+          "title": "Connector",
+          "type": "string"
+        },
+        "detail": {
+          "default": "",
+          "description": "Human-readable outcome. Never a credential.",
+          "title": "Detail",
+          "type": "string"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The lease it was executed under.",
+          "title": "Lease Id"
+        },
+        "state": {
+          "$ref": "#/$defs/ExecutionState"
+        }
+      },
+      "required": [
+        "at",
+        "state",
+        "connector"
+      ],
+      "title": "ActionReceipt",
       "type": "object"
     },
     "AgentBudget": {
@@ -570,7 +679,8 @@
         "not_required",
         "pending",
         "approved",
-        "rejected"
+        "rejected",
+        "expired"
       ],
       "title": "ApprovalState",
       "type": "string"
@@ -732,10 +842,54 @@
         "none",
         "single_workload",
         "namespace",
-        "cluster"
+        "cluster",
+        "multi_cluster"
       ],
       "title": "BlastRadius",
       "type": "string"
+    },
+    "BreakGlassEvent": {
+      "additionalProperties": false,
+      "description": "Every grant revoked and every live lease invalidated, immediately.\n\nThe one domain concept that becomes an AG-UI `Custom` event rather than a\nstate patch: it affects every run at once, so an open dashboard must react\non arrival rather than render a new audit row (ADR 0006).",
+      "properties": {
+        "audit_entry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuditEntry"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "invoked_by": {
+          "title": "Invoked By",
+          "type": "string"
+        },
+        "leases_revoked": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Leases Revoked",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "break_glass",
+          "default": "break_glass",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invoked_by",
+        "reason"
+      ],
+      "title": "BreakGlassEvent",
+      "type": "object"
     },
     "Capability": {
       "description": "A behaviour a model either demonstrably has or does not.\n\nMembership is established by probing, never by a hardcoded table - see\ncore.llm.probe.",
@@ -871,9 +1025,16 @@
         "event": {
           "discriminator": {
             "mapping": {
+              "access_requested": "#/$defs/AccessRequestedEvent",
               "approval_requested": "#/$defs/ApprovalRequestedEvent",
+              "break_glass": "#/$defs/BreakGlassEvent",
               "finding_produced": "#/$defs/FindingProducedEvent",
+              "hypothesis_proposed": "#/$defs/HypothesisProposedEvent",
+              "investigation_completed": "#/$defs/InvestigationCompletedEvent",
               "investigation_started": "#/$defs/InvestigationStartedEvent",
+              "lease_expired": "#/$defs/LeaseExpiredEvent",
+              "step_finished": "#/$defs/StepFinishedEvent",
+              "step_started": "#/$defs/StepStartedEvent",
               "verdict_ready": "#/$defs/VerdictReadyEvent"
             },
             "propertyName": "type"
@@ -883,13 +1044,34 @@
               "$ref": "#/$defs/InvestigationStartedEvent"
             },
             {
+              "$ref": "#/$defs/InvestigationCompletedEvent"
+            },
+            {
+              "$ref": "#/$defs/StepStartedEvent"
+            },
+            {
+              "$ref": "#/$defs/StepFinishedEvent"
+            },
+            {
               "$ref": "#/$defs/FindingProducedEvent"
+            },
+            {
+              "$ref": "#/$defs/HypothesisProposedEvent"
             },
             {
               "$ref": "#/$defs/VerdictReadyEvent"
             },
             {
               "$ref": "#/$defs/ApprovalRequestedEvent"
+            },
+            {
+              "$ref": "#/$defs/AccessRequestedEvent"
+            },
+            {
+              "$ref": "#/$defs/LeaseExpiredEvent"
+            },
+            {
+              "$ref": "#/$defs/BreakGlassEvent"
             }
           ],
           "title": "Event"
@@ -898,6 +1080,13 @@
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "sequence": {
+          "default": 0,
+          "description": "Monotonic within an investigation. Replay depends on order, so it is carried rather than inferred from arrival.",
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
         }
       },
       "required": [
@@ -917,55 +1106,91 @@
           "title": "Id",
           "type": "string"
         },
-        "kind": {
-          "$ref": "#/$defs/EvidenceKind"
-        },
         "observed_at": {
+          "description": "When the thing happened, not when it was fetched.",
           "format": "date-time",
           "title": "Observed At",
           "type": "string"
         },
         "payload": {
-          "additionalProperties": true,
-          "description": "Kind-specific body. Phase 1 replaces this with per-kind models.",
-          "title": "Payload",
-          "type": "object"
+          "discriminator": {
+            "mapping": {
+              "k8s_event": "#/$defs/K8sEventPayload",
+              "log_cluster": "#/$defs/LogClusterPayload",
+              "manifest_diff": "#/$defs/ManifestDiffPayload",
+              "metric_window": "#/$defs/MetricWindowPayload",
+              "pipeline_run": "#/$defs/PipelineRunPayload"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MetricWindowPayload"
+            },
+            {
+              "$ref": "#/$defs/LogClusterPayload"
+            },
+            {
+              "$ref": "#/$defs/ManifestDiffPayload"
+            },
+            {
+              "$ref": "#/$defs/K8sEventPayload"
+            },
+            {
+              "$ref": "#/$defs/PipelineRunPayload"
+            }
+          ],
+          "title": "Payload"
         },
         "source": {
           "$ref": "#/$defs/EvidenceSource"
         },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What this is about, when it is about one thing."
+        },
         "summary": {
-          "description": "One-line human-readable description.",
+          "description": "One line a human can read without expanding the payload.",
           "title": "Summary",
           "type": "string"
         }
       },
       "required": [
         "id",
-        "kind",
         "source",
         "observed_at",
-        "summary"
+        "summary",
+        "payload"
       ],
       "title": "Evidence",
       "type": "object"
     },
-    "EvidenceKind": {
-      "description": "What sort of observation this Evidence carries.",
-      "enum": [
-        "metric_window",
-        "log_cluster",
-        "manifest_diff",
-        "k8s_event",
-        "pipeline_run"
-      ],
-      "title": "EvidenceKind",
-      "type": "string"
-    },
     "EvidenceSource": {
       "additionalProperties": false,
-      "description": "Where a piece of Evidence came from, so a human can go look themselves.",
+      "description": "Where a piece of Evidence came from, so a human can go and look.",
       "properties": {
+        "collected_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the connector ran, as distinct from what it observed.",
+          "title": "Collected At"
+        },
         "connector": {
           "description": "Connector that produced it, e.g. 'prometheus'.",
           "title": "Connector",
@@ -981,7 +1206,7 @@
             }
           ],
           "default": null,
-          "description": "Query that produced it, if any.",
+          "description": "Query that produced it, verbatim.",
           "title": "Query"
         }
       },
@@ -990,6 +1215,20 @@
       ],
       "title": "EvidenceSource",
       "type": "object"
+    },
+    "ExecutionState": {
+      "description": "What actually happened, as distinct from what was permitted.",
+      "enum": [
+        "proposed",
+        "dry_run",
+        "executing",
+        "succeeded",
+        "failed",
+        "rolled_back",
+        "skipped"
+      ],
+      "title": "ExecutionState",
+      "type": "string"
     },
     "Finding": {
       "additionalProperties": false,
@@ -1001,11 +1240,16 @@
           "type": "string"
         },
         "confidence": {
-          "description": "Agent's own confidence, 0 to 1.",
+          "description": "The agent's own confidence, 0 to 1.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Confidence",
           "type": "number"
+        },
+        "detected_at": {
+          "format": "date-time",
+          "title": "Detected At",
+          "type": "string"
         },
         "evidence": {
           "description": "Evidence supporting the claim. A Finding with none is inadmissible.",
@@ -1019,6 +1263,10 @@
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FindingKind",
+          "default": "observation"
         },
         "rationale": {
           "anyOf": [
@@ -1036,9 +1284,57 @@
         "severity": {
           "$ref": "#/$defs/Severity"
         },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the claim is about."
+        },
+        "tags": {
+          "description": "Free-form, for grouping.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
         "title": {
+          "description": "One line, specific enough to act on.",
           "title": "Title",
           "type": "string"
+        },
+        "window_end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window End"
+        },
+        "window_start": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of the period this claim is about.",
+          "title": "Window Start"
         }
       },
       "required": [
@@ -1046,10 +1342,23 @@
         "agent",
         "title",
         "severity",
-        "confidence"
+        "confidence",
+        "detected_at"
       ],
       "title": "Finding",
       "type": "object"
+    },
+    "FindingKind": {
+      "description": "What sort of claim this is.\n\nDEGRADED is the important one: it is how an agent reports that it could not\ndo its job - a lease expired, a connector was unreachable, a budget ran out.\nMaking it a Finding rather than a silent absence is what keeps a partial\ninvestigation visibly partial.",
+      "enum": [
+        "observation",
+        "anomaly",
+        "correlation",
+        "risk",
+        "degraded"
+      ],
+      "title": "FindingKind",
+      "type": "string"
     },
     "FindingProducedEvent": {
       "additionalProperties": false,
@@ -1171,6 +1480,43 @@
       "title": "Grant",
       "type": "object"
     },
+    "HypothesisProposedEvent": {
+      "additionalProperties": false,
+      "description": "A candidate explanation entered the running.",
+      "properties": {
+        "hypothesis": {
+          "$ref": "#/$defs/RootCauseHypothesis"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "hypothesis_proposed",
+          "default": "hypothesis_proposed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "hypothesis"
+      ],
+      "title": "HypothesisProposedEvent",
+      "type": "object"
+    },
+    "HypothesisStatus": {
+      "description": "Where a hypothesis stands once the evidence is in.",
+      "enum": [
+        "proposed",
+        "supported",
+        "refuted",
+        "inconclusive"
+      ],
+      "title": "HypothesisStatus",
+      "type": "string"
+    },
     "Investigation": {
       "additionalProperties": false,
       "description": "One end-to-end run, from trigger to Verdict.",
@@ -1208,10 +1554,26 @@
           "title": "Findings",
           "type": "array"
         },
+        "hypotheses": {
+          "description": "Working hypotheses, before the Verdict ranks them.",
+          "items": {
+            "$ref": "#/$defs/RootCauseHypothesis"
+          },
+          "title": "Hypotheses",
+          "type": "array"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "plan": {
+          "description": "What Zeus decided to ask.",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "title": "Plan",
+          "type": "array"
         },
         "resolutions": {
           "description": "Every Delphi model resolution made during this run, in order.",
@@ -1220,6 +1582,32 @@
           },
           "title": "Resolutions",
           "type": "array"
+        },
+        "scenario": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Simulator scenario that produced this run, when triggered by one. Present so a run can be scored against known ground truth.",
+          "title": "Scenario"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
         },
         "state": {
           "$ref": "#/$defs/InvestigationState"
@@ -1247,6 +1635,40 @@
         "created_at"
       ],
       "title": "Investigation",
+      "type": "object"
+    },
+    "InvestigationCompletedEvent": {
+      "additionalProperties": false,
+      "description": "A run reached a terminal state, successfully or not.",
+      "properties": {
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "description": "True when any agent reported DEGRADED.",
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "The terminal InvestigationState value.",
+          "title": "State",
+          "type": "string"
+        },
+        "type": {
+          "const": "investigation_completed",
+          "default": "investigation_completed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "state"
+      ],
+      "title": "InvestigationCompletedEvent",
       "type": "object"
     },
     "InvestigationStartedEvent": {
@@ -1284,6 +1706,75 @@
       ],
       "title": "InvestigationState",
       "type": "string"
+    },
+    "K8sEventPayload": {
+      "additionalProperties": false,
+      "description": "A Kubernetes event, which is often the shortest path to the answer.",
+      "properties": {
+        "count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "event_type": {
+          "default": "Warning",
+          "description": "'Normal' or 'Warning'.",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "first_seen": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Seen"
+        },
+        "kind": {
+          "const": "k8s_event",
+          "default": "k8s_event",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_seen": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Seen"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reason": {
+          "description": "e.g. 'OOMKilling', 'Unhealthy', 'FailedScheduling'.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/ResourceRef"
+        }
+      },
+      "required": [
+        "target",
+        "reason",
+        "message"
+      ],
+      "title": "K8sEventPayload",
+      "type": "object"
     },
     "Lease": {
       "additionalProperties": false,
@@ -1349,6 +1840,282 @@
         "expires_at"
       ],
       "title": "Lease",
+      "type": "object"
+    },
+    "LeaseExpiredEvent": {
+      "additionalProperties": false,
+      "description": "A lease could not be renewed, so the work behind it stopped.\n\nADR 0005: this must surface as a Finding and never be swallowed. `reason`\ndistinguishes the two cases, because they call for opposite responses -\nan expired grant warrants offering re-approval, a revoked one must not,\nsince re-prompting would undo a deliberate revocation mid-incident.",
+      "properties": {
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "lease_id": {
+          "format": "uuid",
+          "title": "Lease Id",
+          "type": "string"
+        },
+        "reason": {
+          "default": "expired",
+          "enum": [
+            "expired",
+            "revoked"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "lease_expired",
+          "default": "lease_expired",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "lease_id",
+        "agent"
+      ],
+      "title": "LeaseExpiredEvent",
+      "type": "object"
+    },
+    "LogClusterPayload": {
+      "additionalProperties": false,
+      "description": "A group of log lines sharing a template, plus how surprising it is.",
+      "properties": {
+        "first_seen": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Seen"
+        },
+        "kind": {
+          "const": "log_cluster",
+          "default": "log_cluster",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_seen": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Seen"
+        },
+        "novelty": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1.0 means never seen before this window.",
+          "title": "Novelty"
+        },
+        "occurrences": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Occurrences",
+          "type": "integer"
+        },
+        "sample_lines": {
+          "description": "Verbatim examples. Redacted before emission.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Sample Lines",
+          "type": "array"
+        },
+        "template": {
+          "description": "Normalised line with variables masked.",
+          "title": "Template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "template"
+      ],
+      "title": "LogClusterPayload",
+      "type": "object"
+    },
+    "ManifestDiffPayload": {
+      "additionalProperties": false,
+      "description": "A change to a manifest or IaC definition, and what it touches.",
+      "properties": {
+        "changed_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Changed Fields",
+          "type": "array"
+        },
+        "diff": {
+          "description": "Unified diff.",
+          "title": "Diff",
+          "type": "string"
+        },
+        "kind": {
+          "const": "manifest_diff",
+          "default": "manifest_diff",
+          "title": "Kind",
+          "type": "string"
+        },
+        "revision_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision After"
+        },
+        "revision_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision Before"
+        },
+        "target": {
+          "$ref": "#/$defs/ResourceRef"
+        }
+      },
+      "required": [
+        "target",
+        "diff"
+      ],
+      "title": "ManifestDiffPayload",
+      "type": "object"
+    },
+    "MetricSample": {
+      "additionalProperties": false,
+      "description": "One point on a series.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "at",
+        "value"
+      ],
+      "title": "MetricSample",
+      "type": "object"
+    },
+    "MetricWindowPayload": {
+      "additionalProperties": false,
+      "description": "A slice of a time series, with the baseline it is being judged against.\n\n`deviation_sigma` is carried rather than recomputed downstream so that the\ndashboard, the verdict and the audit trail all agree on how unusual this\nwas - recomputing invites three different answers.",
+      "properties": {
+        "baseline_mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Mean"
+        },
+        "baseline_stddev": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Stddev"
+        },
+        "deviation_sigma": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How many standard deviations from baseline, signed.",
+          "title": "Deviation Sigma"
+        },
+        "kind": {
+          "const": "metric_window",
+          "default": "metric_window",
+          "title": "Kind",
+          "type": "string"
+        },
+        "metric": {
+          "description": "Metric name, e.g. 'container_memory_working_set_bytes'.",
+          "title": "Metric",
+          "type": "string"
+        },
+        "samples": {
+          "items": {
+            "$ref": "#/$defs/MetricSample"
+          },
+          "title": "Samples",
+          "type": "array"
+        },
+        "unit": {
+          "default": "",
+          "description": "e.g. 'bytes', 'seconds', 'requests/s'.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "window_seconds": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Window Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric"
+      ],
+      "title": "MetricWindowPayload",
       "type": "object"
     },
     "ModelDescriptor": {
@@ -1489,6 +2256,132 @@
       ],
       "title": "PermissionMode",
       "type": "string"
+    },
+    "PipelineRunPayload": {
+      "additionalProperties": false,
+      "description": "One CI pipeline run and the jobs that failed in it.",
+      "properties": {
+        "commit_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Sha"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "failed_jobs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed Jobs",
+          "type": "array"
+        },
+        "kind": {
+          "const": "pipeline_run",
+          "default": "pipeline_run",
+          "title": "Kind",
+          "type": "string"
+        },
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "string"
+        },
+        "project": {
+          "title": "Project",
+          "type": "string"
+        },
+        "ref": {
+          "description": "Branch or tag.",
+          "title": "Ref",
+          "type": "string"
+        },
+        "status": {
+          "description": "e.g. 'failed', 'success'.",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pipeline_id",
+        "project",
+        "ref",
+        "status"
+      ],
+      "title": "PipelineRunPayload",
+      "type": "object"
+    },
+    "PlanStep": {
+      "additionalProperties": false,
+      "description": "One agent consultation Zeus intends to make.",
+      "properties": {
+        "agent": {
+          "description": "Agent codename.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "depends_on": {
+          "description": "Agent codenames whose findings this step needs.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "reason": {
+          "description": "Why this agent is being asked.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        }
+      },
+      "required": [
+        "agent",
+        "reason"
+      ],
+      "title": "PlanStep",
+      "type": "object"
     },
     "ProviderConfig": {
       "additionalProperties": false,
@@ -1641,6 +2534,157 @@
       "title": "ResolutionStep",
       "type": "string"
     },
+    "ResourceRef": {
+      "additionalProperties": false,
+      "description": "What a piece of Evidence is about.\n\nDeliberately not Kubernetes-shaped: a pipeline and a database are subjects\ntoo, and forcing them into `namespace/kind/name` would be a lie that costs\nan adapter at every call site.",
+      "properties": {
+        "cluster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cluster"
+        },
+        "kind": {
+          "description": "e.g. 'deployment', 'pipeline', 'node'.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where applicable.",
+          "title": "Namespace"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ResourceRef",
+      "type": "object"
+    },
+    "RootCauseCategory": {
+      "description": "The closed vocabulary shared by agents, verdicts and scenario ground truth.\n\nAdding a member is a deliberate act: it widens what an agent may conclude\nand what a scenario may assert. `UNKNOWN` exists so that \"we do not know\" is\na statable conclusion rather than an absent one - an investigation that\ncannot say it will invent something instead.",
+      "enum": [
+        "memory_leak",
+        "resource_contention",
+        "bad_deployment",
+        "config_error",
+        "disk_exhaustion",
+        "capacity_saturation",
+        "dependency_failure",
+        "network_partition",
+        "flaky_test",
+        "data_corruption",
+        "external_incident",
+        "unknown"
+      ],
+      "title": "RootCauseCategory",
+      "type": "string"
+    },
+    "RootCauseHypothesis": {
+      "additionalProperties": false,
+      "description": "One candidate explanation, and how well it survived contact with evidence.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/RootCauseCategory"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contradicting_finding_ids": {
+          "description": "Recorded deliberately. A hypothesis with none listed has usually not been tested, rather than survived testing.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Contradicting Finding Ids",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "proposed_by": {
+          "description": "Agent codename, or 'zeus' for an aggregated one.",
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the evidence implies this.",
+          "title": "Reasoning"
+        },
+        "statement": {
+          "description": "One sentence a human can act on, e.g. 'checkout leaks connections under retry storms, exhausting the pool'.",
+          "title": "Statement",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/HypothesisStatus",
+          "default": "proposed"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What it is about, e.g. 'deployment/checkout'.",
+          "title": "Subject"
+        },
+        "supporting_finding_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Supporting Finding Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "statement",
+        "confidence",
+        "proposed_by"
+      ],
+      "title": "RootCauseHypothesis",
+      "type": "object"
+    },
     "Severity": {
       "description": "How much a Finding should worry the on-call engineer.",
       "enum": [
@@ -1652,6 +2696,66 @@
       ],
       "title": "Severity",
       "type": "string"
+    },
+    "StepFinishedEvent": {
+      "additionalProperties": false,
+      "description": "An agent returned, with or without findings.",
+      "properties": {
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "finding_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Finding Count",
+          "type": "integer"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "step_finished",
+          "default": "step_finished",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "agent"
+      ],
+      "title": "StepFinishedEvent",
+      "type": "object"
+    },
+    "StepStartedEvent": {
+      "additionalProperties": false,
+      "description": "Zeus dispatched an agent.",
+      "properties": {
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "step_started",
+          "default": "step_started",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "agent"
+      ],
+      "title": "StepStartedEvent",
+      "type": "object"
     },
     "Tier": {
       "description": "Cost/capability band an agent asks for, rather than a specific model.",
@@ -1672,6 +2776,7 @@
         },
         "payload": {
           "additionalProperties": true,
+          "description": "Verbatim, unparsed.",
           "title": "Payload",
           "type": "object"
         },
@@ -1683,6 +2788,12 @@
         "source": {
           "description": "Who sent it, e.g. 'alertmanager'.",
           "title": "Source",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "description": "One line, as the source described it.",
+          "title": "Title",
           "type": "string"
         }
       },
@@ -1700,7 +2811,8 @@
         "alert",
         "webhook",
         "schedule",
-        "human_question"
+        "human_question",
+        "simulation"
       ],
       "title": "TriggerKind",
       "type": "string"
@@ -1754,6 +2866,7 @@
       "description": "The orchestrator's ranked conclusion for one Investigation.",
       "properties": {
         "confidence": {
+          "description": "Confidence in the leading hypothesis.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Confidence",
@@ -1766,6 +2879,19 @@
           "title": "Contributing Findings",
           "type": "array"
         },
+        "decided_at": {
+          "format": "date-time",
+          "title": "Decided At",
+          "type": "string"
+        },
+        "hypotheses": {
+          "description": "Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.",
+          "items": {
+            "$ref": "#/$defs/RootCauseHypothesis"
+          },
+          "title": "Hypotheses",
+          "type": "array"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
@@ -1776,6 +2902,12 @@
           "title": "Investigation Id",
           "type": "string"
         },
+        "partial": {
+          "default": false,
+          "description": "True when an agent reported DEGRADED, so the conclusion rests on incomplete evidence. Surfaced to the reader rather than buried.",
+          "title": "Partial",
+          "type": "boolean"
+        },
         "recommended_actions": {
           "items": {
             "$ref": "#/$defs/Action"
@@ -1783,20 +2915,8 @@
           "title": "Recommended Actions",
           "type": "array"
         },
-        "root_cause": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Null when the evidence does not support a conclusion.",
-          "title": "Root Cause"
-        },
         "summary": {
+          "description": "What happened, in one paragraph, for a human.",
           "title": "Summary",
           "type": "string"
         }
@@ -1804,8 +2924,9 @@
       "required": [
         "id",
         "investigation_id",
+        "summary",
         "confidence",
-        "summary"
+        "decided_at"
       ],
       "title": "Verdict",
       "type": "object"
