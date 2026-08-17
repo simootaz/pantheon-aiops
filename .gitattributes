@@ -1,0 +1,111 @@
+# Line endings and diff behaviour, as a property of the repository.
+#
+# Phase: 0 - Scaffold & Tooling
+#
+# Without this file, normalisation depends on each contributor's local
+# `core.autocrlf`. That is not a guarantee - it is a coincidence that holds
+# until someone clones with Windows' default and commits CRLF. Everything below
+# makes the outcome the same on every machine.
+#
+# Enforced by tests/unit/test_repo_structure.py, which checks the *index*
+# rather than the working tree: the working copy may legitimately differ, but a
+# committed blob with CRLF is the defect.
+
+# Normalise every text file to LF in the repository. Git detects text vs binary.
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# Files that genuinely break with the wrong ending
+# ---------------------------------------------------------------------------
+
+# A shell script with CRLF fails with `bad interpreter: No such file or
+# directory` - the \r becomes part of the interpreter path. This is the single
+# most common cross-platform breakage, and every deploy script here is bash.
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# Docker, Make and Compose all execute shell.
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+Makefile        text eol=lf
+*.mk            text eol=lf
+
+# Source and configuration. Explicit rather than relying on detection, so a
+# stray binary heuristic cannot quietly exempt one of them.
+*.py            text eol=lf
+*.pyi           text eol=lf
+*.go            text eol=lf
+*.mod           text eol=lf
+*.sum           text eol=lf
+*.work          text eol=lf
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.jsx           text eol=lf
+*.mjs           text eol=lf
+*.cjs           text eol=lf
+*.css           text eol=lf
+*.json          text eol=lf
+*.jsonc         text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.toml          text eol=lf
+*.tf            text eol=lf
+*.tfvars        text eol=lf
+*.tpl           text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
+*.sql           text eol=lf
+.env.example    text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+.editorconfig   text eol=lf
+.python-version text eol=lf
+
+# Windows scripts are the exception: cmd.exe and PowerShell expect CRLF, and
+# forcing LF on them is the mirror image of the bug above. None exist today; the
+# rule is here so adding one does not silently break it.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
+
+# ---------------------------------------------------------------------------
+# Binary - never normalised, never diffed as text
+# ---------------------------------------------------------------------------
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.webp          binary
+*.pdf           binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.otf           binary
+*.eot           binary
+*.zip           binary
+*.gz            binary
+*.tgz           binary
+*.bz2           binary
+*.xz            binary
+*.7z            binary
+*.exe           binary
+*.dll           binary
+*.so            binary
+*.dylib         binary
+*.wasm          binary
+*.bundle        binary
+
+# SVG is XML, so it stays text.
+*.svg           text eol=lf
+
+# ---------------------------------------------------------------------------
+# Generated and lock files - collapsed in review, since reading the diff is
+# never the right way to check them. `make codegen-verify` is.
+# ---------------------------------------------------------------------------
+core/contracts/export/**            linguist-generated=true
+pkg/contracts/contracts.gen.go      linguist-generated=true
+dashboard/types/generated/**        linguist-generated=true
+uv.lock                             linguist-generated=true
+dashboard/pnpm-lock.yaml            linguist-generated=true
