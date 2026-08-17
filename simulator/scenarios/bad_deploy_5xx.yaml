@@ -1,4 +1,77 @@
-# Scenario: Error rate spike correlated with a deployment rollout.
+# The canonical incident, and the one the empirical gate runs: error rate steps
+# up the moment a deployment lands, on one service, with no infrastructure change.
+#
+# STEP, not ramp. A deploy breaks things instantly; a leak ramps. Getting that
+# distinction right is most of what separates the two diagnoses.
 #
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - define the bad_deploy_5xx signal timeline and expected Verdict
+
+name: bad_deploy_5xx
+title: "Bad deploy causes 5xx on checkout"
+description: >-
+  A deployment to checkout ships a regression. Error rate and latency step up
+  immediately, the connection pool saturates under retries, and nothing else in
+  the cluster changes.
+
+baseline_seconds: 86400
+
+phases:
+  - name: deploy_lands
+    start_seconds: 0
+    duration_seconds: 600
+    target: checkout
+    note: "The rollout itself: a brief restart blip before the errors start."
+    deviations:
+      - metric: restarts
+        offset: 3.0
+        shape: step
+
+  - name: errors_spike
+    start_seconds: 600
+    duration_seconds: 10800
+    target: checkout
+    note: "Error rate steps to ~9x baseline and stays there."
+    deviations:
+      - metric: error_rate
+        factor: 9.0
+        shape: step
+      - metric: latency
+        factor: 2.8
+        shape: step
+    logs:
+      - template: request_error
+        per_minute: 40
+        level: error
+
+  - name: pool_exhaustion
+    start_seconds: 2400
+    duration_seconds: 9000
+    target: checkout
+    note: "Retries saturate the connection pool, compounding the latency."
+    deviations:
+      - metric: latency
+        factor: 4.5
+        shape: ramp
+      - metric: cpu
+        factor: 1.6
+        shape: ramp
+    logs:
+      - template: pool_warning
+        per_minute: 20
+        level: warn
+      - template: pool_exhausted
+        per_minute: 12
+        level: error
+
+expected_root_cause:
+  category: bad_deployment
+  subject: checkout
+  statement: >-
+    A deployment to checkout introduced a regression: 5xx rate and latency step up
+    within minutes of the rollout, connection-pool exhaustion follows as clients
+    retry, and no other service or node is affected.
+  supporting_signals:
+    - "error rate step change coincident with a checkout rollout"
+    - "container restarts on checkout immediately before the step"
+    - "connection pool exhausted errors in checkout logs"
+    - "payments, catalog, search and notifier unaffected"

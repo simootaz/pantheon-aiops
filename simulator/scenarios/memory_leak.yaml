@@ -1,4 +1,81 @@
-# Scenario: Steadily climbing RSS on one workload until OOMKill.
+# Argus and Lethe should reach this together: memory climbs monotonically on one
+# service while its traffic does not, GC pauses lengthen, and the pods restart.
+#
+# The tell is the DIVERGENCE: request rate keeps its normal daily shape while
+# memory ignores it. A detector that only watches memory sees a ramp; one that
+# compares memory to load sees a leak.
 #
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - define the memory_leak signal timeline and expected Verdict
+
+name: memory_leak
+title: "Memory leak in search"
+description: >-
+  Heap on the search pods climbs steadily across two days regardless of traffic,
+  GC pauses lengthen, and the containers are eventually OOMKilled and restart.
+
+baseline_seconds: 172800
+
+phases:
+  - name: leak_grows
+    start_seconds: 0
+    duration_seconds: 79200
+    target: search
+    note: "Memory ramps to 2.6x baseline while request rate stays seasonal."
+    deviations:
+      - metric: memory
+        factor: 2.6
+        shape: ramp
+      - metric: latency
+        factor: 1.5
+        shape: ramp
+    logs:
+      - template: gc_pause
+        per_minute: 4
+        level: warn
+
+  - name: gc_thrash
+    start_seconds: 57600
+    duration_seconds: 21600
+    target: search
+    note: "GC dominates: CPU rises with no extra work being done."
+    deviations:
+      - metric: cpu
+        factor: 1.9
+        shape: ramp
+    logs:
+      - template: gc_pause
+        per_minute: 25
+        level: warn
+      - template: stack_trace
+        per_minute: 2
+        level: error
+
+  - name: oom_restarts
+    start_seconds: 75600
+    duration_seconds: 7200
+    target: search
+    note: "Containers hit the limit and restart; memory sawtooths."
+    deviations:
+      - metric: memory
+        factor: 2.9
+        shape: sawtooth
+      - metric: restarts
+        offset: 6.0
+        shape: step
+    logs:
+      - template: oom_killed
+        per_minute: 3
+        level: error
+
+expected_root_cause:
+  category: memory_leak
+  subject: search
+  statement: >-
+    The search service leaks heap: working-set memory climbs monotonically across
+    two days while request rate follows its normal daily cycle, GC pauses lengthen
+    until CPU is dominated by collection, and containers are OOMKilled.
+  supporting_signals:
+    - "pantheon_pod_memory_working_set_bytes rising with no matching rise in request rate"
+    - "GC pause warnings increasing in frequency"
+    - "container restarts with reason OOMKilled"
+    - "CPU rising while throughput does not"

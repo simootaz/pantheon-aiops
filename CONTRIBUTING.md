@@ -151,6 +151,32 @@ Assert against the mechanism, not the file. `"fail" in template` is true because
 a comment says "fail closed". Strip comments first — `_mechanism_only()` in
 `tests/unit/test_repo_structure.py` exists for this.
 
+### A component that cannot honour a parameter must say so
+
+Related to the suppressed-check rule, and found the same way — by measuring
+instead of trusting. The simulator accepted `--speed 2880`, delivered 259x, and
+reported success. Nothing was broken: the data was correct in simulated time.
+But every wall-clock claim made about that run was wrong, and nothing said so.
+
+If a component takes a parameter it cannot always meet, it reports what it
+actually achieved. `RunReport.achieved_speed` and `kept_up` exist for this, the
+runner prints the shortfall, and the gate asserts on the delivered speed rather
+than the requested one. Degrading quietly is the failure; degrading is fine.
+
+### A bound applied per-item destroys the shape it bounds
+
+Log volume had to be capped or a compressed run would spend itself talking to
+Loki. The obvious cap — at most N lines per pod per tick — is wrong in a way
+that passes every test: past any useful compression *every* pod saturates N, so
+the busiest service at 14:00 emits exactly as much as the quietest at 04:00. The
+cap silently converted the log stream into the flat line the metrics were
+carefully built to avoid.
+
+A single ratio applied uniformly bounds the same total and preserves every
+relative volume. When you must throttle something, throttle it proportionally,
+derive the ratio from a fixed reference rather than the current value, and
+report the ratio — see `LogGenerator.sampling_ratio`.
+
 ## Local checks
 
 ```bash

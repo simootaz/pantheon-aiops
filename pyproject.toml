@@ -19,12 +19,20 @@ license-files = ["LICENSE"]
 # scaffold stays honest about what it actually imports.
 dependencies = [
     "pydantic>=2.9",
+    # simulator: CLI, deterministic noise, and metric push
+    "typer>=0.15",
+    "numpy>=2.1",
+    "prometheus-client>=0.21",
+    "pyyaml>=6.0",
     "fastapi>=0.115",
     "uvicorn>=0.32",
     # AG-UI event types and encoder. Depended on, never redefined - see
     # docs/adr/0006-agentic-ui-protocols.md.
     "ag-ui-protocol>=0.1.20,<0.2",
 ]
+
+[project.scripts]
+pantheon-sim = "simulator.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/simootaz/pantheon-aiops"
@@ -90,6 +98,10 @@ pretty = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests", "agents"]
+# --strict-markers is on, so every marker has to be declared here.
+markers = [
+    "integration: needs a live observability stack; run it with `make test-sim`",
+]
 pythonpath = ["."]
 addopts = [
     "--strict-markers",

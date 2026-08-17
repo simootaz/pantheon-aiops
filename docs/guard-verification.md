@@ -90,6 +90,49 @@ Four new guards, each planted: a `|| true` on a check target, a check target wit
 all output discarded, a `continue-on-error` with no outcome check, and a captured
 diff that is never printed.
 
+## Simulator guards, 2026-08-17
+
+`feature/simulator` added 33 unit guards. Fifteen were planted against, each in
+both directions: mutate the source so the invariant is genuinely broken, run that
+guard alone, require it red, restore, require it green.
+
+| Planted violation | Guard |
+|---|---|
+| `RESTARTS` removed from `NOISE` | `test_every_metric_has_a_noise_and_a_seasonal_amplitude` |
+| `RESTARTS` removed from `SEASONAL_AMPLITUDE` | same |
+| `RESTARTS` removed from the `base` table | `test_every_metric_samples_for_every_pod` |
+| baseline returns `base` with no season or noise | `test_a_day_of_baseline_is_not_a_flat_line` |
+| `diurnal` returns a constant | `test_the_daily_curve_has_a_real_peak_and_trough` |
+| weekend multiplier set to 1.0 | `test_weekends_are_quieter_than_weekdays` |
+| per-pod log clipping restored | `test_log_sampling_preserves_the_daily_shape` |
+| per-pod log clipping restored | `test_log_sampling_preserves_the_gap_between_services` |
+| `pods_for` returns `()` instead of raising | `test_pods_for_rejects_a_target_it_does_not_recognise` |
+| a pod moved to a node that does not exist | `test_every_pod_sits_on_a_node_that_exists` |
+| a phase targeting `chekout` | `test_every_phase_targets_something_that_exists` |
+| a log pattern naming a template that does not exist | `test_every_log_pattern_names_a_template_that_exists` |
+| restarts scaled by `factor` instead of `offset` | `test_restarts_are_perturbed_by_offset_never_by_factor` |
+| two scenarios sharing one root cause | `test_the_five_scenarios_cover_five_distinct_root_causes` |
+| a duration passed where a deadline was needed | `test_the_run_loop_honours_speed_across_many_ticks` |
+
+### One guard failed its own planting
+
+The pacing guard was written first as a direct test of `_sleep_until`, calling it
+with a series of absolute deadlines. Planting the original bug left it **green**.
+
+The reason is worth recording, because the guard looked entirely reasonable. The
+bug was never inside `_sleep_until` — it was in the *caller*, which passed a
+duration where a deadline was needed. A helper that takes a deadline recomputes
+the remaining wait from that absolute point every call, so it self-corrects
+however its internals are written. The guard was testing the half of the system
+that could not hold the defect.
+
+Rewritten to drive `run()` with the I/O stubbed and assert `kept_up` over 42
+ticks, it catches the planted duration immediately. Same invariant, tested one
+level up, where the invariant actually lives.
+
+> A guard aimed at the wrong layer passes for the same reason a correct one
+> does. Only the planting tells them apart.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run

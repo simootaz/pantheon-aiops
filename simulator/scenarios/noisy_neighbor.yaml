@@ -1,4 +1,61 @@
-# Scenario: One workload starving its node's CPU and degrading peers.
+# Moira and Argus territory: one workload starves its node, and the victims are
+# the pods that share it rather than the pod at fault.
+#
+# The trap is that the SYMPTOM and the CAUSE are on different services. An agent
+# that stops at "catalog latency is up" has not finished; the answer is that
+# search is eating node-c.
 #
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - define the noisy_neighbor signal timeline and expected Verdict
+
+name: noisy_neighbor
+title: "Noisy neighbour on node-c"
+description: >-
+  A batch job on the search pods consumes most of node-c's CPU. Search looks
+  busy but healthy; catalog and notifier, which share the node, are throttled and
+  slow.
+
+baseline_seconds: 172800
+
+phases:
+  - name: batch_starts
+    start_seconds: 0
+    duration_seconds: 3600
+    target: search
+    note: "Search CPU climbs to near the node's capacity."
+    deviations:
+      - metric: cpu
+        factor: 3.4
+        shape: ramp
+
+  - name: neighbours_throttled
+    start_seconds: 1800
+    duration_seconds: 12600
+    target: node-c
+    note: "Everything on node-c slows; the cause is not on the affected pods."
+    deviations:
+      - metric: latency
+        factor: 4.2
+        shape: ramp
+      - metric: error_rate
+        factor: 3.0
+        shape: ramp
+    logs:
+      - template: throttled
+        per_minute: 18
+        level: warn
+      - template: request_error
+        per_minute: 8
+        level: error
+
+expected_root_cause:
+  category: resource_contention
+  subject: node-c
+  statement: >-
+    A CPU-hungry batch workload on the search pods saturates node-c, throttling
+    every other container on the same node. The latency and error symptoms appear
+    on catalog and notifier, but the cause is search's CPU consumption.
+  supporting_signals:
+    - "search CPU approaching node-c allocatable capacity"
+    - "cpu throttled warnings on catalog and notifier"
+    - "latency rising only for pods scheduled on node-c"
+    - "pods on node-a and node-b unaffected"

@@ -36,14 +36,19 @@ dev:
 	@uv run uvicorn api.main:create_app --factory --reload \
 		--host $${PANTHEON_API_HOST:-127.0.0.1} --port $${PANTHEON_API_PORT:-8000}
 
-## sim: run a simulator scenario against the local stack
+## sim: run a simulator scenario (SCENARIO=name SPEED=n), e.g. make sim SCENARIO=memory_leak
 sim:
-	@echo "sim: needs simulator.cli, which lands in Phase 1"; exit 1
+	@uv run pantheon-sim run $(or $(SCENARIO),bad_deploy_5xx) --speed $(or $(SPEED),4320)
 
 ## test: run the Python test suite and the per-module coverage floor
 test:
-	@uv run pytest
+	@uv run pytest -m "not integration"
 	@uv run python -m tests.coverage_floor
+
+## test-sim: assert on the DATA the simulator produces, against a live stack
+##           (needs `make up`; takes minutes, because it runs real scenarios)
+test-sim:
+	@uv run pytest tests/integration -m integration --no-cov -v -s
 
 ## test-go: build and test every Go module in the workspace
 test-go:
