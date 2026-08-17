@@ -109,7 +109,16 @@ def _display_path(path: Path) -> str:
 
 
 def render(schema: dict[str, Any]) -> str:
-    """Serialise deterministically, with a trailing newline."""
+    """Serialise with a trailing newline, preserving the order given.
+
+    Deliberately **not** `sort_keys=True`. Canonical ordering already comes from
+    `_deep_sorted`, which sorts every nested mapping; sorting here as well would
+    also reorder the top-level document and bury the generated banner beneath
+    `$defs`, which runs to thousands of lines. A generated artifact that
+    announces itself only halfway down is one a reader has already begun
+    editing - and `test_generated_artifacts_declare_they_are_generated` fails if
+    that happens.
+    """
     return json.dumps(schema, indent=2, sort_keys=False, ensure_ascii=False) + "\n"
 
 

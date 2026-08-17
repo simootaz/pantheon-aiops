@@ -50,4 +50,26 @@ from __future__ import annotations
 #: The only Custom event Pantheon defines. See the reasoning above.
 CUSTOM_EVENTS = ("pantheon.break_glass",)
 
+#: Internal event discriminators this translator claims to map, keyed to the
+#: AG-UI event family each becomes.
+#:
+#: This exists so the claim is checkable. Phase 0 documented a mapping in prose
+#: for events the bus could not emit - `lease_expired` and `break_glass` did not
+#: exist in core.contracts.events at all. A guard now asserts every name here
+#: has a corresponding member of the Event union, so the table cannot describe
+#: something imaginary again.
+DOMAIN_EVENT_MAPPING: dict[str, str] = {
+    "investigation_started": "RunStarted + StateSnapshot",
+    "investigation_completed": "RunFinished",
+    "step_started": "StepStarted",
+    "step_finished": "StepFinished",
+    "finding_produced": "StateDelta",
+    "hypothesis_proposed": "StateDelta",
+    "verdict_ready": "StateDelta",
+    "approval_requested": "A2UI surface",
+    "access_requested": "A2UI surface",
+    "lease_expired": "StateDelta + A2UI surface when the grant merely expired",
+    "break_glass": "Custom(pantheon.break_glass) + StateDelta",
+}
+
 # TODO: Phase 4 - implement translate(event) -> Sequence[ag_ui.core.BaseEvent]

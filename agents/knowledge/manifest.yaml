@@ -1,4 +1,25 @@
-# Mnemosyne capability manifest, loaded by core.registry.loader.
+# Mnemosyne - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 5 - Proactive Flow
-# TODO: Phase 5 - declare Mnemosyne capabilities, required tools, budgets and output contract
+
+codename: mnemosyne
+domain: knowledge
+description: >-
+  Retrieves prior incidents, runbooks and tribal knowledge.
+
+capabilities:
+  - name: recall_similar_incident
+    description: Find past investigations resembling this one.
+  - name: find_runbook
+    description: Locate the runbook covering a symptom.
+tools:
+  - prometheus.query_instant
+budget:
+  max_tokens: 16384
+  max_seconds: 90
+  max_tool_calls: 10

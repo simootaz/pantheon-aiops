@@ -1,4 +1,28 @@
-# Eris capability manifest, loaded by core.registry.loader.
+# Eris - agent manifest.
+#
+# Loaded and validated by core.registry.loader against
+# core.contracts.manifest.AgentManifest. A manifest that does not validate is a
+# broken agent, and tests/unit/test_contracts.py fails the build rather than
+# letting it surface at dispatch time.
 #
 # Phase: 5 - Proactive Flow
-# TODO: Phase 5 - declare Eris capabilities, required tools, budgets and output contract
+
+codename: eris
+domain: chaos
+description: >-
+  Designs and supervises chaos experiments and validates resilience.
+
+capabilities:
+  - name: design_experiment
+    description: Propose an experiment testing a stated hypothesis.
+  - name: supervise_experiment
+    description: Watch an experiment and abort on blast-radius breach.
+tools:
+  - litmus.create_experiment
+  - litmus.status
+  - litmus.abort
+  - kubernetes.get
+budget:
+  max_tokens: 16384
+  max_seconds: 600
+  max_tool_calls: 40

@@ -451,6 +451,45 @@ func (j *AccessRequest) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// An agent asked Cerberus for a capability it has no standing grant for.
+type AccessRequestedEvent struct {
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Request corresponds to the JSON schema field "request".
+	Request AccessRequest `json:"request" yaml:"request" mapstructure:"request"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AccessRequestedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in AccessRequestedEvent: required")
+	}
+	if _, ok := raw["request"]; raw != nil && !ok {
+		return fmt.Errorf("field request in AccessRequestedEvent: required")
+	}
+	type Plain AccessRequestedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "access_requested"
+	}
+	if plain.Type != "access_requested" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "access_requested")
+	}
+	*j = AccessRequestedEvent(plain)
+	return nil
+}
+
 // A remediation Pantheon proposes, and may later execute.
 type Action struct {
 	// ApprovalState corresponds to the JSON schema field "approval_state".
@@ -462,20 +501,88 @@ type Action struct {
 	// Dry run until explicitly cleared.
 	DryRun bool `json:"dry_run,omitempty,omitzero" yaml:"dry_run,omitempty" mapstructure:"dry_run,omitempty"`
 
+	// ExecutionState corresponds to the JSON schema field "execution_state".
+	ExecutionState ExecutionState `json:"execution_state,omitempty,omitzero" yaml:"execution_state,omitempty" mapstructure:"execution_state,omitempty"`
+
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
 
-	// What it does, e.g. 'rollout_restart'.
+	// What it does, e.g. 'rollout_restart', 'scale'.
 	Operation string `json:"operation" yaml:"operation" mapstructure:"operation"`
 
-	// Why this Action was proposed.
-	Reason interface{} `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	// Operation arguments, e.g. {'replicas': 4}.
+	Parameters ActionParameters `json:"parameters,omitempty,omitzero" yaml:"parameters,omitempty" mapstructure:"parameters,omitempty"`
 
-	// What it acts on, e.g. 'deployment/checkout'.
-	Target string `json:"target" yaml:"target" mapstructure:"target"`
+	// ProposedAt corresponds to the JSON schema field "proposed_at".
+	ProposedAt time.Time `json:"proposed_at" yaml:"proposed_at" mapstructure:"proposed_at"`
+
+	// Agent codename, or 'zeus'.
+	ProposedBy string `json:"proposed_by" yaml:"proposed_by" mapstructure:"proposed_by"`
+
+	// Why this Action was proposed, in terms of the Verdict.
+	Reason string `json:"reason" yaml:"reason" mapstructure:"reason"`
+
+	// Append-only execution history.
+	Receipts []ActionReceipt `json:"receipts,omitempty,omitzero" yaml:"receipts,omitempty" mapstructure:"receipts,omitempty"`
+
+	// How to undo it. Required for anything wider than a single workload.
+	Rollback interface{} `json:"rollback,omitempty,omitzero" yaml:"rollback,omitempty" mapstructure:"rollback,omitempty"`
+
+	// Target corresponds to the JSON schema field "target".
+	Target ResourceRef `json:"target" yaml:"target" mapstructure:"target"`
 }
 
-type ActionReason_0 *string
+// Operation arguments, e.g. {'replicas': 4}.
+type ActionParameters map[string]interface{}
+
+// What happened when an Action ran. Written once, never amended.
+type ActionReceipt struct {
+	// At corresponds to the JSON schema field "at".
+	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
+
+	// Which connector executed it.
+	Connector string `json:"connector" yaml:"connector" mapstructure:"connector"`
+
+	// Human-readable outcome. Never a credential.
+	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
+
+	// The lease it was executed under.
+	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
+
+	// State corresponds to the JSON schema field "state".
+	State ExecutionState `json:"state" yaml:"state" mapstructure:"state"`
+}
+
+type ActionReceiptLeaseId_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ActionReceipt) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["at"]; raw != nil && !ok {
+		return fmt.Errorf("field at in ActionReceipt: required")
+	}
+	if _, ok := raw["connector"]; raw != nil && !ok {
+		return fmt.Errorf("field connector in ActionReceipt: required")
+	}
+	if _, ok := raw["state"]; raw != nil && !ok {
+		return fmt.Errorf("field state in ActionReceipt: required")
+	}
+	type Plain ActionReceipt
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["detail"]; !ok || v == nil {
+		plain.Detail = ""
+	}
+	*j = ActionReceipt(plain)
+	return nil
+}
+
+type ActionRollback_0 *string
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Action) UnmarshalJSON(value []byte) error {
@@ -492,6 +599,15 @@ func (j *Action) UnmarshalJSON(value []byte) error {
 	if _, ok := raw["operation"]; raw != nil && !ok {
 		return fmt.Errorf("field operation in Action: required")
 	}
+	if _, ok := raw["proposed_at"]; raw != nil && !ok {
+		return fmt.Errorf("field proposed_at in Action: required")
+	}
+	if _, ok := raw["proposed_by"]; raw != nil && !ok {
+		return fmt.Errorf("field proposed_by in Action: required")
+	}
+	if _, ok := raw["reason"]; raw != nil && !ok {
+		return fmt.Errorf("field reason in Action: required")
+	}
 	if _, ok := raw["target"]; raw != nil && !ok {
 		return fmt.Errorf("field target in Action: required")
 	}
@@ -505,6 +621,9 @@ func (j *Action) UnmarshalJSON(value []byte) error {
 	}
 	if v, ok := raw["dry_run"]; !ok || v == nil {
 		plain.DryRun = true
+	}
+	if v, ok := raw["execution_state"]; !ok || v == nil {
+		plain.ExecutionState = "proposed"
 	}
 	*j = Action(plain)
 	return nil
@@ -675,6 +794,7 @@ func (j *ApprovalRequestedEvent) UnmarshalJSON(value []byte) error {
 type ApprovalState string
 
 const ApprovalStateApproved ApprovalState = "approved"
+const ApprovalStateExpired ApprovalState = "expired"
 const ApprovalStateNotRequired ApprovalState = "not_required"
 const ApprovalStatePending ApprovalState = "pending"
 const ApprovalStateRejected ApprovalState = "rejected"
@@ -684,6 +804,7 @@ var enumValues_ApprovalState = []interface{}{
 	"pending",
 	"approved",
 	"rejected",
+	"expired",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -989,6 +1110,7 @@ func (j *AuthMode) UnmarshalJSON(value []byte) error {
 type BlastRadius string
 
 const BlastRadiusCluster BlastRadius = "cluster"
+const BlastRadiusMultiCluster BlastRadius = "multi_cluster"
 const BlastRadiusNamespace BlastRadius = "namespace"
 const BlastRadiusNone BlastRadius = "none"
 const BlastRadiusSingleWorkload BlastRadius = "single_workload"
@@ -998,6 +1120,7 @@ var enumValues_BlastRadius = []interface{}{
 	"single_workload",
 	"namespace",
 	"cluster",
+	"multi_cluster",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -1017,6 +1140,158 @@ func (j *BlastRadius) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_BlastRadius, v)
 	}
 	*j = BlastRadius(v)
+	return nil
+}
+
+// Every grant revoked and every live lease invalidated, immediately.
+//
+// The one domain concept that becomes an AG-UI `Custom` event rather than a
+// state patch: it affects every run at once, so an open dashboard must react
+// on arrival rather than render a new audit row (ADR 0006).
+type BreakGlassEvent struct {
+	// AuditEntry corresponds to the JSON schema field "audit_entry".
+	AuditEntry *BreakGlassEventAuditEntry `json:"audit_entry,omitempty,omitzero" yaml:"audit_entry,omitempty" mapstructure:"audit_entry,omitempty"`
+
+	// InvokedBy corresponds to the JSON schema field "invoked_by".
+	InvokedBy string `json:"invoked_by" yaml:"invoked_by" mapstructure:"invoked_by"`
+
+	// LeasesRevoked corresponds to the JSON schema field "leases_revoked".
+	LeasesRevoked int `json:"leases_revoked,omitempty,omitzero" yaml:"leases_revoked,omitempty" mapstructure:"leases_revoked,omitempty"`
+
+	// Reason corresponds to the JSON schema field "reason".
+	Reason string `json:"reason" yaml:"reason" mapstructure:"reason"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// One immutable line in the credential audit log.
+//
+// Attached to the Investigation, which agents can see - safe because every
+// reference here is a CredentialRef and never a value.
+type BreakGlassEventAuditEntry struct {
+	// NOT_APPLICABLE for events that concern no single access.
+	Action CredentialAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
+
+	// Agent codename, user, or 'system'.
+	Actor string `json:"actor" yaml:"actor" mapstructure:"actor"`
+
+	// At corresponds to the JSON schema field "at".
+	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
+
+	// CredentialRef corresponds to the JSON schema field "credential_ref".
+	CredentialRef *BreakGlassEventAuditEntryCredentialRef `json:"credential_ref,omitempty,omitzero" yaml:"credential_ref,omitempty" mapstructure:"credential_ref,omitempty"`
+
+	// Human-readable context. Never a credential.
+	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
+
+	// Event corresponds to the JSON schema field "event".
+	Event AuditEvent `json:"event" yaml:"event" mapstructure:"event"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// LeaseId corresponds to the JSON schema field "lease_id".
+	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
+}
+
+// A reference to a stored credential. Never the credential.
+//
+// Safe to persist, to attach to an Investigation and to render in the
+// dashboard, because it identifies without disclosing.
+type BreakGlassEventAuditEntryCredentialRef struct {
+	// Opaque identifier of the stored credential.
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Human-readable label, e.g. 'prod-postgres'.
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// Scope corresponds to the JSON schema field "scope".
+	Scope *CredentialScope `json:"scope,omitempty,omitzero" yaml:"scope,omitempty" mapstructure:"scope,omitempty"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type CredentialType `json:"type" yaml:"type" mapstructure:"type"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *BreakGlassEventAuditEntryCredentialRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var breakGlassEventAuditEntryCredentialRef_0 BreakGlassEventAuditEntryCredentialRef_0
+	var errs []error
+	if err := breakGlassEventAuditEntryCredentialRef_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain BreakGlassEventAuditEntryCredentialRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = BreakGlassEventAuditEntryCredentialRef(plain)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *BreakGlassEventAuditEntry) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var breakGlassEventAuditEntry_0 BreakGlassEventAuditEntry_0
+	var errs []error
+	if err := breakGlassEventAuditEntry_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain BreakGlassEventAuditEntry
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = BreakGlassEventAuditEntry(plain)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *BreakGlassEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["invoked_by"]; raw != nil && !ok {
+		return fmt.Errorf("field invoked_by in BreakGlassEvent: required")
+	}
+	if _, ok := raw["reason"]; raw != nil && !ok {
+		return fmt.Errorf("field reason in BreakGlassEvent: required")
+	}
+	type Plain BreakGlassEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["leases_revoked"]; !ok || v == nil {
+		plain.LeasesRevoked = 0
+	}
+	if 0 > plain.LeasesRevoked {
+		return fmt.Errorf("field %s: must be >= %v", "leases_revoked", 0)
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "break_glass"
+	}
+	if plain.Type != "break_glass" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "break_glass")
+	}
+	*j = BreakGlassEvent(plain)
 	return nil
 }
 
@@ -1230,6 +1505,10 @@ type EventEnvelope struct {
 
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Monotonic within an investigation. Replay depends on order, so it is carried
+	// rather than inferred from arrival.
+	Sequence int `json:"sequence,omitempty,omitzero" yaml:"sequence,omitempty" mapstructure:"sequence,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -1252,6 +1531,12 @@ func (j *EventEnvelope) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
+	if v, ok := raw["sequence"]; !ok || v == nil {
+		plain.Sequence = 0
+	}
+	if 0 > plain.Sequence {
+		return fmt.Errorf("field %s: must be >= %v", "sequence", 0)
+	}
 	*j = EventEnvelope(plain)
 	return nil
 }
@@ -1261,67 +1546,31 @@ type Evidence struct {
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
 
-	// Kind corresponds to the JSON schema field "kind".
-	Kind EvidenceKind `json:"kind" yaml:"kind" mapstructure:"kind"`
-
-	// ObservedAt corresponds to the JSON schema field "observed_at".
+	// When the thing happened, not when it was fetched.
 	ObservedAt time.Time `json:"observed_at" yaml:"observed_at" mapstructure:"observed_at"`
 
-	// Kind-specific body. Phase 1 replaces this with per-kind models.
-	Payload EvidencePayload `json:"payload,omitempty,omitzero" yaml:"payload,omitempty" mapstructure:"payload,omitempty"`
+	// Payload corresponds to the JSON schema field "payload".
+	Payload interface{} `json:"payload" yaml:"payload" mapstructure:"payload"`
 
 	// Source corresponds to the JSON schema field "source".
 	Source EvidenceSource `json:"source" yaml:"source" mapstructure:"source"`
 
-	// One-line human-readable description.
+	// What this is about, when it is about one thing.
+	Subject *EvidenceSubject `json:"subject,omitempty,omitzero" yaml:"subject,omitempty" mapstructure:"subject,omitempty"`
+
+	// One line a human can read without expanding the payload.
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
 
-type EvidenceKind string
-
-const EvidenceKindK8SEvent EvidenceKind = "k8s_event"
-const EvidenceKindLogCluster EvidenceKind = "log_cluster"
-const EvidenceKindManifestDiff EvidenceKind = "manifest_diff"
-const EvidenceKindMetricWindow EvidenceKind = "metric_window"
-const EvidenceKindPipelineRun EvidenceKind = "pipeline_run"
-
-var enumValues_EvidenceKind = []interface{}{
-	"metric_window",
-	"log_cluster",
-	"manifest_diff",
-	"k8s_event",
-	"pipeline_run",
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *EvidenceKind) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_EvidenceKind {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_EvidenceKind, v)
-	}
-	*j = EvidenceKind(v)
-	return nil
-}
-
-// Kind-specific body. Phase 1 replaces this with per-kind models.
-type EvidencePayload map[string]interface{}
-
-// Where a piece of Evidence came from, so a human can go look themselves.
+// Where a piece of Evidence came from, so a human can go and look.
 type EvidenceSource struct {
+	// When the connector ran, as distinct from what it observed.
+	CollectedAt *time.Time `json:"collected_at,omitempty,omitzero" yaml:"collected_at,omitempty" mapstructure:"collected_at,omitempty"`
+
 	// Connector that produced it, e.g. 'prometheus'.
 	Connector string `json:"connector" yaml:"connector" mapstructure:"connector"`
 
-	// Query that produced it, if any.
+	// Query that produced it, verbatim.
 	Query interface{} `json:"query,omitempty,omitzero" yaml:"query,omitempty" mapstructure:"query,omitempty"`
 }
 
@@ -1345,6 +1594,44 @@ func (j *EvidenceSource) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// What this is about, when it is about one thing.
+type EvidenceSubject struct {
+	// Cluster corresponds to the JSON schema field "cluster".
+	Cluster interface{} `json:"cluster,omitempty,omitzero" yaml:"cluster,omitempty" mapstructure:"cluster,omitempty"`
+
+	// e.g. 'deployment', 'pipeline', 'node'.
+	Kind string `json:"kind" yaml:"kind" mapstructure:"kind"`
+
+	// Name corresponds to the JSON schema field "name".
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// Where applicable.
+	Namespace interface{} `json:"namespace,omitempty,omitzero" yaml:"namespace,omitempty" mapstructure:"namespace,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *EvidenceSubject) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var evidenceSubject_0 EvidenceSubject_0
+	var errs []error
+	if err := evidenceSubject_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain EvidenceSubject
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = EvidenceSubject(plain)
+	return nil
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Evidence) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
@@ -1354,11 +1641,11 @@ func (j *Evidence) UnmarshalJSON(value []byte) error {
 	if _, ok := raw["id"]; raw != nil && !ok {
 		return fmt.Errorf("field id in Evidence: required")
 	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Evidence: required")
-	}
 	if _, ok := raw["observed_at"]; raw != nil && !ok {
 		return fmt.Errorf("field observed_at in Evidence: required")
+	}
+	if _, ok := raw["payload"]; raw != nil && !ok {
+		return fmt.Errorf("field payload in Evidence: required")
 	}
 	if _, ok := raw["source"]; raw != nil && !ok {
 		return fmt.Errorf("field source in Evidence: required")
@@ -1375,13 +1662,56 @@ func (j *Evidence) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type ExecutionState string
+
+const ExecutionStateDryRun ExecutionState = "dry_run"
+const ExecutionStateExecuting ExecutionState = "executing"
+const ExecutionStateFailed ExecutionState = "failed"
+const ExecutionStateProposed ExecutionState = "proposed"
+const ExecutionStateRolledBack ExecutionState = "rolled_back"
+const ExecutionStateSkipped ExecutionState = "skipped"
+const ExecutionStateSucceeded ExecutionState = "succeeded"
+
+var enumValues_ExecutionState = []interface{}{
+	"proposed",
+	"dry_run",
+	"executing",
+	"succeeded",
+	"failed",
+	"rolled_back",
+	"skipped",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ExecutionState) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_ExecutionState {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ExecutionState, v)
+	}
+	*j = ExecutionState(v)
+	return nil
+}
+
 // One agent's supported claim about what it observed.
 type Finding struct {
 	// Codename of the agent that produced it, e.g. 'argus'.
 	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
 
-	// Agent's own confidence, 0 to 1.
+	// The agent's own confidence, 0 to 1.
 	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// DetectedAt corresponds to the JSON schema field "detected_at".
+	DetectedAt time.Time `json:"detected_at" yaml:"detected_at" mapstructure:"detected_at"`
 
 	// Evidence supporting the claim. A Finding with none is inadmissible.
 	Evidence []Evidence `json:"evidence,omitempty,omitzero" yaml:"evidence,omitempty" mapstructure:"evidence,omitempty"`
@@ -1389,14 +1719,65 @@ type Finding struct {
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
 
+	// Kind corresponds to the JSON schema field "kind".
+	Kind FindingKind `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
 	// Why the Evidence supports the claim.
 	Rationale interface{} `json:"rationale,omitempty,omitzero" yaml:"rationale,omitempty" mapstructure:"rationale,omitempty"`
 
 	// Severity corresponds to the JSON schema field "severity".
 	Severity Severity `json:"severity" yaml:"severity" mapstructure:"severity"`
 
-	// Title corresponds to the JSON schema field "title".
+	// What the claim is about.
+	Subject *FindingSubject `json:"subject,omitempty,omitzero" yaml:"subject,omitempty" mapstructure:"subject,omitempty"`
+
+	// Free-form, for grouping.
+	Tags []string `json:"tags,omitempty,omitzero" yaml:"tags,omitempty" mapstructure:"tags,omitempty"`
+
+	// One line, specific enough to act on.
 	Title string `json:"title" yaml:"title" mapstructure:"title"`
+
+	// WindowEnd corresponds to the JSON schema field "window_end".
+	WindowEnd *time.Time `json:"window_end,omitempty,omitzero" yaml:"window_end,omitempty" mapstructure:"window_end,omitempty"`
+
+	// Start of the period this claim is about.
+	WindowStart *time.Time `json:"window_start,omitempty,omitzero" yaml:"window_start,omitempty" mapstructure:"window_start,omitempty"`
+}
+
+type FindingKind string
+
+const FindingKindAnomaly FindingKind = "anomaly"
+const FindingKindCorrelation FindingKind = "correlation"
+const FindingKindDegraded FindingKind = "degraded"
+const FindingKindObservation FindingKind = "observation"
+const FindingKindRisk FindingKind = "risk"
+
+var enumValues_FindingKind = []interface{}{
+	"observation",
+	"anomaly",
+	"correlation",
+	"risk",
+	"degraded",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *FindingKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_FindingKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_FindingKind, v)
+	}
+	*j = FindingKind(v)
+	return nil
 }
 
 // An agent returned a Finding.
@@ -1440,6 +1821,44 @@ func (j *FindingProducedEvent) UnmarshalJSON(value []byte) error {
 
 type FindingRationale_0 *string
 
+// What the claim is about.
+type FindingSubject struct {
+	// Cluster corresponds to the JSON schema field "cluster".
+	Cluster interface{} `json:"cluster,omitempty,omitzero" yaml:"cluster,omitempty" mapstructure:"cluster,omitempty"`
+
+	// e.g. 'deployment', 'pipeline', 'node'.
+	Kind string `json:"kind" yaml:"kind" mapstructure:"kind"`
+
+	// Name corresponds to the JSON schema field "name".
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// Where applicable.
+	Namespace interface{} `json:"namespace,omitempty,omitzero" yaml:"namespace,omitempty" mapstructure:"namespace,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *FindingSubject) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var findingSubject_0 FindingSubject_0
+	var errs []error
+	if err := findingSubject_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain FindingSubject
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = FindingSubject(plain)
+	return nil
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Finding) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
@@ -1451,6 +1870,9 @@ func (j *Finding) UnmarshalJSON(value []byte) error {
 	}
 	if _, ok := raw["confidence"]; raw != nil && !ok {
 		return fmt.Errorf("field confidence in Finding: required")
+	}
+	if _, ok := raw["detected_at"]; raw != nil && !ok {
+		return fmt.Errorf("field detected_at in Finding: required")
 	}
 	if _, ok := raw["id"]; raw != nil && !ok {
 		return fmt.Errorf("field id in Finding: required")
@@ -1471,6 +1893,9 @@ func (j *Finding) UnmarshalJSON(value []byte) error {
 	}
 	if 0 > plain.Confidence {
 		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "observation"
 	}
 	*j = Finding(plain)
 	return nil
@@ -1553,6 +1978,79 @@ func (j *Grant) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// A candidate explanation entered the running.
+type HypothesisProposedEvent struct {
+	// Hypothesis corresponds to the JSON schema field "hypothesis".
+	Hypothesis RootCauseHypothesis `json:"hypothesis" yaml:"hypothesis" mapstructure:"hypothesis"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *HypothesisProposedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["hypothesis"]; raw != nil && !ok {
+		return fmt.Errorf("field hypothesis in HypothesisProposedEvent: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in HypothesisProposedEvent: required")
+	}
+	type Plain HypothesisProposedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "hypothesis_proposed"
+	}
+	if plain.Type != "hypothesis_proposed" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "hypothesis_proposed")
+	}
+	*j = HypothesisProposedEvent(plain)
+	return nil
+}
+
+type HypothesisStatus string
+
+const HypothesisStatusInconclusive HypothesisStatus = "inconclusive"
+const HypothesisStatusProposed HypothesisStatus = "proposed"
+const HypothesisStatusRefuted HypothesisStatus = "refuted"
+const HypothesisStatusSupported HypothesisStatus = "supported"
+
+var enumValues_HypothesisStatus = []interface{}{
+	"proposed",
+	"supported",
+	"refuted",
+	"inconclusive",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *HypothesisStatus) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_HypothesisStatus {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_HypothesisStatus, v)
+	}
+	*j = HypothesisStatus(v)
+	return nil
+}
+
 // One end-to-end run, from trigger to Verdict.
 type Investigation struct {
 	// Cerberus credential audit for this run. Safe to expose: every credential here
@@ -1568,11 +2066,24 @@ type Investigation struct {
 	// Findings corresponds to the JSON schema field "findings".
 	Findings []Finding `json:"findings,omitempty,omitzero" yaml:"findings,omitempty" mapstructure:"findings,omitempty"`
 
+	// Working hypotheses, before the Verdict ranks them.
+	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
+
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
 
+	// What Zeus decided to ask.
+	Plan []PlanStep `json:"plan,omitempty,omitzero" yaml:"plan,omitempty" mapstructure:"plan,omitempty"`
+
 	// Every Delphi model resolution made during this run, in order.
 	Resolutions []ResolutionRecord `json:"resolutions,omitempty,omitzero" yaml:"resolutions,omitempty" mapstructure:"resolutions,omitempty"`
+
+	// Simulator scenario that produced this run, when triggered by one. Present so a
+	// run can be scored against known ground truth.
+	Scenario interface{} `json:"scenario,omitempty,omitzero" yaml:"scenario,omitempty" mapstructure:"scenario,omitempty"`
+
+	// StartedAt corresponds to the JSON schema field "started_at".
+	StartedAt *time.Time `json:"started_at,omitempty,omitzero" yaml:"started_at,omitempty" mapstructure:"started_at,omitempty"`
 
 	// State corresponds to the JSON schema field "state".
 	State InvestigationState `json:"state" yaml:"state" mapstructure:"state"`
@@ -1583,6 +2094,53 @@ type Investigation struct {
 	// Absent until the run reaches a conclusion.
 	Verdict *InvestigationVerdict `json:"verdict,omitempty,omitzero" yaml:"verdict,omitempty" mapstructure:"verdict,omitempty"`
 }
+
+// A run reached a terminal state, successfully or not.
+type InvestigationCompletedEvent struct {
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// True when any agent reported DEGRADED.
+	Partial bool `json:"partial,omitempty,omitzero" yaml:"partial,omitempty" mapstructure:"partial,omitempty"`
+
+	// The terminal InvestigationState value.
+	State string `json:"state" yaml:"state" mapstructure:"state"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InvestigationCompletedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in InvestigationCompletedEvent: required")
+	}
+	if _, ok := raw["state"]; raw != nil && !ok {
+		return fmt.Errorf("field state in InvestigationCompletedEvent: required")
+	}
+	type Plain InvestigationCompletedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["partial"]; !ok || v == nil {
+		plain.Partial = false
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "investigation_completed"
+	}
+	if plain.Type != "investigation_completed" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "investigation_completed")
+	}
+	*j = InvestigationCompletedEvent(plain)
+	return nil
+}
+
+type InvestigationScenario_0 *string
 
 // An Investigation moved out of PENDING.
 type InvestigationStartedEvent struct {
@@ -1659,12 +2217,19 @@ func (j *InvestigationState) UnmarshalJSON(value []byte) error {
 
 // Absent until the run reaches a conclusion.
 type InvestigationVerdict struct {
-	// Confidence corresponds to the JSON schema field "confidence".
+	// Confidence in the leading hypothesis.
 	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
 
 	// ContributingFindings corresponds to the JSON schema field
 	// "contributing_findings".
 	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
+
+	// DecidedAt corresponds to the JSON schema field "decided_at".
+	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Ranked most-likely first. Empty means no explanation was reached, which is a
+	// legitimate outcome and must not be dressed up as one.
+	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
 
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
@@ -1672,13 +2237,14 @@ type InvestigationVerdict struct {
 	// InvestigationId corresponds to the JSON schema field "investigation_id".
 	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
 
+	// True when an agent reported DEGRADED, so the conclusion rests on incomplete
+	// evidence. Surfaced to the reader rather than buried.
+	Partial bool `json:"partial,omitempty,omitzero" yaml:"partial,omitempty" mapstructure:"partial,omitempty"`
+
 	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
 	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
 
-	// Null when the evidence does not support a conclusion.
-	RootCause interface{} `json:"root_cause,omitempty,omitzero" yaml:"root_cause,omitempty" mapstructure:"root_cause,omitempty"`
-
-	// Summary corresponds to the JSON schema field "summary".
+	// What happened, in one paragraph, for a human.
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
 
@@ -1732,6 +2298,72 @@ func (j *Investigation) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// A Kubernetes event, which is often the shortest path to the answer.
+type K8SEventPayload struct {
+	// Count corresponds to the JSON schema field "count".
+	Count int `json:"count,omitempty,omitzero" yaml:"count,omitempty" mapstructure:"count,omitempty"`
+
+	// 'Normal' or 'Warning'.
+	EventType string `json:"event_type,omitempty,omitzero" yaml:"event_type,omitempty" mapstructure:"event_type,omitempty"`
+
+	// FirstSeen corresponds to the JSON schema field "first_seen".
+	FirstSeen *time.Time `json:"first_seen,omitempty,omitzero" yaml:"first_seen,omitempty" mapstructure:"first_seen,omitempty"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// LastSeen corresponds to the JSON schema field "last_seen".
+	LastSeen *time.Time `json:"last_seen,omitempty,omitzero" yaml:"last_seen,omitempty" mapstructure:"last_seen,omitempty"`
+
+	// Message corresponds to the JSON schema field "message".
+	Message string `json:"message" yaml:"message" mapstructure:"message"`
+
+	// e.g. 'OOMKilling', 'Unhealthy', 'FailedScheduling'.
+	Reason string `json:"reason" yaml:"reason" mapstructure:"reason"`
+
+	// Target corresponds to the JSON schema field "target".
+	Target ResourceRef `json:"target" yaml:"target" mapstructure:"target"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *K8SEventPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["message"]; raw != nil && !ok {
+		return fmt.Errorf("field message in K8SEventPayload: required")
+	}
+	if _, ok := raw["reason"]; raw != nil && !ok {
+		return fmt.Errorf("field reason in K8SEventPayload: required")
+	}
+	if _, ok := raw["target"]; raw != nil && !ok {
+		return fmt.Errorf("field target in K8SEventPayload: required")
+	}
+	type Plain K8SEventPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["count"]; !ok || v == nil {
+		plain.Count = 1
+	}
+	if 1 > plain.Count {
+		return fmt.Errorf("field %s: must be >= %v", "count", 1)
+	}
+	if v, ok := raw["event_type"]; !ok || v == nil {
+		plain.EventType = "Warning"
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "k8s_event"
+	}
+	if plain.Kind != "k8s_event" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "k8s_event")
+	}
+	*j = K8SEventPayload(plain)
+	return nil
+}
+
 // Permission to use a credential, bound to one connector and one run.
 //
 // A lease is not a credential. It is redeemable only by the named connector,
@@ -1767,6 +2399,92 @@ type Lease struct {
 
 	// RequestId corresponds to the JSON schema field "request_id".
 	RequestId string `json:"request_id" yaml:"request_id" mapstructure:"request_id"`
+}
+
+// A lease could not be renewed, so the work behind it stopped.
+//
+// ADR 0005: this must surface as a Finding and never be swallowed. `reason`
+// distinguishes the two cases, because they call for opposite responses -
+// an expired grant warrants offering re-approval, a revoked one must not,
+// since re-prompting would undo a deliberate revocation mid-incident.
+type LeaseExpiredEvent struct {
+	// Agent corresponds to the JSON schema field "agent".
+	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// LeaseId corresponds to the JSON schema field "lease_id".
+	LeaseId string `json:"lease_id" yaml:"lease_id" mapstructure:"lease_id"`
+
+	// Reason corresponds to the JSON schema field "reason".
+	Reason LeaseExpiredEventReason `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+type LeaseExpiredEventReason string
+
+const LeaseExpiredEventReasonExpired LeaseExpiredEventReason = "expired"
+const LeaseExpiredEventReasonRevoked LeaseExpiredEventReason = "revoked"
+
+var enumValues_LeaseExpiredEventReason = []interface{}{
+	"expired",
+	"revoked",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *LeaseExpiredEventReason) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_LeaseExpiredEventReason {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_LeaseExpiredEventReason, v)
+	}
+	*j = LeaseExpiredEventReason(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *LeaseExpiredEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["agent"]; raw != nil && !ok {
+		return fmt.Errorf("field agent in LeaseExpiredEvent: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in LeaseExpiredEvent: required")
+	}
+	if _, ok := raw["lease_id"]; raw != nil && !ok {
+		return fmt.Errorf("field lease_id in LeaseExpiredEvent: required")
+	}
+	type Plain LeaseExpiredEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["reason"]; !ok || v == nil {
+		plain.Reason = "expired"
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "lease_expired"
+	}
+	if plain.Type != "lease_expired" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "lease_expired")
+	}
+	*j = LeaseExpiredEvent(plain)
+	return nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -1814,6 +2532,214 @@ func (j *Lease) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("field %s: must be >= %v", "renewed_count", 0)
 	}
 	*j = Lease(plain)
+	return nil
+}
+
+// A group of log lines sharing a template, plus how surprising it is.
+type LogClusterPayload struct {
+	// FirstSeen corresponds to the JSON schema field "first_seen".
+	FirstSeen *time.Time `json:"first_seen,omitempty,omitzero" yaml:"first_seen,omitempty" mapstructure:"first_seen,omitempty"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// LastSeen corresponds to the JSON schema field "last_seen".
+	LastSeen *time.Time `json:"last_seen,omitempty,omitzero" yaml:"last_seen,omitempty" mapstructure:"last_seen,omitempty"`
+
+	// 1.0 means never seen before this window.
+	Novelty interface{} `json:"novelty,omitempty,omitzero" yaml:"novelty,omitempty" mapstructure:"novelty,omitempty"`
+
+	// Occurrences corresponds to the JSON schema field "occurrences".
+	Occurrences int `json:"occurrences,omitempty,omitzero" yaml:"occurrences,omitempty" mapstructure:"occurrences,omitempty"`
+
+	// Verbatim examples. Redacted before emission.
+	SampleLines []string `json:"sample_lines,omitempty,omitzero" yaml:"sample_lines,omitempty" mapstructure:"sample_lines,omitempty"`
+
+	// Normalised line with variables masked.
+	Template string `json:"template" yaml:"template" mapstructure:"template"`
+}
+
+type LogClusterPayloadNovelty_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *LogClusterPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["template"]; raw != nil && !ok {
+		return fmt.Errorf("field template in LogClusterPayload: required")
+	}
+	type Plain LogClusterPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "log_cluster"
+	}
+	if plain.Kind != "log_cluster" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "log_cluster")
+	}
+	if v, ok := raw["occurrences"]; !ok || v == nil {
+		plain.Occurrences = 0
+	}
+	if 0 > plain.Occurrences {
+		return fmt.Errorf("field %s: must be >= %v", "occurrences", 0)
+	}
+	*j = LogClusterPayload(plain)
+	return nil
+}
+
+// A change to a manifest or IaC definition, and what it touches.
+type ManifestDiffPayload struct {
+	// ChangedFields corresponds to the JSON schema field "changed_fields".
+	ChangedFields []string `json:"changed_fields,omitempty,omitzero" yaml:"changed_fields,omitempty" mapstructure:"changed_fields,omitempty"`
+
+	// Unified diff.
+	Diff string `json:"diff" yaml:"diff" mapstructure:"diff"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// RevisionAfter corresponds to the JSON schema field "revision_after".
+	RevisionAfter interface{} `json:"revision_after,omitempty,omitzero" yaml:"revision_after,omitempty" mapstructure:"revision_after,omitempty"`
+
+	// RevisionBefore corresponds to the JSON schema field "revision_before".
+	RevisionBefore interface{} `json:"revision_before,omitempty,omitzero" yaml:"revision_before,omitempty" mapstructure:"revision_before,omitempty"`
+
+	// Target corresponds to the JSON schema field "target".
+	Target ResourceRef `json:"target" yaml:"target" mapstructure:"target"`
+}
+
+type ManifestDiffPayloadRevisionAfter_0 *string
+
+type ManifestDiffPayloadRevisionBefore_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ManifestDiffPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["diff"]; raw != nil && !ok {
+		return fmt.Errorf("field diff in ManifestDiffPayload: required")
+	}
+	if _, ok := raw["target"]; raw != nil && !ok {
+		return fmt.Errorf("field target in ManifestDiffPayload: required")
+	}
+	type Plain ManifestDiffPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "manifest_diff"
+	}
+	if plain.Kind != "manifest_diff" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "manifest_diff")
+	}
+	*j = ManifestDiffPayload(plain)
+	return nil
+}
+
+// One point on a series.
+type MetricSample struct {
+	// At corresponds to the JSON schema field "at".
+	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
+
+	// Value corresponds to the JSON schema field "value".
+	Value float64 `json:"value" yaml:"value" mapstructure:"value"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *MetricSample) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["at"]; raw != nil && !ok {
+		return fmt.Errorf("field at in MetricSample: required")
+	}
+	if _, ok := raw["value"]; raw != nil && !ok {
+		return fmt.Errorf("field value in MetricSample: required")
+	}
+	type Plain MetricSample
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = MetricSample(plain)
+	return nil
+}
+
+// A slice of a time series, with the baseline it is being judged against.
+//
+// `deviation_sigma` is carried rather than recomputed downstream so that the
+// dashboard, the verdict and the audit trail all agree on how unusual this
+// was - recomputing invites three different answers.
+type MetricWindowPayload struct {
+	// BaselineMean corresponds to the JSON schema field "baseline_mean".
+	BaselineMean interface{} `json:"baseline_mean,omitempty,omitzero" yaml:"baseline_mean,omitempty" mapstructure:"baseline_mean,omitempty"`
+
+	// BaselineStddev corresponds to the JSON schema field "baseline_stddev".
+	BaselineStddev interface{} `json:"baseline_stddev,omitempty,omitzero" yaml:"baseline_stddev,omitempty" mapstructure:"baseline_stddev,omitempty"`
+
+	// How many standard deviations from baseline, signed.
+	DeviationSigma interface{} `json:"deviation_sigma,omitempty,omitzero" yaml:"deviation_sigma,omitempty" mapstructure:"deviation_sigma,omitempty"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// Metric name, e.g. 'container_memory_working_set_bytes'.
+	Metric string `json:"metric" yaml:"metric" mapstructure:"metric"`
+
+	// Samples corresponds to the JSON schema field "samples".
+	Samples []MetricSample `json:"samples,omitempty,omitzero" yaml:"samples,omitempty" mapstructure:"samples,omitempty"`
+
+	// e.g. 'bytes', 'seconds', 'requests/s'.
+	Unit string `json:"unit,omitempty,omitzero" yaml:"unit,omitempty" mapstructure:"unit,omitempty"`
+
+	// WindowSeconds corresponds to the JSON schema field "window_seconds".
+	WindowSeconds int `json:"window_seconds,omitempty,omitzero" yaml:"window_seconds,omitempty" mapstructure:"window_seconds,omitempty"`
+}
+
+type MetricWindowPayloadBaselineMean_0 *float64
+
+type MetricWindowPayloadBaselineStddev_0 *float64
+
+type MetricWindowPayloadDeviationSigma_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *MetricWindowPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["metric"]; raw != nil && !ok {
+		return fmt.Errorf("field metric in MetricWindowPayload: required")
+	}
+	type Plain MetricWindowPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "metric_window"
+	}
+	if plain.Kind != "metric_window" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "metric_window")
+	}
+	if v, ok := raw["unit"]; !ok || v == nil {
+		plain.Unit = ""
+	}
+	if v, ok := raw["window_seconds"]; !ok || v == nil {
+		plain.WindowSeconds = 0
+	}
+	if 0 > plain.WindowSeconds {
+		return fmt.Errorf("field %s: must be >= %v", "window_seconds", 0)
+	}
+	*j = MetricWindowPayload(plain)
 	return nil
 }
 
@@ -1977,6 +2903,10 @@ type PantheonSchemaJson struct {
 	// ResolutionRecord corresponds to the JSON schema field "resolution_record".
 	ResolutionRecord *ResolutionRecord `json:"resolution_record,omitempty,omitzero" yaml:"resolution_record,omitempty" mapstructure:"resolution_record,omitempty"`
 
+	// RootCauseHypothesis corresponds to the JSON schema field
+	// "root_cause_hypothesis".
+	RootCauseHypothesis *RootCauseHypothesis `json:"root_cause_hypothesis,omitempty,omitzero" yaml:"root_cause_hypothesis,omitempty" mapstructure:"root_cause_hypothesis,omitempty"`
+
 	// UIActionResponse corresponds to the JSON schema field "u_i_action_response".
 	UIActionResponse *UIActionResponse `json:"u_i_action_response,omitempty,omitzero" yaml:"u_i_action_response,omitempty" mapstructure:"u_i_action_response,omitempty"`
 
@@ -2015,6 +2945,109 @@ func (j *PermissionMode) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_PermissionMode, v)
 	}
 	*j = PermissionMode(v)
+	return nil
+}
+
+// One CI pipeline run and the jobs that failed in it.
+type PipelineRunPayload struct {
+	// CommitSha corresponds to the JSON schema field "commit_sha".
+	CommitSha interface{} `json:"commit_sha,omitempty,omitzero" yaml:"commit_sha,omitempty" mapstructure:"commit_sha,omitempty"`
+
+	// DurationSeconds corresponds to the JSON schema field "duration_seconds".
+	DurationSeconds interface{} `json:"duration_seconds,omitempty,omitzero" yaml:"duration_seconds,omitempty" mapstructure:"duration_seconds,omitempty"`
+
+	// FailedJobs corresponds to the JSON schema field "failed_jobs".
+	FailedJobs []string `json:"failed_jobs,omitempty,omitzero" yaml:"failed_jobs,omitempty" mapstructure:"failed_jobs,omitempty"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// PipelineId corresponds to the JSON schema field "pipeline_id".
+	PipelineId string `json:"pipeline_id" yaml:"pipeline_id" mapstructure:"pipeline_id"`
+
+	// Project corresponds to the JSON schema field "project".
+	Project string `json:"project" yaml:"project" mapstructure:"project"`
+
+	// Branch or tag.
+	Ref string `json:"ref" yaml:"ref" mapstructure:"ref"`
+
+	// e.g. 'failed', 'success'.
+	Status string `json:"status" yaml:"status" mapstructure:"status"`
+}
+
+type PipelineRunPayloadCommitSha_0 *string
+
+type PipelineRunPayloadDurationSeconds_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PipelineRunPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["pipeline_id"]; raw != nil && !ok {
+		return fmt.Errorf("field pipeline_id in PipelineRunPayload: required")
+	}
+	if _, ok := raw["project"]; raw != nil && !ok {
+		return fmt.Errorf("field project in PipelineRunPayload: required")
+	}
+	if _, ok := raw["ref"]; raw != nil && !ok {
+		return fmt.Errorf("field ref in PipelineRunPayload: required")
+	}
+	if _, ok := raw["status"]; raw != nil && !ok {
+		return fmt.Errorf("field status in PipelineRunPayload: required")
+	}
+	type Plain PipelineRunPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "pipeline_run"
+	}
+	if plain.Kind != "pipeline_run" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "pipeline_run")
+	}
+	*j = PipelineRunPayload(plain)
+	return nil
+}
+
+// One agent consultation Zeus intends to make.
+type PlanStep struct {
+	// Agent codename.
+	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
+
+	// Agent codenames whose findings this step needs.
+	DependsOn []string `json:"depends_on,omitempty,omitzero" yaml:"depends_on,omitempty" mapstructure:"depends_on,omitempty"`
+
+	// FinishedAt corresponds to the JSON schema field "finished_at".
+	FinishedAt *time.Time `json:"finished_at,omitempty,omitzero" yaml:"finished_at,omitempty" mapstructure:"finished_at,omitempty"`
+
+	// Why this agent is being asked.
+	Reason string `json:"reason" yaml:"reason" mapstructure:"reason"`
+
+	// StartedAt corresponds to the JSON schema field "started_at".
+	StartedAt *time.Time `json:"started_at,omitempty,omitzero" yaml:"started_at,omitempty" mapstructure:"started_at,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PlanStep) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["agent"]; raw != nil && !ok {
+		return fmt.Errorf("field agent in PlanStep: required")
+	}
+	if _, ok := raw["reason"]; raw != nil && !ok {
+		return fmt.Errorf("field reason in PlanStep: required")
+	}
+	type Plain PlanStep
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = PlanStep(plain)
 	return nil
 }
 
@@ -2190,6 +3223,179 @@ func (j *ResolutionStep) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// What a piece of Evidence is about.
+//
+// Deliberately not Kubernetes-shaped: a pipeline and a database are subjects
+// too, and forcing them into `namespace/kind/name` would be a lie that costs
+// an adapter at every call site.
+type ResourceRef struct {
+	// Cluster corresponds to the JSON schema field "cluster".
+	Cluster interface{} `json:"cluster,omitempty,omitzero" yaml:"cluster,omitempty" mapstructure:"cluster,omitempty"`
+
+	// e.g. 'deployment', 'pipeline', 'node'.
+	Kind string `json:"kind" yaml:"kind" mapstructure:"kind"`
+
+	// Name corresponds to the JSON schema field "name".
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// Where applicable.
+	Namespace interface{} `json:"namespace,omitempty,omitzero" yaml:"namespace,omitempty" mapstructure:"namespace,omitempty"`
+}
+
+type ResourceRefCluster_0 *string
+
+type ResourceRefNamespace_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ResourceRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in ResourceRef: required")
+	}
+	if _, ok := raw["name"]; raw != nil && !ok {
+		return fmt.Errorf("field name in ResourceRef: required")
+	}
+	type Plain ResourceRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = ResourceRef(plain)
+	return nil
+}
+
+type RootCauseCategory string
+
+const RootCauseCategoryBadDeployment RootCauseCategory = "bad_deployment"
+const RootCauseCategoryCapacitySaturation RootCauseCategory = "capacity_saturation"
+const RootCauseCategoryConfigError RootCauseCategory = "config_error"
+const RootCauseCategoryDataCorruption RootCauseCategory = "data_corruption"
+const RootCauseCategoryDependencyFailure RootCauseCategory = "dependency_failure"
+const RootCauseCategoryDiskExhaustion RootCauseCategory = "disk_exhaustion"
+const RootCauseCategoryExternalIncident RootCauseCategory = "external_incident"
+const RootCauseCategoryFlakyTest RootCauseCategory = "flaky_test"
+const RootCauseCategoryMemoryLeak RootCauseCategory = "memory_leak"
+const RootCauseCategoryNetworkPartition RootCauseCategory = "network_partition"
+const RootCauseCategoryResourceContention RootCauseCategory = "resource_contention"
+const RootCauseCategoryUnknown RootCauseCategory = "unknown"
+
+var enumValues_RootCauseCategory = []interface{}{
+	"memory_leak",
+	"resource_contention",
+	"bad_deployment",
+	"config_error",
+	"disk_exhaustion",
+	"capacity_saturation",
+	"dependency_failure",
+	"network_partition",
+	"flaky_test",
+	"data_corruption",
+	"external_incident",
+	"unknown",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *RootCauseCategory) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_RootCauseCategory {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_RootCauseCategory, v)
+	}
+	*j = RootCauseCategory(v)
+	return nil
+}
+
+// One candidate explanation, and how well it survived contact with evidence.
+type RootCauseHypothesis struct {
+	// Category corresponds to the JSON schema field "category".
+	Category RootCauseCategory `json:"category" yaml:"category" mapstructure:"category"`
+
+	// Confidence corresponds to the JSON schema field "confidence".
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// Recorded deliberately. A hypothesis with none listed has usually not been
+	// tested, rather than survived testing.
+	ContradictingFindingIds []string `json:"contradicting_finding_ids,omitempty,omitzero" yaml:"contradicting_finding_ids,omitempty" mapstructure:"contradicting_finding_ids,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Agent codename, or 'zeus' for an aggregated one.
+	ProposedBy string `json:"proposed_by" yaml:"proposed_by" mapstructure:"proposed_by"`
+
+	// Why the evidence implies this.
+	Reasoning interface{} `json:"reasoning,omitempty,omitzero" yaml:"reasoning,omitempty" mapstructure:"reasoning,omitempty"`
+
+	// One sentence a human can act on, e.g. 'checkout leaks connections under retry
+	// storms, exhausting the pool'.
+	Statement string `json:"statement" yaml:"statement" mapstructure:"statement"`
+
+	// Status corresponds to the JSON schema field "status".
+	Status HypothesisStatus `json:"status,omitempty,omitzero" yaml:"status,omitempty" mapstructure:"status,omitempty"`
+
+	// What it is about, e.g. 'deployment/checkout'.
+	Subject interface{} `json:"subject,omitempty,omitzero" yaml:"subject,omitempty" mapstructure:"subject,omitempty"`
+
+	// SupportingFindingIds corresponds to the JSON schema field
+	// "supporting_finding_ids".
+	SupportingFindingIds []string `json:"supporting_finding_ids,omitempty,omitzero" yaml:"supporting_finding_ids,omitempty" mapstructure:"supporting_finding_ids,omitempty"`
+}
+
+type RootCauseHypothesisReasoning_0 *string
+
+type RootCauseHypothesisSubject_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *RootCauseHypothesis) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["category"]; raw != nil && !ok {
+		return fmt.Errorf("field category in RootCauseHypothesis: required")
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in RootCauseHypothesis: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in RootCauseHypothesis: required")
+	}
+	if _, ok := raw["proposed_by"]; raw != nil && !ok {
+		return fmt.Errorf("field proposed_by in RootCauseHypothesis: required")
+	}
+	if _, ok := raw["statement"]; raw != nil && !ok {
+		return fmt.Errorf("field statement in RootCauseHypothesis: required")
+	}
+	type Plain RootCauseHypothesis
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	if v, ok := raw["status"]; !ok || v == nil {
+		plain.Status = "proposed"
+	}
+	*j = RootCauseHypothesis(plain)
+	return nil
+}
+
 type Severity string
 
 const SeverityCritical Severity = "critical"
@@ -2223,6 +3429,93 @@ func (j *Severity) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Severity, v)
 	}
 	*j = Severity(v)
+	return nil
+}
+
+// An agent returned, with or without findings.
+type StepFinishedEvent struct {
+	// Agent corresponds to the JSON schema field "agent".
+	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
+
+	// FindingCount corresponds to the JSON schema field "finding_count".
+	FindingCount int `json:"finding_count,omitempty,omitzero" yaml:"finding_count,omitempty" mapstructure:"finding_count,omitempty"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *StepFinishedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["agent"]; raw != nil && !ok {
+		return fmt.Errorf("field agent in StepFinishedEvent: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in StepFinishedEvent: required")
+	}
+	type Plain StepFinishedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["finding_count"]; !ok || v == nil {
+		plain.FindingCount = 0
+	}
+	if 0 > plain.FindingCount {
+		return fmt.Errorf("field %s: must be >= %v", "finding_count", 0)
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "step_finished"
+	}
+	if plain.Type != "step_finished" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "step_finished")
+	}
+	*j = StepFinishedEvent(plain)
+	return nil
+}
+
+// Zeus dispatched an agent.
+type StepStartedEvent struct {
+	// Agent corresponds to the JSON schema field "agent".
+	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *StepStartedEvent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["agent"]; raw != nil && !ok {
+		return fmt.Errorf("field agent in StepStartedEvent: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in StepStartedEvent: required")
+	}
+	type Plain StepStartedEvent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["type"]; !ok || v == nil {
+		plain.Type = "step_started"
+	}
+	if plain.Type != "step_started" {
+		return fmt.Errorf("field %s: must be equal to %s", "type", "step_started")
+	}
+	*j = StepStartedEvent(plain)
 	return nil
 }
 
@@ -2263,7 +3556,7 @@ type Trigger struct {
 	// Kind corresponds to the JSON schema field "kind".
 	Kind TriggerKind `json:"kind" yaml:"kind" mapstructure:"kind"`
 
-	// Payload corresponds to the JSON schema field "payload".
+	// Verbatim, unparsed.
 	Payload TriggerPayload `json:"payload,omitempty,omitzero" yaml:"payload,omitempty" mapstructure:"payload,omitempty"`
 
 	// ReceivedAt corresponds to the JSON schema field "received_at".
@@ -2271,6 +3564,9 @@ type Trigger struct {
 
 	// Who sent it, e.g. 'alertmanager'.
 	Source string `json:"source" yaml:"source" mapstructure:"source"`
+
+	// One line, as the source described it.
+	Title string `json:"title,omitempty,omitzero" yaml:"title,omitempty" mapstructure:"title,omitempty"`
 }
 
 type TriggerKind string
@@ -2278,6 +3574,7 @@ type TriggerKind string
 const TriggerKindAlert TriggerKind = "alert"
 const TriggerKindHumanQuestion TriggerKind = "human_question"
 const TriggerKindSchedule TriggerKind = "schedule"
+const TriggerKindSimulation TriggerKind = "simulation"
 const TriggerKindWebhook TriggerKind = "webhook"
 
 var enumValues_TriggerKind = []interface{}{
@@ -2285,6 +3582,7 @@ var enumValues_TriggerKind = []interface{}{
 	"webhook",
 	"schedule",
 	"human_question",
+	"simulation",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -2307,6 +3605,7 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// Verbatim, unparsed.
 type TriggerPayload map[string]interface{}
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -2329,9 +3628,65 @@ func (j *Trigger) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
+	if v, ok := raw["title"]; !ok || v == nil {
+		plain.Title = ""
+	}
 	*j = Trigger(plain)
 	return nil
 }
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
+
+type A2UIComponentAction_0 = A2UIAction
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
+
+type FindingSubject_0 = ResourceRef
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+type InvestigationVerdict_0 = Verdict
+
+// The orchestrator's ranked conclusion for one Investigation.
+type Verdict struct {
+	// Confidence in the leading hypothesis.
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// ContributingFindings corresponds to the JSON schema field
+	// "contributing_findings".
+	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
+
+	// DecidedAt corresponds to the JSON schema field "decided_at".
+	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Ranked most-likely first. Empty means no explanation was reached, which is a
+	// legitimate outcome and must not be dressed up as one.
+	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// True when an agent reported DEGRADED, so the conclusion rests on incomplete
+	// evidence. Surfaced to the reader rather than buried.
+	Partial bool `json:"partial,omitempty,omitzero" yaml:"partial,omitempty" mapstructure:"partial,omitempty"`
+
+	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
+	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
+
+	// What happened, in one paragraph, for a human.
+	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
+}
+
+type EvidenceSubject_0 = ResourceRef
+
+type UIActionResponseContext map[string]interface{}
+
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+
+type UIActionResponseInvestigationId_0 *string
 
 // A user's response to an action, travelling back over AG-UI.
 //
@@ -2355,10 +3710,6 @@ type UIActionResponse struct {
 	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
 }
 
-type UIActionResponseContext map[string]interface{}
-
-type UIActionResponseInvestigationId_0 *string
-
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
@@ -2381,70 +3732,6 @@ func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
 	}
 	*j = UIActionResponse(plain)
 	return nil
-}
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
-
-type A2UIComponentAction_0 = A2UIAction
-
-// The orchestrator's ranked conclusion for one Investigation.
-type Verdict struct {
-	// Confidence corresponds to the JSON schema field "confidence".
-	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
-
-	// ContributingFindings corresponds to the JSON schema field
-	// "contributing_findings".
-	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
-
-	// Id corresponds to the JSON schema field "id".
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
-	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
-
-	// Null when the evidence does not support a conclusion.
-	RootCause interface{} `json:"root_cause,omitempty,omitzero" yaml:"root_cause,omitempty" mapstructure:"root_cause,omitempty"`
-
-	// Summary corresponds to the JSON schema field "summary".
-	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
 
 // The aggregator reached a conclusion.
@@ -2486,6 +3773,41 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type VerdictRootCause_0 *string
-
-type InvestigationVerdict_0 = Verdict
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["decided_at"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_at in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	if v, ok := raw["partial"]; !ok || v == nil {
+		plain.Partial = false
+	}
+	*j = Verdict(plain)
+	return nil
+}

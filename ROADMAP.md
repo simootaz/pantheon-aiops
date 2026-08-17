@@ -114,10 +114,10 @@ changing it. Nothing here is forgotten; each row is a debt with a due date.
 
 | Item | Now | Target | When |
 |---|---|---|---|
-| **Coverage floor** | `--cov-fail-under=0` | `80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
 | `pre-commit install` | wired into `make install` | — | ✅ done once `verify.sh` became real |
 | `make dev` / `make sim` | stubs | wired | Phase 1, once `api.main:app` and `simulator.cli` exist |
 | **`gen_ts_api.sh`** | does not exist | additive generator for endpoint-surface types (paths, params, status codes) from OpenAPI | **Phase 1**, alongside real routes. Separate from `gen_ts.sh`: domain types come from JSON Schema so they are not shaped by routing accidents |
+| **`remote_write` for metrics** | pushgateway + compressed time | Prometheus `remote_write` with explicit timestamps | **Phase 6, when Moira lands.** Pushgateway discards timestamps by design, so a baseline only exists in elapsed time. Capacity forecasting needs ~30 days of history to predict the next 30, and no scrape interval can compress that — a 30-day window at 1s scrape is 2.6M samples per series. This becomes necessary, not optional |
 | **A2UI envelope** | `Custom` event named `a2ui`, isolated to `api/agui/a2ui_channel.py` | whatever the specs standardise | **Revisit each AG-UI/A2UI release.** No canonical envelope is documented; cost of being wrong is one constant and one function |
 | **A2UI v1.0** | pinned to v0.9.1 | v1.0 | once released — it is a *release candidate*, and the spec recommends 0.9.1 for production |
 | **ag-ui#1169** | pinned `>=0.1.20,<0.2` with the bug present | upstream fix | `ReasoningMessageStartEvent.role` is `"assistant"` in Python and `"reasoning"` in TypeScript. **Will bite when reasoning events are wired at Phase 4** |
