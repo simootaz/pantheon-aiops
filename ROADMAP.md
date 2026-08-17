@@ -1,107 +1,170 @@
 # Pantheon Roadmap
 
-> **Phase: 0 - Scaffold & Tooling.** The full phase breakdown with exit criteria
-> is written on branch `feature/docs-baseline`. The authoritative phase list
-> currently lives in [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md#phase-roadmap).
+Eight phases. Phase 0 builds the thing that makes Phases 1–7 safe to build.
 
-## Phase 0 branch order
-
-Phase 0 is delivered as eight feature branches. They were **reordered after
-branch 1**: branch 3 was pulled ahead of branch 2.
-
-**Reason:** the Python toolchain (`uv`, Python 3.12) was not yet installed, so
-`feature/python-tooling` could not have its gate verified, while Go 1.23 was
-already present and `feature/go-workspace` could be verified in full. Git Flow
-is unaffected — the branches are independent.
-
-| Order | Branch | Status |
+| Phase | Name | Status |
 |---|---|---|
-| 1 | `feature/repo-skeleton` | ✅ merged |
-| 2 | `feature/go-workspace` | ✅ merged *(was 3rd)* |
-| — | `feature/go-base-relocation` | ✅ merged — unplanned; moved the shared Go library to `pkg/mcpserver` |
-| 3 | `feature/python-tooling` | ✅ merged *(was 2nd)* |
-| 4 | `feature/dashboard-scaffold` | ✅ merged |
-| 5 | `feature/codegen-pipeline` | ✅ merged |
-| — | `feature/api-minimal` | ✅ merged — unplanned; `create_app()` + `/health`, makes `make dev` live |
-| 6 | `feature/deploy-skeleton` | ✅ merged |
-| 7 | `feature/ci-workflows` | ✅ merged |
-| 8 | `feature/docs-baseline` | ⏳ |
+| **0** | Scaffold & Tooling | ✅ **complete** |
+| 1 | Contracts & First Agent Path | next |
+| 2 | Orchestrator & Investigation Flow | |
+| 3 | Guardrails, Approvals & Write Actions | |
+| 4 | Delivery Flow | |
+| 5 | Proactive Flow | |
+| 6 | Go Port & Platform Binaries | |
+| 7 | Production Hardening | |
+
+---
+
+## Phase 0 — Scaffold & Tooling ✅
+
+Structure, tooling, contracts, codegen, deploy skeleton, CI, and the guards that
+keep all of it honest. **No business logic.**
+
+| Delivered | |
+|---|---|
+| Repository tree | every module documented, phase-marked |
+| Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
+| Go | workspace over 5 modules, golangci-lint, compiling stubs |
+| TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
+| Contracts | 19 models, closed, exported to Go + TS |
+| Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
+| Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
+| CI | 9 workflows, SHA-pinned, one required check |
+| Docs | 6 ADRs, repository map, architecture, this file |
+| **Guards** | **78, each verified against a planted violation** |
+
+Shipped as ten branches, two unplanned: `feature/go-base-relocation` and
+`fix/generated-credential-policy`.
+
+**Exit criteria — all met.** On a fresh clone: `make install && make lint &&
+make typecheck && make test`, `make lint-go && make test-go`, `make lint-ts &&
+make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
+`docker compose config` ×3, `actionlint`, `zizmor`, and
+`pnpm --dir dashboard build`.
+
+---
+
+## Phase 1 — Contracts & First Agent Path
+
+The first end-to-end slice: an alert produces a Finding.
+
+- `core/contracts/` filled out beyond the codegen-exercising minimum
+- `core/registry/` — manifest discovery, capability matching
+- `agents/_base/` — `BaseAgent`, tool binding, test fixtures
+- **Argus** (anomaly detection) — the first real agent
+- Prometheus and Alertmanager connectors
+- `api/routers/` — investigations, agents, health
+- Simulator: metric and log generation
+- **Raise the coverage floor to 80** (see deferred, below)
+
+## Phase 2 — Orchestrator & Investigation Flow
+
+- **Zeus**: router, classifier, planner, dispatcher, aggregator
+- `core/memory/` — vector store, repository, cache
+- **Delphi** implemented: gateway, resolver, catalog, `chat_completions`, tracing
+- **Lethe** and **Hermes**; Loki connector
+- `ResolutionRecord` persistence
+- Redaction wired into logging and tracing
+
+## Phase 3 — Guardrails, Approvals & Write Actions
+
+- `core/guardrails/` — policy, approval gate, budget
+- **Cerberus** implemented: store, policy, audit, broker, lease, redemption,
+  rotation, revocation, break-glass
+- **Aegis**; write tools behind approval
+- Auth and tenant scoping
+
+## Phase 4 — Delivery Flow
+
+- **Hephaestus** and **Themis**; GitLab and GitHub connectors
+- **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
+  Cerberus
+- `ArtifactRef` resolution — server-side, same-investigation only
+- Dashboard: real investigation, agent, approval and settings views
+- Delphi settings surface: provider cards, tier pickers, per-agent overrides,
+  **Test connection** probes, validation warnings
+
+## Phase 5 — Proactive Flow
+
+- **Moira**, **Mnemosyne**, **Clio**, **Eris**; Litmus connector
+- Temporal workflows, activities, worker
+- Replay from snapshot + ordered patches
+- End-to-end tests against the simulator
+
+## Phase 6 — Go Port & Platform Binaries
+
+- Kubernetes connector in Go; `connectors/kubernetes/python_ref/` **deleted**
+- `pantheonctl`, `collector`
+- Images built and published
+
+## Phase 7 — Production Hardening
+
+- Terraform resources, Argo CD, Ansible
+- Grafana dashboards, Prometheus rules, OTel pipeline
+- Admission policies, sealed secrets, network policies
+- Velero and Postgres backups against object storage
+- `build-push.yml` and `release.yml` made real
+
+---
+
+## Deferred decisions
+
+Everything deliberately set to a scaffold-friendly value, with the trigger for
+changing it. Nothing here is forgotten; each row is a debt with a due date.
+
+| Item | Now | Target | When |
+|---|---|---|---|
+| **Coverage floor** | `--cov-fail-under=0` | `80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
+| `pre-commit install` | wired into `make install` | — | ✅ done once `verify.sh` became real |
+| `make dev` / `make sim` | stubs | wired | Phase 1, once `api.main:app` and `simulator.cli` exist |
+| **`gen_ts_api.sh`** | does not exist | additive generator for endpoint-surface types (paths, params, status codes) from OpenAPI | **Phase 1**, alongside real routes. Separate from `gen_ts.sh`: domain types come from JSON Schema so they are not shaped by routing accidents |
+| **A2UI envelope** | `Custom` event named `a2ui`, isolated to `api/agui/a2ui_channel.py` | whatever the specs standardise | **Revisit each AG-UI/A2UI release.** No canonical envelope is documented; cost of being wrong is one constant and one function |
+| **A2UI v1.0** | pinned to v0.9.1 | v1.0 | once released — it is a *release candidate*, and the spec recommends 0.9.1 for production |
+| **ag-ui#1169** | pinned `>=0.1.20,<0.2` with the bug present | upstream fix | `ReasoningMessageStartEvent.role` is `"assistant"` in Python and `"reasoning"` in TypeScript. **Will bite when reasoning events are wired at Phase 4** |
+| `unparam` / `nilnil` Go linters | disabled | enabled | **Phase 6** — every stub returns a constant, so they would fire on all of them |
+| `Video` / `AudioPlayer` | excluded from the allowlist | admitted with the same `ArtifactRef` treatment as `Image` | when something needs them; the allowlist grows on demand, never speculatively |
+| Redaction sink wiring | `redact()` implemented and tested | wired into logging, tracing, prompt assembly | Phase 2–3 |
+| Generated credentials | dev/demo only; chart fails closed in production | supplied secrets everywhere via Sealed Secrets | Phase 7 |
+| SARIF upload | uploaded as artifacts | `github/codeql-action/upload-sarif` | once code scanning is enabled on the repository |
+| Go event union | flattened by the generator | a tagged union | Phase 6, if the Go connector needs to consume events |
 
 ## Definition of done — Phase 0
-
-On a fresh clone, all of the following must pass.
 
 | Language | Commands |
 |---|---|
 | Python | `make install && make lint && make typecheck && make test` |
 | Go | `make lint-go`, `make test-go`, `go build github.com/simootaz/pantheon-aiops/...` |
-| TypeScript | `make lint-ts && make test-ts`, and `pnpm --dir dashboard build` |
-| Codegen | `make codegen-verify` — must exit non-zero on planted drift, not merely exit zero on a clean tree |
-| CI | `actionlint` and `zizmor` clean; `ci.yml` is the only required status and depends on every other check |
-| Deploy | `helm lint deploy/helm/pantheon`, `terraform fmt -check`, `docker compose config` |
-| Docs | docs/REPOSITORY_MAP.md accurately describes every directory that exists |
+| TypeScript | `make lint-ts`, `make test-ts`, `pnpm --dir dashboard build` |
+| Deploy | `helm lint` ×3, `helm template` ×3, `terraform fmt -check -recursive`, `terraform validate`, `docker compose config` ×3 |
+| CI | `actionlint`, `zizmor --persona pedantic` |
+| Codegen | `make codegen-verify` — **must exit non-zero on planted drift**, not merely zero on a clean tree |
+| Guards | every guard verified against a planted violation, both directions |
+| Docs | `docs/REPOSITORY_MAP.md` accurately describes every directory that exists |
 
-> **Note on the Go commands.** `go build ./...` is *not* used and must not be
+> **Note on the Go commands.** `go build ./...` is not used and must not be
 > reintroduced. The repo root has no `go.mod`, so the pattern is invalid there,
 > and adding a root module would not help — nested modules are pruned from a
-> parent's package walk, so it would report success while building nothing. The
-> three commands above cover all four modules and all eight packages.
+> parent's package walk, so it would report success while building nothing.
 
-## Delphi — the LLM gateway
+## Phase 0 branch order
 
-Specified in [ADR 0004](docs/adr/0004-llm-provider-abstraction.md). Agents
-declare `ModelRequirements`; Delphi resolves them to a model at call time.
+Delivered as ten branches; two were unplanned, and the order changed once.
 
-| Phase | Delivers |
-|---|---|
-| **0** | Structure and contracts as documented stubs; `delphi:` Helm block; Ollama Compose service; `LLM_*` env vars |
-| **2** | `gateway`, `resolver`, `catalog`, `chat_completions` adapter, `tracing`, `ResolutionRecord` persistence |
-| **3** | Budget guard integrated with `core/guardrails/budget.py` — Delphi supplies price, guardrails decide |
-| **4** | Settings surface: provider cards, tier pickers, per-agent overrides, **Test connection** probes, validation warnings |
-| **5** | Remaining dialect adapters (`messages`, `generate_content`, `raw`) and `custom.py` hardening |
-
-## Cerberus — the credential broker
-
-Specified in [ADR 0005](docs/adr/0005-credential-brokering.md). Agents request
-capabilities; they never hold credentials.
-
-| Phase | Delivers |
-|---|---|
-| **0** | Structure, contracts, `redaction.py` implemented, all three safety guards |
-| **3** | store, policy, audit, broker, lease, redemption; Approval Gate integration; rotation and revocation |
-| **4** | Settings surface: credential inventory, grant table, permission modes, audit viewer |
-| **5** | Rotation scheduling and the break-glass runbook |
-
-## Agentic UI — AG-UI and A2UI
-
-Specified in [ADR 0006](docs/adr/0006-agentic-ui-protocols.md). AG-UI is the
-transport; A2UI is the payload for agent-generated UI.
-
-| Phase | Delivers |
-|---|---|
-| **0** | Contracts, allowlist, structure, guards; `api/ws/` removed |
-| **4** | AG-UI SSE endpoint and translator, A2UI surfaces for the Approval Gate and Cerberus, ArtifactRef resolution (server-side, same-investigation only), dashboard client and renderer |
-| **5** | Replay from snapshot + patches |
-
-## Deferred decisions
-
-Things deliberately set to a scaffold-friendly value now, to be tightened later.
-
-| Item | Now | Target | When |
-|---|---|---|---|
-| **Test coverage gate** | `--cov-fail-under=0` | `--cov-fail-under=80` | **Phase 1** — a scaffold has nothing to cover; gating it would be theatre |
-| **Endpoint-surface TS types** | not generated | `codegen/gen_ts_api.sh` — paths, params, status codes from OpenAPI, additive beside the domain types | **Phase 1**, once `api/main.py` has real routes — see [ADR 0002](docs/adr/0002-codegen-from-json-schema.md) |
-| **A2UI-over-AG-UI envelope** | `Custom` event named `a2ui`, isolated to `api/agui/a2ui_channel.py` | whatever the specs standardise | **Revisit each AG-UI/A2UI release.** No canonical envelope is documented; A2UI maps to A2A message Parts, and published AG-UI examples improvise. Cost of being wrong: one constant and one function |
-| `Video` / `AudioPlayer` | excluded | admitted with the same `ArtifactRef` treatment as `Image` | when something actually needs them - the allowlist grows on demand, never speculatively |
-| **A2UI v1.0** | pinned to v0.9.1 | v1.0 once released | v1.0 is a *release candidate*; it adds bidirectional typed function calls and single-message UI instantiation |
-| **ag-ui SDK role mismatch** | pinned `>=0.1.20,<0.2` with the bug present | upstream fix | [ag-ui#1169](https://github.com/ag-ui-protocol/ag-ui/issues/1169) — `ReasoningMessageStartEvent.role` is `"assistant"` in Python and `"reasoning"` in TypeScript. Will bite when reasoning events are wired at Phase 4 |
-| Redaction sink wiring | `redact()` implemented and tested | wired into logging, tracing and prompt assembly | Phase 2–3 |
-| Generated credentials | dev/demo only, chart fails closed in production | supplied secrets everywhere, via Sealed Secrets | Phase 7 |
-| Go event union | `Event interface{}` | hand-written typed accessors beside the generated file | Phase 6 — Go has no sum types; the generator will not invent one |
-| `make sim` | stub, exits non-zero | wired | Phase 1, once `simulator.cli` exists |
-| ~~`make dev`~~ | ✅ live — `uvicorn --factory`, `/health` serving | — | done on `feature/api-minimal` |
-| ~~`pre-commit install`~~ | ✅ wired into `make install` | — | done on `feature/codegen-pipeline` |
-| ~~Object storage~~ | ✅ MinIO everywhere, S3-compatible only; `modules/object-storage` renamed and applied | — | done on `feature/deploy-skeleton` |
-| `unparam` / `nilnil` Go linters | disabled | enabled | Phase 6, once the Go connector is real |
-
-<!-- TODO: Phase 0 - full roadmap with per-phase exit criteria on branch feature/docs-baseline -->
+| # | Branch | Note |
+|---|---|---|
+| 1 | `feature/repo-skeleton` | |
+| 2 | `feature/go-workspace` | pulled ahead — the Python toolchain was not installed yet, so its gate could not be verified |
+| — | `feature/go-base-relocation` | unplanned — moved the shared Go library to `pkg/mcpserver` |
+| 3 | `feature/python-tooling` | |
+| 4 | `feature/codegen-pipeline` | |
+| 5 | `feature/api-minimal` | |
+| 6 | `feature/repo-map-neutralization` | + history rewrite |
+| 7 | `feature/neutrality-guard-narrowing` | + ADR 0004 |
+| 8 | `feature/deploy-skeleton` | |
+| — | `fix/generated-credential-policy` | unplanned — the chart would have rotated production credentials under GitOps |
+| 9 | `feature/ci-workflows` | |
+| 10 | `feature/cerberus-credential-brokering` | |
+| 11 | `feature/agentic-ui-protocols` | |
+| 12 | `feature/artifact-backed-media` | |
+| 13 | `feature/dashboard-scaffold` | |
+| 14 | `feature/docs-baseline` | this one |
