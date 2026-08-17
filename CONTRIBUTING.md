@@ -149,7 +149,19 @@ check relaxed.
 
 Assert against the mechanism, not the file. `"fail" in template` is true because
 a comment says "fail closed". Strip comments first — `_mechanism_only()` in
-`tests/unit/test_repo_structure.py` exists for this.
+`tests/unit/test_repo_structure.py` exists for this, and `recipe_for()` in
+`tests/unit/test_makefile.py` does the same for Make recipes.
+
+### Aim a guard at the level where the defect can exist
+
+Before writing a guard, ask where the mistake would actually be made. A helper
+that takes an absolute deadline cannot demonstrate a caller passing a duration;
+a function that normalises a path cannot show a caller passing a relative one.
+Guard the seam, not the well-behaved component beside it.
+
+A guard aimed at the wrong layer passes for exactly the same reason a correct one
+does, so only a planted violation distinguishes them. Worked example, and the
+one that cost the most to notice, in `docs/guard-verification.md`.
 
 ### A component that cannot honour a parameter must say so
 

@@ -40,6 +40,24 @@ MAX_WALL_SLEEP = 2.0
 #: simulated time - but anything reasoning in wall time needs to know.
 KEEP_UP_THRESHOLD = 0.8
 
+#: Conservative wall cost of one tick: two HTTP round trips, whatever span of
+#: simulated time the tick covers. Measured at ~102ms against a local Docker
+#: stack and stable over hundreds of ticks; 0.12 leaves margin for a slower
+#: machine. `tests/integration/test_simulator_data.py` measures it per machine
+#: rather than trusting this - it is here so callers can pick a sane default.
+NOMINAL_TICK_COST_SECONDS = 0.12
+
+
+def max_honest_speed(tick_seconds: float = DEFAULT_TICK_SECONDS) -> float:
+    """The fastest compression a given tick size can actually deliver.
+
+    Asking for more is not an error, and the data stays correct in simulated
+    time - but the run reports falling behind. A *default* above this line makes
+    that warning fire on every ordinary invocation, which is how a real warning
+    becomes background noise.
+    """
+    return tick_seconds / NOMINAL_TICK_COST_SECONDS
+
 
 @dataclass(slots=True)
 class RunReport:

@@ -114,34 +114,80 @@ class Series:
         return len(self.values)
 
 
+#: Readiness is retried rather than decided by one request. Loki answers 503
+#: for a grace period after start and while it settles under load, and a single
+#: probe landing in that window is not evidence the stack is absent.
+#:
+#: The budget is deliberately modest. The case worth waiting out is a service
+#: answering 503, which replies instantly, so twelve rounds cost about twelve
+#: seconds. A host that is not listening at all costs the connect timeout each
+#: round — on Windows a dead port burns the full timeout rather than being
+#: refused — and that case wants to end quickly, not be waited out.
+READY_ATTEMPTS = 12
+READY_INTERVAL = 1.0
+READY_TIMEOUT = 2.0
+
+
 def _reachable(url: str, path: str = "/") -> bool:
     try:
-        return httpx.get(f"{url}{path}", timeout=3.0).status_code < 500
+        return httpx.get(f"{url}{path}", timeout=READY_TIMEOUT).status_code < 500
     except httpx.HTTPError:
         return False
 
 
+def _unready() -> list[str]:
+    """Names of the services not answering, retried as one loop.
+
+    Retrying each service in turn would multiply the wait by three when nothing
+    is running — two minutes before a laptop without Docker gets its skip. One
+    loop over all three costs the same grace period and returns the moment they
+    are all up, which is the common case.
+    """
+    for attempt in range(READY_ATTEMPTS):
+        missing = [
+            name
+            for name, ok in (
+                ("prometheus", _reachable(PROMETHEUS, "/-/ready")),
+                ("loki", _reachable(LOKI, "/ready")),
+                ("pushgateway", _reachable(f"http://{PUSHGATEWAY}", "/-/ready")),
+            )
+            if not ok
+        ]
+        if not missing:
+            return []
+        if attempt < READY_ATTEMPTS - 1:
+            time.sleep(READY_INTERVAL)
+    return missing
+
+
 @pytest.fixture(scope="module")
 def stack() -> None:
-    """Skip unless the observability stack is actually up.
+    """Require the observability stack, or skip — depending on who is asking.
 
-    Skipping loudly with the reason beats failing on a developer's laptop, and
-    CI brings the stack up before invoking this file.
+    On a laptop, skipping with the reason beats failing: `pytest` should not go
+    red because Docker is not running.
+
+    But a skip is reported as a pass, and `make test-sim` exists precisely to
+    assert on real data. Running it and getting a green tick that asserted
+    nothing is worse than a failure, because it looks like evidence. So the
+    target sets PANTHEON_REQUIRE_STACK and this fails instead.
+
+    This is not a theoretical distinction. `make test-sim` skipped all nine
+    tests and exited 0 on this machine, moments after `make sim` had pushed
+    240k lines into Loki and left it briefly unready.
     """
-    missing = [
-        name
-        for name, ok in (
-            ("prometheus", _reachable(PROMETHEUS, "/-/ready")),
-            ("loki", _reachable(LOKI, "/ready")),
-            ("pushgateway", _reachable(f"http://{PUSHGATEWAY}", "/-/ready")),
-        )
-        if not ok
-    ]
-    if missing:
-        pytest.skip(
-            f"observability stack not reachable: {missing}. "
-            "Start it with: make up  (or docker compose -f ... up -d prometheus loki pushgateway)"
-        )
+    missing = _unready()
+    if not missing:
+        return
+
+    message = (
+        f"observability stack not reachable after "
+        f"{READY_ATTEMPTS * READY_INTERVAL:.0f}s: {missing}. "
+        "Start it with: make up  (or docker compose -f ... up -d prometheus loki pushgateway)"
+    )
+    if os.environ.get("PANTHEON_REQUIRE_STACK"):
+        pytest.fail(f"{message}\nPANTHEON_REQUIRE_STACK is set, so this is a failure, not a skip.")
+    pytest.skip(message)
 
 
 def reset_pushgateway() -> None:
