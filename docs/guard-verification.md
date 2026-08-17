@@ -65,6 +65,31 @@ This is the third time the rule has paid for itself:
 
 Each was a guard that looked right, passed continuously, and did not work.
 
+## Suppressed-check audit, 2026-08-17
+
+Every committed invocation of a tool was reviewed for a discarded verdict:
+output redirection, `-q`/`--quiet`, `|| true`, and `continue-on-error`.
+
+**No committed instance was found.** Each hit is legitimate:
+
+| Location | Construct | Why it is correct |
+|---|---|---|
+| `Makefile` `clean` | `2>/dev/null \|\| true` | `find` returns non-zero when a directory vanishes mid-traversal. A command, not a check. |
+| `codegen/verify.sh` ×3 | `>/dev/null` on generators | Only stdout. `set -euo pipefail` still enforces the exit code, and stderr is untouched. |
+| `codegen/verify.sh` ×3 | `diff … >"$TMP/x.diff"` | The exit code *is* the condition, and each diff is printed to stderr on failure. |
+| `security.yml` ×4 | `continue-on-error: true` | Deliberate: findings upload before the job fails. Every one is paired with `if: steps.scan.outcome == 'failure'`. |
+| `ci-deploy.yml` | `>/dev/null 2>&1` in an `if` | Asserting a render *fails*; the exit code is the assertion. |
+| `security.yml` | `ls -1 ./*.sarif \|\| true` | A diagnostic listing inside the not-found branch. |
+
+**The only occurrence of the failure was interactive, not committed** — the
+`ruff … >/dev/null 2>&1` in an iteration loop. That is unguardable by the
+repository, which is why the check now lives in pytest where its result cannot
+be redirected away.
+
+Four new guards, each planted: a `|| true` on a check target, a check target with
+all output discarded, a `continue-on-error` with no outcome check, and a captured
+diff that is never printed.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run
