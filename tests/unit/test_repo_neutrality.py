@@ -37,6 +37,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from tests.mechanism import read_scannable, read_verbatim
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Names that identify an AI coding assistant rather than a model vendor. Used
@@ -147,7 +149,7 @@ def test_no_attribution_in_tracked_contents() -> None:
     for path in _tracked_files():
         if path.resolve() == SELF or not path.is_file():
             continue
-        text = path.read_bytes().decode("utf-8", errors="ignore")
+        text = read_scannable(path)
         if reasons := _violations(text):
             offenders.append(f"{path.relative_to(REPO_ROOT)} -> {reasons}")
 
@@ -163,7 +165,10 @@ def test_repository_map_is_tracked_and_canonical() -> None:
     tracked = {path.relative_to(REPO_ROOT).as_posix() for path in _tracked_files()}
     assert "docs/REPOSITORY_MAP.md" in tracked
 
-    body = (REPO_ROOT / "docs" / "REPOSITORY_MAP.md").read_text(encoding="utf-8")
+    body = read_verbatim(
+        REPO_ROOT / "docs" / "REPOSITORY_MAP.md",
+        why="Markdown headings start with # and would be stripped",
+    )
     for heading in (
         "## Project identity",
         "## Language boundaries",

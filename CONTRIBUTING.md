@@ -148,9 +148,23 @@ check relaxed.
 ### Don't let documentation satisfy a mechanism check
 
 Assert against the mechanism, not the file. `"fail" in template` is true because
-a comment says "fail closed". Strip comments first — `_mechanism_only()` in
-`tests/unit/test_repo_structure.py` exists for this, and `recipe_for()` in
-`tests/unit/test_makefile.py` does the same for Make recipes.
+a comment says "fail closed".
+
+This was fixed five separate times before the fix was made the **default**.
+`tests/mechanism.py` now owns it, and reading a file any other way fails the
+build (`tests/unit/test_mechanism_helper_is_used.py`). Four entry points, so the
+intent is explicit at every call site:
+
+| Function | For |
+|---|---|
+| `read_mechanism(path)` | scanned for a mechanism — comments stripped |
+| `read_data(path)` | handed to a parser (JSON, YAML, TOML, `ast`) |
+| `read_verbatim(path, why=…)` | the comments *are* the assertion; reason required |
+| `read_scannable(path)` | repo-wide sweeps over possibly-binary files |
+
+`read_mechanism` **refuses Markdown**: a leading `#` is a heading there, and
+stripping it would turn `"## Folder map" in body` into a guard that asserts
+nothing. That refusal exists because this migration nearly introduced it.
 
 ### Aim a guard at the level where the defect can exist
 

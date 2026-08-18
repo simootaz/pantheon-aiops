@@ -58,8 +58,25 @@ def mechanism_only(text: str) -> str:
     return "\n".join(line for line in without_blocks.splitlines() if not LINE_COMMENT.match(line))
 
 
+#: Suffixes where a leading `#` means something other than "comment".
+#: Markdown headings are the obvious case, and stripping them turns a guard
+#: that checks for `## Folder map` into one that asserts nothing at all.
+NEVER_STRIP = {".md", ".markdown"}
+
+
 def read_mechanism(path: Path) -> str:
-    """Read a file with its comments stripped. The default for any guard."""
+    """Read a file with its comments stripped. The default for any guard.
+
+    Refuses Markdown outright rather than quietly returning a body with every
+    heading removed. A guard reading `"## Folder map" in body` against stripped
+    Markdown passes only while the file is empty of headings — which is to say
+    it fails exactly when it should pass, and vice versa.
+    """
+    if path.suffix.lower() in NEVER_STRIP:
+        raise ValueError(
+            f"{path.name}: a leading '#' is a heading here, not a comment. "
+            "Stripping would delete the thing being asserted - use read_verbatim."
+        )
     return mechanism_only(path.read_text(encoding="utf-8"))
 
 
@@ -73,6 +90,19 @@ def read_data(path: Path) -> str:
     different statements at the call site rather than the same one.
     """
     return path.read_text(encoding="utf-8")
+
+
+def read_scannable(path: Path) -> str:
+    """Any tracked file, possibly binary, decoded leniently. Comments intact.
+
+    For repo-wide sweeps that walk every file rather than a known one: a PNG or
+    a lockfile must not crash the scan. Comments are deliberately left in —
+    `test_repo_neutrality` hunts for AI attribution, which lives in comments, so
+    stripping first would be the vacuous-guard bug in its purest form.
+
+    Wrap in `mechanism_only()` when the sweep is looking for mechanism instead.
+    """
+    return path.read_bytes().decode("utf-8", errors="ignore")
 
 
 def read_verbatim(path: Path, *, why: str) -> str:

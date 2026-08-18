@@ -25,6 +25,7 @@ from codegen.export_schemas import (
     render,
 )
 from core.contracts import EXPORTED_MODELS
+from tests.mechanism import read_data, read_verbatim
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -121,7 +122,7 @@ def test_main_writes_the_schema(tmp_path: Path) -> None:
     assert main(["--output", str(tmp_path)]) == 0
     written = tmp_path / SCHEMA_FILENAME
     assert written.is_file()
-    assert json.loads(written.read_text(encoding="utf-8"))["$defs"]
+    assert json.loads(read_data(written))["$defs"]
 
 
 def test_check_passes_against_freshly_written_output(tmp_path: Path) -> None:
@@ -138,9 +139,7 @@ def test_check_reports_drift_rather_than_raising(tmp_path: Path) -> None:
     target = tmp_path / SCHEMA_FILENAME
     main(["--output", str(tmp_path)])
 
-    target.write_text(
-        target.read_text(encoding="utf-8").replace('"title"', '"tampered"', 1), encoding="utf-8"
-    )
+    target.write_text(read_data(target).replace('"title"', '"tampered"', 1), encoding="utf-8")
     assert main(["--output", str(tmp_path), "--check"]) == 1
 
 
@@ -150,8 +149,9 @@ def test_check_reports_a_missing_file(tmp_path: Path) -> None:
 
 def test_committed_schema_matches_the_contracts() -> None:
     """The committed artifact is current. `make codegen-verify` covers the rest."""
-    committed = (REPO_ROOT / "core" / "contracts" / "export" / SCHEMA_FILENAME).read_text(
-        encoding="utf-8"
+    committed = read_verbatim(
+        REPO_ROOT / "core" / "contracts" / "export" / SCHEMA_FILENAME,
+        why="an exact byte comparison against the rendered output, banner included",
     )
     assert committed == render(build_schema()), "run `make codegen` and commit the result"
 

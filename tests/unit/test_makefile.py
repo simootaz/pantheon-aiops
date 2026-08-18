@@ -18,9 +18,12 @@ import re
 from pathlib import Path
 
 from simulator.runner import DEFAULT_TICK_SECONDS, max_honest_speed
+from tests.mechanism import read_verbatim
 
 MAKEFILE = Path(__file__).resolve().parents[2] / "Makefile"
-BODY = MAKEFILE.read_text(encoding="utf-8")
+BODY = read_verbatim(
+    MAKEFILE, why="the `## name: text` lines make help parses are themselves comments"
+)
 
 #: A target definition: a name at the start of a line, followed by a colon.
 #: Excludes variable assignments (`NAME :=`) and `.PHONY`-style directives.

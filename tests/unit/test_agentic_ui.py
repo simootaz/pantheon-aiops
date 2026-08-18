@@ -32,6 +32,7 @@ from core.contracts.ui import (
     A2UISurfaceKind,
     ArtifactRef,
 )
+from tests.mechanism import read_data, read_mechanism, read_verbatim
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SURFACE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -116,16 +117,14 @@ def test_no_a2ui_component_accepts_a_free_form_url_in_any_language() -> None:
         ]
         assert not offenders, f"{model.__name__} accepts a free-form URL: {offenders}"
 
-    schema = json.loads(
-        (REPO_ROOT / "core/contracts/export/pantheon.schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads(read_data(REPO_ROOT / "core/contracts/export/pantheon.schema.json"))
     for def_name in ("A2UIComponent", "ArtifactRef", "A2UIAction"):
         properties = schema["$defs"][def_name].get("properties", {})
         offenders = [p for p in properties if any(t in p.lower() for t in URL_SHAPED)]
         assert not offenders, f"generated schema: {def_name} accepts a URL: {offenders}"
 
-    go_body = (REPO_ROOT / "pkg/contracts/contracts.gen.go").read_text(encoding="utf-8")
-    ts_body = TS_CONTRACTS.read_text(encoding="utf-8")
+    go_body = read_mechanism(REPO_ROOT / "pkg/contracts/contracts.gen.go")
+    ts_body = read_mechanism(TS_CONTRACTS)
     for language, body in (("Go", go_body), ("TypeScript", ts_body)):
         for token in ("ArtifactUrl", "artifact_url", "ImageUrl", "image_url"):
             assert token not in body, f"generated {language} exposes {token}"
@@ -137,7 +136,10 @@ def test_artifact_resolution_is_off_limits_to_agents() -> None:
 
     assert "core.ui.artifact_resolution" in FORBIDDEN_FOR_AGENTS
 
-    body = (REPO_ROOT / "core/ui/artifact_resolution.py").read_text(encoding="utf-8")
+    body = read_verbatim(
+        REPO_ROOT / "core/ui/artifact_resolution.py",
+        why="this asserts the rejection stays documented, not that it is implemented",
+    )
     assert "cross-investigation" in body.lower(), (
         "the cross-investigation rejection must stay documented at the point of resolution"
     )
@@ -145,7 +147,7 @@ def test_artifact_resolution_is_off_limits_to_agents() -> None:
 
 def test_allowlist_reaches_typescript_so_the_renderer_cannot_drift() -> None:
     """The renderer switches over the generated enum, not a hand-kept copy."""
-    body = TS_CONTRACTS.read_text(encoding="utf-8")
+    body = read_mechanism(TS_CONTRACTS)
     for allowed in A2UIComponentType:
         assert f'"{allowed.value}"' in body, (
             f"{allowed.value} did not reach the generated TypeScript; run `make codegen`"
@@ -210,7 +212,7 @@ def test_no_bespoke_websocket_protocol_reappears() -> None:
 
 def test_agui_event_types_are_not_redefined() -> None:
     """Depend on the published schema; restating it is how the two drift."""
-    ours = (REPO_ROOT / "core" / "contracts" / "ui.py").read_text(encoding="utf-8")
+    ours = read_mechanism(REPO_ROOT / "core" / "contracts" / "ui.py")
     for agui_event in ("RunStarted", "StateDelta", "ToolCallStart", "TextMessageContent"):
         assert agui_event not in ours, (
             f"{agui_event} is redefined in core/contracts/ui.py; import it from ag_ui.core"
@@ -232,14 +234,17 @@ def test_the_a2ui_envelope_guess_is_isolated_to_one_seam() -> None:
 
     assert a2ui_channel.EVENT_NAME == "a2ui"
 
-    body = (REPO_ROOT / "api" / "agui" / "a2ui_channel.py").read_text(encoding="utf-8")
+    body = read_verbatim(
+        REPO_ROOT / "api" / "agui" / "a2ui_channel.py",
+        why="the UNRESOLVED marker lives in the module docstring, deliberately",
+    )
     assert "UNRESOLVED" in body, "the seam must stay marked unresolved until a spec settles it"
 
     # Nothing else may hardcode the envelope name.
     offenders = [
         str(path.relative_to(REPO_ROOT))
         for path in REPO_ROOT.glob("api/agui/*.py")
-        if path.name != "a2ui_channel.py" and 'EVENT_NAME = "a2ui"' in path.read_text("utf-8")
+        if path.name != "a2ui_channel.py" and 'EVENT_NAME = "a2ui"' in read_mechanism(path)
     ]
     assert not offenders, f"the A2UI envelope is duplicated outside the seam: {offenders}"
 

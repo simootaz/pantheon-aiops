@@ -34,6 +34,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.mechanism import read_data
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS = REPO_ROOT / "tests"
 
@@ -174,7 +176,7 @@ def test_no_test_contains_an_unfailable_assertion() -> None:
     offenders: list[str] = []
 
     for path in _test_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(read_data(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Assert):
                 continue
@@ -189,7 +191,7 @@ def test_no_test_body_is_empty() -> None:
     offenders: list[str] = []
 
     for path in _test_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(read_data(path))
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -211,7 +213,7 @@ def test_every_test_asserts_something() -> None:
     offenders: list[str] = []
 
     for path in _test_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(read_data(path))
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -227,7 +229,7 @@ def test_ruff_still_covers_the_two_patterns_it_owns() -> None:
     """SIM221 and SIM222 must stay selected, or this guard silently widens."""
     import tomllib
 
-    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    config = tomllib.loads(read_data(REPO_ROOT / "pyproject.toml"))
     selected = config["tool"]["ruff"]["lint"]["select"]
     assert "SIM" in selected, (
         "ruff's SIM rules were deselected; SIM221/SIM222 catch `x or not x` and "

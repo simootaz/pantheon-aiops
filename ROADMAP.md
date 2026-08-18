@@ -44,9 +44,14 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 ---
 
-## Phase 1 — Contracts & First Agent Path
+## Phase 1 — Contracts & First Agent Path 🚧 in progress
 
 The first end-to-end slice: an alert produces a Finding.
+
+**Two of six items are done.** The phase is not complete until an alert
+actually produces a Finding — contracts and a simulator do not, on their own,
+do that. A heading that reads as finished when four items are stubs is how a
+phase gets declared over.
 
 - ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
 - `core/registry/` — manifest discovery, capability matching
@@ -60,7 +65,7 @@ The first end-to-end slice: an alert produces a Finding.
   actually branch (`tests/coverage_floor.py`). The aggregate alone is flattered
   because most statements are Pydantic field declarations covered by import.
 
-## Phase 2 — Orchestrator & Investigation Flow
+## Phase 2 — Orchestrator & Investigation Flow ⬜ not started
 
 - **Zeus**: router, classifier, planner, dispatcher, aggregator
 - `core/memory/` — vector store, repository, cache
@@ -69,7 +74,7 @@ The first end-to-end slice: an alert produces a Finding.
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
 
-## Phase 3 — Guardrails, Approvals & Write Actions
+## Phase 3 — Guardrails, Approvals & Write Actions ⬜ not started
 
 - `core/guardrails/` — policy, approval gate, budget
 - **Cerberus** implemented: store, policy, audit, broker, lease, redemption,
@@ -77,7 +82,7 @@ The first end-to-end slice: an alert produces a Finding.
 - **Aegis**; write tools behind approval
 - Auth and tenant scoping
 
-## Phase 4 — Delivery Flow
+## Phase 4 — Delivery Flow ⬜ not started
 
 - **Hephaestus** and **Themis**; GitLab and GitHub connectors
 - **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
@@ -87,20 +92,20 @@ The first end-to-end slice: an alert produces a Finding.
 - Delphi settings surface: provider cards, tier pickers, per-agent overrides,
   **Test connection** probes, validation warnings
 
-## Phase 5 — Proactive Flow
+## Phase 5 — Proactive Flow ⬜ not started
 
 - **Moira**, **Mnemosyne**, **Clio**, **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches
 - End-to-end tests against the simulator
 
-## Phase 6 — Go Port & Platform Binaries
+## Phase 6 — Go Port & Platform Binaries ⬜ not started
 
 - Kubernetes connector in Go; `connectors/kubernetes/python_ref/` **deleted**
 - `pantheonctl`, `collector`
 - Images built and published
 
-## Phase 7 — Production Hardening
+## Phase 7 — Production Hardening ⬜ not started
 
 - Terraform resources, Argo CD, Ansible
 - Grafana dashboards, Prometheus rules, OTel pipeline

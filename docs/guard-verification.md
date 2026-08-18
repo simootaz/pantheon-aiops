@@ -156,6 +156,54 @@ meant to prove the variable was actually set. Planting removal of the mechanism,
 comment left intact, exposed it. `recipe_for()` now takes only tab-indented
 command lines and drops comments among them.
 
+## Comment-stripping centralised, 2026-08-17
+
+`_mechanism_only()` was promoted out of `test_repo_structure.py` into
+`tests/mechanism.py`, and all 63 file reads across fourteen test modules were
+classified individually. `tests/unit/test_mechanism_helper_is_used.py` fails the
+build on any raw read, so the fix is now the default rather than a convention.
+
+Two hazards surfaced during the migration, both of which would have produced
+guards that pass while asserting nothing:
+
+* **Markdown.** `test_repository_map_is_tracked_and_canonical` checks for
+  `## Folder map`. Stripping `#` lines deletes every heading, so the guard would
+  have gone green against a map with no headings at all. `read_mechanism` now
+  refuses `.md` outright.
+* **The Makefile.** `make help` parses `## name: text` lines — comments used as
+  data. Stripping them would have emptied `test_every_target_has_exactly_one_help_line`.
+
+A first attempt at a bulk regex migration corrupted six files, including the new
+guard, and was reverted. The classification is not mechanical; each site has to
+be read against the assertion it feeds.
+
+### What the tally says
+
+| Entry point | Sites | Meaning |
+|---|---|---|
+| `read_data` | 25 | parsed, not scanned — comments never mattered |
+| `read_mechanism` | 22 | genuine mechanism scans |
+| `read_verbatim` | 14 | comments or prose *are* the assertion |
+| `read_scannable` | 2 | repo-wide sweeps over arbitrary files |
+
+The 14 verbatim sites are worth separating, because "a guard asserting against
+documentation" is only alarming in one of the three cases:
+
+* **Comments used as syntax or data** (6) — Markdown headings, Makefile `##`
+  help lines, `# TODO: Phase N` markers, generated-file banners. The `#` is
+  structure, not commentary.
+* **Exact-text comparisons** (4) — the LICENSE body, the README licence section,
+  the committed schema compared byte-for-byte against the renderer.
+* **Genuinely asserting that something stays documented** (4) — the ArgoCD
+  client-side-render warning, the Cerberus import-boundary note, the
+  `artifact_resolution` cross-investigation rejection, and the `UNRESOLVED`
+  marker on the A2UI seam.
+
+Only that last group asserts "the docs say X" as its mechanism, and in each case
+the documentation *is* the deliverable — an operator-facing warning that
+silently disappears is the failure being guarded against. Four out of 63 is a
+defensible number; it would not have been visible without doing the count.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run
