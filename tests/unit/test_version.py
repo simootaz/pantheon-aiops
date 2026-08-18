@@ -128,3 +128,32 @@ def test_a_release_tag_on_this_commit_matches_the_declared_version() -> None:
         f"tagged v{mismatched[0]} but the tree declares {expected}. Bump the "
         "version in pyproject.toml and re-run the release step in CONTRIBUTING."
     )
+
+
+def test_every_python_image_installs_the_project() -> None:
+    """An image without distribution metadata serves the placeholder version.
+
+    The dependency stage uses `--no-install-project` on purpose, so dependency
+    layers cache independently of source changes. The consequence is that
+    nothing installs the project, `importlib.metadata` finds no distribution,
+    and `/health` reports `0.0.0+not-installed` from a container that is
+    otherwise working perfectly.
+
+    That is not hypothetical: it is what a running container reported until the
+    install line was added. The placeholder did its job - it looked obviously
+    wrong instead of passing for a release - but only because someone looked.
+    """
+    docker = ROOT / "deploy" / "docker"
+    offenders = []
+    for path in sorted(docker.glob("Dockerfile.*")):
+        body = read_mechanism(path)
+        if "--no-install-project" not in body:
+            continue
+        if "uv pip install" not in body:
+            offenders.append(f"{path.name}: caches deps but never installs the project")
+        elif "COPY pyproject.toml README.md LICENSE" not in body:
+            offenders.append(f"{path.name}: installs the project without its readme or licence")
+
+    assert not offenders, "images that would serve the not-installed placeholder: " + "; ".join(
+        offenders
+    )

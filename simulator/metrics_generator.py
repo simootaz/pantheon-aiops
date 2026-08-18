@@ -58,6 +58,7 @@ import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Gauge, push_to_gateway
 from prometheus_client.exposition import CONTENT_TYPE_LATEST, generate_latest
 
+from core.config import get_settings
 from simulator.cluster import CLUSTER, NAMESPACE, NODES, NODES_BY_NAME, PODS, Node, Pod, pods_for
 from simulator.scenario import Deviation, MetricName, Phase, Shape
 
@@ -159,7 +160,8 @@ class PodState:
 class MetricsGenerator:
     """Produces one snapshot of every series, and pushes it to a pushgateway."""
 
-    def __init__(self, gateway: str = "localhost:9091", job: str = "pantheon-sim") -> None:
+    def __init__(self, gateway: str | None = None, job: str = "pantheon-sim") -> None:
+        gateway = gateway or get_settings().pushgateway.host_port
         self.gateway = gateway
         self._gateway_url = gateway if "://" in gateway else f"http://{gateway}"
         self.job = job

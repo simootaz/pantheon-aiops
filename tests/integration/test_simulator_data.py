@@ -41,7 +41,6 @@ Phase: 1 - Contracts & First Agent Path
 from __future__ import annotations
 
 import math
-import os
 import time
 from dataclasses import dataclass
 
@@ -49,14 +48,18 @@ import httpx
 import numpy as np
 import pytest
 
+from core.config import get_settings, require_stack
 from simulator.cluster import PODS_BY_NAME
 from simulator.runner import KEEP_UP_THRESHOLD as KEEP_UP_FRACTION
 from simulator.runner import RunReport, ScenarioRunner
 from simulator.scenario import load
 
-PROMETHEUS = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
-LOKI = os.environ.get("LOKI_URL", "http://localhost:3100")
-PUSHGATEWAY = os.environ.get("PUSHGATEWAY", "localhost:9091")
+# Read through core.config like everything else, so the gate cannot end up
+# pointed at a different Prometheus than the code it is testing.
+_settings = get_settings()
+PROMETHEUS = _settings.prometheus.base
+LOKI = _settings.loki.base
+PUSHGATEWAY = _settings.pushgateway.host_port
 
 pytestmark = pytest.mark.integration
 
@@ -118,14 +121,24 @@ class Series:
 #: for a grace period after start and while it settles under load, and a single
 #: probe landing in that window is not evidence the stack is absent.
 #:
-#: The budget is deliberately modest. The case worth waiting out is a service
-#: answering 503, which replies instantly, so twelve rounds cost about twelve
-#: seconds. A host that is not listening at all costs the connect timeout each
-#: round — on Windows a dead port burns the full timeout rather than being
-#: refused — and that case wants to end quickly, not be waited out.
-READY_ATTEMPTS = 12
+#: The budget is asymmetric on purpose.
+#:
+#: Without PANTHEON_REQUIRE_STACK the answer to "not reachable" is a skip, so
+#: failing fast is the kindness: a laptop with no Docker should not wait two
+#: minutes to be told what it already knows.
+#:
+#: With it, the caller has *asserted* the stack is there, and a slow start is
+#: not the same as an absent one. Loki answers 503 for a while after a heavy
+#: ingest — `make sim` pushing 268k lines left it unready for longer than twelve
+#: seconds, and the gate failed on a stack that was merely busy.
+READY_ATTEMPTS_FAST = 12
+READY_ATTEMPTS_REQUIRED = 60
 READY_INTERVAL = 1.0
 READY_TIMEOUT = 2.0
+
+
+def ready_attempts() -> int:
+    return READY_ATTEMPTS_REQUIRED if require_stack() else READY_ATTEMPTS_FAST
 
 
 def _reachable(url: str, path: str = "/") -> bool:
@@ -143,7 +156,8 @@ def _unready() -> list[str]:
     loop over all three costs the same grace period and returns the moment they
     are all up, which is the common case.
     """
-    for attempt in range(READY_ATTEMPTS):
+    attempts = ready_attempts()
+    for attempt in range(attempts):
         missing = [
             name
             for name, ok in (
@@ -155,7 +169,7 @@ def _unready() -> list[str]:
         ]
         if not missing:
             return []
-        if attempt < READY_ATTEMPTS - 1:
+        if attempt < attempts - 1:
             time.sleep(READY_INTERVAL)
     return missing
 
@@ -182,10 +196,10 @@ def stack() -> None:
 
     message = (
         f"observability stack not reachable after "
-        f"{READY_ATTEMPTS * READY_INTERVAL:.0f}s: {missing}. "
+        f"{ready_attempts() * READY_INTERVAL:.0f}s: {missing}. "
         "Start it with: make up  (or docker compose -f ... up -d prometheus loki pushgateway)"
     )
-    if os.environ.get("PANTHEON_REQUIRE_STACK"):
+    if require_stack():
         pytest.fail(f"{message}\nPANTHEON_REQUIRE_STACK is set, so this is a failure, not a skip.")
     pytest.skip(message)
 

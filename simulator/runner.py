@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from core.config import get_settings
 from simulator.clock import SimClock
 from simulator.cluster import PODS, pods_for
 from simulator.log_generator import LogGenerator, LogLine
@@ -94,15 +95,16 @@ class ScenarioRunner:
     def __init__(
         self,
         *,
-        pushgateway: str = "localhost:9091",
-        loki_url: str = "http://localhost:3100",
-        webhook_url: str = "http://localhost:8000/webhooks/gitlab",
+        pushgateway: str | None = None,
+        loki_url: str | None = None,
+        webhook_url: str | None = None,
         tick_seconds: float = DEFAULT_TICK_SECONDS,
         on_event: Callable[[str], None] | None = None,
     ) -> None:
-        self.metrics = MetricsGenerator(gateway=pushgateway)
-        self.logs = LogGenerator(loki_url=loki_url)
-        self.pipelines = PipelineGenerator(webhook_url=webhook_url)
+        settings = get_settings()
+        self.metrics = MetricsGenerator(gateway=pushgateway or settings.pushgateway.host_port)
+        self.logs = LogGenerator(loki_url=loki_url or settings.loki.base)
+        self.pipelines = PipelineGenerator(webhook_url=webhook_url or settings.simulator.webhook)
         self.tick_seconds = tick_seconds
         self._on_event = on_event or (lambda _message: None)
 

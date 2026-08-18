@@ -19,6 +19,7 @@ import sys
 
 import typer
 
+from core.config import get_settings
 from simulator import clock as simclock
 from simulator.runner import ScenarioRunner
 from simulator.scenario import load, load_all
@@ -56,18 +57,17 @@ def list_scenarios() -> None:
 @app.command()
 def run(
     scenario_name: str = typer.Argument(..., metavar="SCENARIO"),
-    speed: float = typer.Option(
-        simclock.FAST, "--speed", "-s", help="Compression factor. 1 is real time."
+    speed: float | None = typer.Option(
+        None, "--speed", "-s", help="Compression factor. 1 is real time."
     ),
-    pushgateway: str = typer.Option("localhost:9091", help="Prometheus pushgateway host:port."),
-    loki_url: str = typer.Option("http://localhost:3100", help="Loki base URL."),
-    webhook_url: str = typer.Option(
-        "http://localhost:8000/webhooks/gitlab", help="Pantheon webhook endpoint."
-    ),
+    pushgateway: str | None = typer.Option(None, help="Prometheus pushgateway host:port."),
+    loki_url: str | None = typer.Option(None, help="Loki base URL."),
+    webhook_url: str | None = typer.Option(None, help="Pantheon webhook endpoint."),
     tick_seconds: float = typer.Option(60.0, help="Simulated seconds per push."),
     no_pipelines: bool = typer.Option(False, help="Skip GitLab webhooks."),
 ) -> None:
     """Run one scenario end to end against a live stack."""
+    speed = speed if speed is not None else get_settings().simulator.default_speed
     try:
         scenario = load(scenario_name)
     except FileNotFoundError as error:
@@ -117,9 +117,9 @@ def run(
 @app.command()
 def baseline(
     minutes: float = typer.Option(2.0, help="Wall minutes to run for."),
-    speed: float = typer.Option(simclock.FAST, "--speed", "-s", help="Compression factor."),
-    pushgateway: str = typer.Option("localhost:9091"),
-    loki_url: str = typer.Option("http://localhost:3100"),
+    speed: float | None = typer.Option(None, "--speed", "-s", help="Compression factor."),
+    pushgateway: str | None = typer.Option(None),
+    loki_url: str | None = typer.Option(None),
     tick_seconds: float = typer.Option(60.0),
 ) -> None:
     """Emit normal behaviour only, with no fault injected.
@@ -127,6 +127,7 @@ def baseline(
     Useful for looking at the seasonality directly, and for giving a detector
     something to learn from before a scenario runs.
     """
+    speed = speed if speed is not None else get_settings().simulator.default_speed
     simulated = minutes * 60.0 * speed
     typer.echo(typer.style("\nBaseline", bold=True))
     typer.echo(f"  speed      {simclock.describe(speed)}")

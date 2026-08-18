@@ -29,6 +29,7 @@ dependencies = [
     # AG-UI event types and encoder. Depended on, never redefined - see
     # docs/adr/0006-agentic-ui-protocols.md.
     "ag-ui-protocol>=0.1.20,<0.2",
+    "pydantic-settings>=2.7,<3",
 ]
 
 [project.scripts]

@@ -19,6 +19,17 @@ x-pantheon-env: &pantheon-env
   POSTGRES_USER: ${POSTGRES_USER:-pantheon}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pantheon}
   REDIS_URL: redis://redis:6379/0
+  # Connector endpoints. Inside the network these are service names, not
+  # localhost - core/config.py defaults are dev-shaped for a laptop, and a
+  # container inheriting them would quietly talk to itself.
+  PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
+  LOKI_URL: ${LOKI_URL:-http://loki:3100}
+  PUSHGATEWAY_URL: ${PUSHGATEWAY_URL:-http://pushgateway:9091}
+  ALERTMANAGER_URL: ${ALERTMANAGER_URL:-http://alertmanager:9093}
+  GITLAB_WEBHOOK_TOKEN: ${GITLAB_WEBHOOK_TOKEN:-}
+  CERBERUS_MASTER_KEY: ${CERBERUS_MASTER_KEY:-}
+  CERBERUS_LEASE_SECONDS: ${CERBERUS_LEASE_SECONDS:-900}
+  CERBERUS_AUDIT_RETENTION_DAYS: ${CERBERUS_AUDIT_RETENTION_DAYS:-90}
   S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
   S3_ACCESS_KEY: ${S3_ACCESS_KEY:-pantheon}
   S3_SECRET_KEY: ${S3_SECRET_KEY:-pantheon123}

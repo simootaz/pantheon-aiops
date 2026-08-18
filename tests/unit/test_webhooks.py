@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from core.bus import InMemoryEventBus
+from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from tests.mechanism import read_data
 
@@ -148,7 +149,15 @@ def test_an_unknown_hook_type_is_still_accepted(client: TestClient, bus: InMemor
 def test_the_token_is_required_when_configured(
     client: TestClient, bus: InMemoryEventBus, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Settings are cached, so changing the environment means clearing them.
+
+    `get_settings()` is `lru_cache`d on purpose: configuration is read once and
+    every caller sees the same values. The cost is that a test which sets a
+    variable after first use must invalidate it, or it asserts against the
+    settings the process started with.
+    """
     monkeypatch.setenv("GITLAB_WEBHOOK_TOKEN", "s3cret-token-value")
+    get_settings.cache_clear()
 
     rejected = client.post(
         "/webhooks/gitlab",

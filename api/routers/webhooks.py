@@ -27,7 +27,6 @@ Phase: 1 - Contracts & First Agent Path
 from __future__ import annotations
 
 import hmac
-import os
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -36,6 +35,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from core.bus import EventBus
+from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from core.contracts.investigation import Trigger, TriggerKind
 
@@ -75,7 +75,8 @@ def _verify_token(supplied: str | None) -> None:
     early on the first differing byte, which leaks the secret's prefix to anyone
     who can time the response.
     """
-    expected = os.environ.get("GITLAB_WEBHOOK_TOKEN", "")
+    configured = get_settings().gitlab.webhook_token
+    expected = configured.get_secret_value() if configured else ""
     if not expected:
         return
     if not supplied or not hmac.compare_digest(supplied, expected):
