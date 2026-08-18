@@ -204,6 +204,45 @@ the documentation *is* the deliverable — an operator-facing warning that
 silently disappears is the failure being guarded against. Four out of 63 is a
 defensible number; it would not have been visible without doing the count.
 
+## A scanner told to ignore a file, 2026-08-18
+
+A third variant of the suppressed-check class, and the quietest one so far.
+
+Not a discarded exit code, and not a check that cannot fail — a scanner
+**configured not to look**. `.gitleaks.toml` allowlisted `.env.example` by path
+because the generic-api-key rule fires on `CERBERUS_MASTER_KEY=`, an empty
+placeholder, on the strength of the variable name alone.
+
+Tested in both directions, a real `glpat-` token pasted into that file passed
+cleanly. Secret scanning was off for the file most likely to receive a pasted
+credential, and the config read as a narrow, reasonable exemption.
+
+`condition = "AND"` — path *and* empty-assignment — is the correct shape and did
+not behave that way in gitleaks 8.30: it either exempted the whole file or
+exempted nothing. Rather than ship a config that could not be verified, the
+responsibility was **transferred** and the config says so:
+
+| Where | What it now covers |
+|---|---|
+| `.gitleaks.toml` | everything except `.env.example`, unchanged — verified by staging a real GitLab PAT and watching it fail |
+| `test_the_template_never_carries_a_real_secret` | every `SecretStr` field must be empty in the template |
+| `test_the_template_holds_nothing_shaped_like_a_credential` | ten vendor-issued credential shapes, matched against values under **any** name |
+
+The second guard's first version matched names containing KEY, SECRET or TOKEN
+and flagged `LLM_MAX_TOKENS` (a count) and `S3_ACCESS_KEY` (an identifier paired
+with the secret, not the secret). It is now driven by the settings model, which
+*records* which fields are credentials. A control asserts `S3_ACCESS_KEY` still
+passes, because a guard that fires on the right thing for the wrong reason is
+one refactor away from firing on nothing.
+
+The third closes the hole the exclusion opened from the other side: a credential
+pasted under a name no settings field declares — `GITHUB_TOKEN_OLD`, a leftover
+from debugging — is caught by neither gitleaks nor the model-driven guard. All
+ten shapes were planted under undeclared names and all ten fire.
+
+> An exemption is a transfer of responsibility, not a removal of it. Write down
+> where the responsibility went, and test that it arrived.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run

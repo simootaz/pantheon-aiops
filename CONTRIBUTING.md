@@ -19,6 +19,32 @@ git checkout develop && git merge --no-ff feature/<name> && git branch -d featur
   like they would.
 - `--no-ff` always, so a feature stays visible as a unit in history.
 
+### The pre-merge ritual
+
+**Never chain a branch switch or a merge behind anything.** Verify, then act, as
+separate commands:
+
+```bash
+git commit -F - <<'MSG'
+...
+MSG
+git log --oneline -1        # is the NEW commit at HEAD?
+git status --porcelain      # empty?
+# only now:
+git checkout develop && git merge --no-ff feature/<name>
+```
+
+This is a rule rather than a resolution because the failure has happened. A
+commit was blocked by the gitleaks hook, but the command was written as
+`git commit … ; git log … && git checkout develop && git merge … && git branch -d …`.
+`git log` succeeded, so the chain continued: it merged nothing, reported
+"Already up to date", and deleted the branch.
+
+Nothing was lost that time — the branch had no commits of its own, so `-d`
+removed a pointer — but the work sat staged on `develop`, which the first rule
+on this page forbids. `&&` only guards against the *immediately preceding*
+command, and a merge is not something to run on that assumption.
+
 Commit messages carry no tool attribution of any kind — no co-author trailers,
 no generated-by footers, no emoji sign-offs
 ([ADR 0003](docs/adr/0003-neutral-repository-documentation.md)).
