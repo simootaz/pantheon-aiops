@@ -19,6 +19,8 @@ from typing import Any
 
 import yaml
 
+from tests.mechanism import mechanism_only, read_data, read_mechanism, read_scannable, read_verbatim
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = REPO_ROOT / "deploy" / "compose"
 PROMETHEUS = REPO_ROOT / "deploy" / "observability" / "prometheus"
@@ -31,7 +33,7 @@ DEPLOYMENT_TREES = ("deploy/helm", "deploy/kustomize", "deploy/argocd", "deploy/
 
 
 def _load(path: Path) -> dict[str, Any]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loaded = yaml.safe_load(read_data(path))
     assert isinstance(loaded, dict), f"{path.name} is not a mapping"
     return loaded
 
@@ -48,7 +50,10 @@ def test_both_prometheus_configs_exist_and_are_distinct() -> None:
     """One fast config for simulation, one sane config for everything else."""
     assert SIM_CONFIG.is_file(), "prometheus.sim.yml is missing"
     assert PROD_CONFIG.is_file(), "prometheus.yml is missing"
-    assert SIM_CONFIG.read_text(encoding="utf-8") != PROD_CONFIG.read_text(encoding="utf-8")
+    assert read_mechanism(SIM_CONFIG) != read_mechanism(PROD_CONFIG), (
+        "the sim and production Prometheus configs differ only in comments, so they "
+        "are the same configuration wearing two names"
+    )
 
 
 def test_the_sim_config_scrapes_fast_enough_to_see_seasonality() -> None:
@@ -86,7 +91,7 @@ def test_the_sim_config_is_never_referenced_from_a_deployment_path() -> None:
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
-            text = path.read_bytes().decode("utf-8", errors="ignore")
+            text = mechanism_only(read_scannable(path))
             if "prometheus.sim" in text:
                 offenders.append(str(path.relative_to(REPO_ROOT)))
 
@@ -98,7 +103,7 @@ def test_the_sim_config_is_never_referenced_from_a_deployment_path() -> None:
 
 def test_the_sim_config_announces_that_it_must_not_be_deployed() -> None:
     """The warning belongs where someone would copy the file from."""
-    head = SIM_CONFIG.read_text(encoding="utf-8")[:800].lower()
+    head = read_verbatim(SIM_CONFIG, why="the warning banner is a comment")[:800].lower()
     assert "never deploy" in head
     assert "simulator only" in head
 

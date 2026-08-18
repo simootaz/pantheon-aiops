@@ -25,6 +25,7 @@ from pydantic import BaseModel, ValidationError
 from core.contracts import AgentManifest, EvidenceKind, RootCauseCategory
 from core.contracts.events import Event
 from core.contracts.evidence import EvidencePayload
+from tests.mechanism import read_data
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS = REPO_ROOT / "agents"
@@ -99,7 +100,7 @@ def test_every_agent_manifest_validates_against_the_contract() -> None:
 
     failures: list[str] = []
     for path in paths:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(read_data(path))
         if raw is None:
             failures.append(f"{path.relative_to(REPO_ROOT)}: empty or comments only")
             continue
@@ -114,7 +115,7 @@ def test_every_agent_manifest_validates_against_the_contract() -> None:
 def test_manifest_domain_matches_its_directory() -> None:
     """A manifest that claims a different domain would be loaded under the wrong key."""
     for path in _manifest_paths():
-        manifest = AgentManifest.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+        manifest = AgentManifest.model_validate(yaml.safe_load(read_data(path)))
         assert manifest.domain == path.parent.name, (
             f"{path.relative_to(REPO_ROOT)} declares domain '{manifest.domain}' "
             f"but lives in '{path.parent.name}'"
@@ -124,7 +125,7 @@ def test_manifest_domain_matches_its_directory() -> None:
 def test_agent_codenames_are_unique_and_match_the_roster() -> None:
     """Two agents sharing a codename would silently overwrite each other."""
     codenames = [
-        AgentManifest.model_validate(yaml.safe_load(p.read_text(encoding="utf-8"))).codename
+        AgentManifest.model_validate(yaml.safe_load(read_data(p))).codename
         for p in _manifest_paths()
     ]
     assert len(codenames) == len(set(codenames)), f"duplicate codenames: {sorted(codenames)}"
@@ -213,7 +214,7 @@ def test_scenario_ground_truth_uses_the_contract_vocabulary() -> None:
     offenders: list[str] = []
 
     for path in scenarios:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(read_data(path))
         if not isinstance(raw, dict) or "expected_root_cause" not in raw:
             unfilled.append(path.name)
             continue
@@ -228,8 +229,10 @@ def test_scenario_ground_truth_uses_the_contract_vocabulary() -> None:
         + f"\nvalid values: {sorted(valid)}"
     )
 
-    if unfilled:
-        pytest.skip(f"scenarios not yet filled in (feature/simulator): {unfilled}")
+    assert not unfilled, (
+        f"scenarios with no expected_root_cause: {unfilled}. This used to skip, "
+        "which reported a pass for a scenario carrying no ground truth at all."
+    )
 
 
 def test_every_scenario_name_maps_to_a_distinct_category() -> None:

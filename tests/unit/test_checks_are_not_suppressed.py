@@ -36,6 +36,8 @@ from typing import Any
 
 import yaml
 
+from tests.mechanism import read_data, read_mechanism
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 MAKEFILE = REPO_ROOT / "Makefile"
@@ -61,7 +63,7 @@ def _make_recipes() -> dict[str, list[str]]:
     recipes: dict[str, list[str]] = {}
     current: str | None = None
 
-    for line in MAKEFILE.read_text(encoding="utf-8").splitlines():
+    for line in read_mechanism(MAKEFILE).splitlines():
         if line.startswith("\t") and current:
             recipes[current].append(line)
             continue
@@ -119,7 +121,7 @@ def test_continue_on_error_is_always_paired_with_an_outcome_check() -> None:
     offenders: list[str] = []
 
     for path in sorted(WORKFLOWS.glob("*.yml")):
-        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+        workflow = yaml.safe_load(read_data(path))
         for job_name, job in workflow.get("jobs", {}).items():
             if not isinstance(job, dict):
                 continue
@@ -152,7 +154,7 @@ def test_security_scans_use_continue_on_error_correctly() -> None:
     Every scan must be lenient *and* have a step that fails the job on its
     outcome - otherwise findings would upload and the build would stay green.
     """
-    workflow = yaml.safe_load((WORKFLOWS / "security.yml").read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(read_data(WORKFLOWS / "security.yml"))
 
     scanning_jobs = [
         (name, job)
@@ -176,7 +178,7 @@ def test_verify_sh_prints_the_diff_it_captured() -> None:
     Otherwise the drift is detected, the build fails, and the developer is told
     nothing about what drifted.
     """
-    source = (REPO_ROOT / "codegen" / "verify.sh").read_text(encoding="utf-8")
+    source = read_mechanism(REPO_ROOT / "codegen" / "verify.sh")
 
     assert re.search(r"^set -euo pipefail$", source, re.MULTILINE), (
         "verify.sh does not set -e, so a failing generator would not fail the script"

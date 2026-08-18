@@ -21,6 +21,8 @@ from typing import Any
 
 import yaml
 
+from tests.mechanism import read_data, read_mechanism
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
@@ -44,7 +46,7 @@ def _workflow_files() -> list[Path]:
 
 
 def _load(path: Path) -> dict[Any, Any]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loaded = yaml.safe_load(read_data(path))
     assert isinstance(loaded, dict), f"{path.name} is not a mapping"
     return loaded
 
@@ -74,7 +76,7 @@ def test_every_action_is_pinned_to_a_commit_sha() -> None:
     """Tags are mutable; a compromised tag is a supply-chain incident."""
     offenders: list[str] = []
     for path in _workflow_files():
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(read_mechanism(path).splitlines(), 1):
             match = re.search(r"^\s*(?:-\s*)?uses:\s*(\S+)", line)
             if not match:
                 continue
@@ -119,9 +121,9 @@ def test_reusable_workflows_do_not_declare_their_own_triggers() -> None:
 
 def test_codegen_workflow_pins_match_the_scripts() -> None:
     """The workflow and the generators must agree on tool versions."""
-    workflow = (WORKFLOWS / "codegen-check.yml").read_text(encoding="utf-8")
-    gen_go = (REPO_ROOT / "codegen" / "gen_go.sh").read_text(encoding="utf-8")
-    gen_ts = (REPO_ROOT / "codegen" / "gen_ts.sh").read_text(encoding="utf-8")
+    workflow = read_mechanism(WORKFLOWS / "codegen-check.yml")
+    gen_go = read_mechanism(REPO_ROOT / "codegen" / "gen_go.sh")
+    gen_ts = read_mechanism(REPO_ROOT / "codegen" / "gen_ts.sh")
 
     def one(pattern: str, haystack: str, what: str) -> str:
         found = re.search(pattern, haystack)
@@ -153,7 +155,7 @@ def test_go_workflow_avoids_the_impossible_build_command() -> None:
     command is absent, and the explanation is worth keeping. Only executable
     lines are checked.
     """
-    body = (WORKFLOWS / "ci-go.yml").read_text(encoding="utf-8")
+    body = read_mechanism(WORKFLOWS / "ci-go.yml")
     executable = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith("#"))
     assert "go build ./..." not in executable, (
         "ci-go.yml runs `go build ./...`, which is structurally invalid at the repo root"
@@ -212,7 +214,7 @@ def test_sarif_uploading_jobs_can_actually_write() -> None:
 
 def test_dependabot_covers_every_go_module() -> None:
     """Dependabot does not walk go.work; each module needs its own entry."""
-    config = yaml.safe_load((REPO_ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    config = yaml.safe_load(read_data(REPO_ROOT / ".github" / "dependabot.yml"))
     directories = {
         str(entry["directory"])
         for entry in config["updates"]

@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 import api
+from tests.mechanism import read_data, read_mechanism
 
 ROOT = Path(__file__).resolve().parents[2]
 #: A release tag: v1.2.3, optionally with a pre-release suffix.
@@ -31,8 +32,8 @@ TAG = re.compile(r"^v(\d+\.\d+\.\d+.*)$")
 
 def declared_version() -> str:
     """The one place a human writes the version down."""
-    with (ROOT / "pyproject.toml").open("rb") as handle:
-        version: str = tomllib.load(handle)["project"]["version"]
+    parsed = tomllib.loads(read_data(ROOT / "pyproject.toml"))
+    version: str = parsed["project"]["version"]
     return version
 
 
@@ -93,7 +94,7 @@ def test_every_manifest_that_restates_the_version_agrees() -> None:
     """
     expected = declared_version()
 
-    chart = (ROOT / "deploy/helm/pantheon/Chart.yaml").read_text(encoding="utf-8")
+    chart = read_mechanism(ROOT / "deploy/helm/pantheon/Chart.yaml")
     chart_version = re.search(r"^version:\s*(\S+)", chart, re.MULTILINE)
     app_version = re.search(r'^appVersion:\s*"?([^"\s]+)"?', chart, re.MULTILINE)
     assert chart_version and app_version, "Chart.yaml no longer declares both versions"
@@ -104,7 +105,7 @@ def test_every_manifest_that_restates_the_version_agrees() -> None:
         f"Chart.yaml appVersion is {app_version.group(1)}, pyproject declares {expected}"
     )
 
-    package = json.loads((ROOT / "dashboard/package.json").read_text(encoding="utf-8"))
+    package = json.loads(read_data(ROOT / "dashboard/package.json"))
     assert package["version"] == expected, (
         f"dashboard/package.json is {package['version']}, pyproject declares {expected}"
     )

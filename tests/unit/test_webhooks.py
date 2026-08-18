@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from core.bus import InMemoryEventBus
 from core.contracts.events import TriggerReceivedEvent
+from tests.mechanism import read_data
 
 PIPELINE_PAYLOAD: dict[str, Any] = {
     "object_kind": "pipeline",
@@ -199,9 +200,7 @@ def test_the_endpoint_has_no_simulator_specific_handling() -> None:
     import ast
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parents[2] / "api" / "routers" / "webhooks.py").read_text(
-        encoding="utf-8"
-    )
+    source = read_data(Path(__file__).resolve().parents[2] / "api" / "routers" / "webhooks.py")
 
     tree = ast.parse(source)
     for node in ast.walk(tree):

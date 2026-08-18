@@ -15,6 +15,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from tests.mechanism import read_data, read_mechanism, read_verbatim
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The ten domain agents. Zeus is the orchestrator and lives in core/, not here.
@@ -97,7 +99,7 @@ def test_every_python_module_declares_its_phase() -> None:
     unmarked: list[str] = []
 
     for path in _python_files():
-        source = path.read_text(encoding="utf-8")
+        source = read_verbatim(path, why="phase markers are comments")
         relative = str(path.relative_to(REPO_ROOT))
         if ast.get_docstring(ast.parse(source)) is None:
             undocumented.append(relative)
@@ -113,7 +115,8 @@ def test_generated_directories_warn_against_hand_editing() -> None:
     for relative in GENERATED_DIRS:
         readme = REPO_ROOT / relative / "README.md"
         assert readme.is_file(), f"{relative}/README.md is missing"
-        assert "do not edit" in readme.read_text(encoding="utf-8").lower()
+        banner = read_verbatim(readme, why="the do-not-edit banner is prose")
+        assert "do not edit" in banner.lower()
 
 
 def test_generated_artifacts_are_committed() -> None:
@@ -131,7 +134,9 @@ def test_generated_artifacts_are_committed() -> None:
 def test_generated_artifacts_declare_they_are_generated() -> None:
     """Each generated file says so in its own text, not just in a sibling README."""
     for relative in GENERATED_ARTIFACTS:
-        head = (REPO_ROOT / relative).read_text(encoding="utf-8")[:400].lower()
+        head = read_verbatim(REPO_ROOT / relative, why="the generated-by banner is a comment")[
+            :400
+        ].lower()
         assert "generated" in head, f"{relative} does not announce that it is generated"
         assert "do not edit" in head or "not edit" in head, (
             f"{relative} does not warn against hand-editing"
@@ -154,7 +159,7 @@ def test_line_endings_are_enforced_repository_wide() -> None:
     attributes = REPO_ROOT / ".gitattributes"
     assert attributes.is_file(), ".gitattributes is missing; LF is not enforced"
 
-    declared = attributes.read_text(encoding="utf-8")
+    declared = read_mechanism(attributes)
     assert re.search(r"^\*\s+text=auto\s+eol=lf\s*$", declared, re.MULTILINE), (
         ".gitattributes does not declare `* text=auto eol=lf`, so normalisation "
         "falls back to each contributor's core.autocrlf"
@@ -291,7 +296,7 @@ CHART = REPO_ROOT / "deploy" / "helm" / "pantheon"
 def _values(name: str) -> dict[str, object]:
     import yaml
 
-    loaded = yaml.safe_load((CHART / name).read_text(encoding="utf-8"))
+    loaded = yaml.safe_load(read_data(CHART / name))
     assert isinstance(loaded, dict)
     return loaded
 
@@ -326,23 +331,9 @@ def test_production_values_refuse_generated_credentials() -> None:
         assert delphi.get("existingSecret"), "prod with Delphi enabled needs delphi.existingSecret"
 
 
-def _mechanism_only(text: str) -> str:
-    """Strip comments, so a guard cannot be satisfied by prose describing it.
-
-    Asserting a substring against a whole file is a trap: `"fail" in body` is
-    true because the *comment* says "fail closed", so deleting every real
-    `fail()` call still passes. Three guards had exactly that bug. Everything
-    that checks for a mechanism runs through here first.
-    """
-    without_helm_comments = re.sub(r"\{\{-?/\*.*?\*/-?\}\}", "", text, flags=re.DOTALL)
-    return "\n".join(
-        line for line in without_helm_comments.splitlines() if not line.lstrip().startswith("#")
-    )
-
-
 def test_chart_has_a_validation_template_that_fails_closed() -> None:
     """The refusal is enforced by the chart, not only by the values file."""
-    body = _mechanism_only((CHART / "templates" / "validation.yaml").read_text(encoding="utf-8"))
+    body = read_mechanism(CHART / "templates" / "validation.yaml")
 
     calls = re.findall(r"\{\{-?\s*fail\s", body)
     assert len(calls) >= 3, (
@@ -361,8 +352,9 @@ def test_generated_secret_is_marked_and_protected() -> None:
     because this file's header *describes* `resource-policy: keep` - so a check
     against the whole file passes even after the real annotation is deleted.
     """
-    raw = (CHART / "templates" / "minio-secret.yaml").read_text(encoding="utf-8")
-    body = _mechanism_only(raw)
+    secret = CHART / "templates" / "minio-secret.yaml"
+    body = read_mechanism(secret)
+    raw = read_verbatim(secret, why="the lookup caveat is documentation, asserted as such")
 
     for annotation in (
         "helm.sh/resource-policy: keep",
@@ -384,7 +376,10 @@ def test_argocd_application_documents_client_side_rendering() -> None:
     "client-side" elsewhere in the file would otherwise satisfy this while the
     explanation an operator needs had been deleted.
     """
-    app = (REPO_ROOT / "deploy" / "argocd" / "application.yaml").read_text(encoding="utf-8")
+    app = read_verbatim(
+        REPO_ROOT / "deploy" / "argocd" / "application.yaml",
+        why="this guard asserts the operator-facing warning text itself",
+    )
     lowered = app.lower()
 
     for required in (
@@ -444,16 +439,17 @@ def test_delphi_no_longer_ships_its_own_secret_store() -> None:
 
 def test_license_is_apache_2_consistently() -> None:
     """One licence, stated the same way everywhere it is stated."""
-    assert "Apache License" in (REPO_ROOT / "LICENSE").read_text(encoding="utf-8")
+    licence = read_verbatim(REPO_ROOT / "LICENSE", why="the licence body is prose")
+    assert "Apache License" in licence
 
-    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject = read_mechanism(REPO_ROOT / "pyproject.toml")
     assert 'license = "Apache-2.0"' in pyproject
     assert "MIT" not in pyproject
 
-    chart = (CHART / "Chart.yaml").read_text(encoding="utf-8")
+    chart = read_mechanism(CHART / "Chart.yaml")
     assert "Apache-2.0" in chart
 
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme = read_verbatim(REPO_ROOT / "README.md", why="the licence section is prose")
     assert "Apache" in readme and "LICENSE" in readme
 
     # The dashboard is scaffolded on a later branch; assert as soon as it exists.
@@ -461,4 +457,4 @@ def test_license_is_apache_2_consistently() -> None:
     if package_json.is_file():
         import json
 
-        assert json.loads(package_json.read_text(encoding="utf-8")).get("license") == "Apache-2.0"
+        assert json.loads(read_data(package_json)).get("license") == "Apache-2.0"

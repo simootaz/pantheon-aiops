@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from core.cerberus.redaction import PLACEHOLDER, contains_secret, redact
+from tests.mechanism import read_data, read_mechanism, read_verbatim
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -118,7 +119,7 @@ def test_the_heuristic_itself_behaves() -> None:
 
 
 def _schema_property_names() -> set[str]:
-    schema: dict[str, Any] = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    schema: dict[str, Any] = json.loads(read_data(SCHEMA))
     names: set[str] = set()
 
     def walk(node: Any) -> None:
@@ -147,14 +148,14 @@ def test_json_schema_has_no_secret_bearing_property() -> None:
 
 def test_generated_go_has_no_secret_bearing_field() -> None:
     """The same invariant, checked on the Go artifact agents' connectors use."""
-    fields = re.findall(r"^\t(\w+)\s+\S+.*`json:", GO_CONTRACTS.read_text(encoding="utf-8"), re.M)
+    fields = re.findall(r"^\t(\w+)\s+\S+.*`json:", read_mechanism(GO_CONTRACTS), re.M)
     offenders = sorted({name for name in fields if _is_secret_shaped(name)})
     assert not offenders, f"generated Go exposes secret-shaped fields: {offenders}"
 
 
 def test_generated_typescript_has_no_secret_bearing_field() -> None:
     """And on the artifact the dashboard renders."""
-    body = TS_CONTRACTS.read_text(encoding="utf-8")
+    body = read_mechanism(TS_CONTRACTS)
     fields = re.findall(r"^\s{2,}(\w+)\??:\s", body, re.M)
     offenders = sorted({name for name in fields if _is_secret_shaped(name)})
     assert not offenders, f"generated TypeScript exposes secret-shaped fields: {offenders}"
@@ -162,7 +163,7 @@ def test_generated_typescript_has_no_secret_bearing_field() -> None:
 
 def test_no_credential_value_contract_exists() -> None:
     """There is deliberately no model that *could* carry plaintext."""
-    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    schema = json.loads(read_data(SCHEMA))
     defs = {name.lower() for name in schema.get("$defs", {})}
     for banned in ("credentialvalue", "credentialsecret", "plaintextcredential"):
         assert banned not in defs, (
@@ -180,7 +181,7 @@ def test_no_credential_value_contract_exists() -> None:
 
 def _imported_modules(path: Path) -> set[str]:
     """Every module name imported by a file, however it was written."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(read_data(path))
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -222,7 +223,10 @@ def test_allowed_import_surface_is_documented() -> None:
         package = ".".join(forbidden.split(".")[:2])  # e.g. core.cerberus, core.ui
         init = REPO_ROOT / package.replace(".", "/") / "__init__.py"
         assert init.is_file(), f"{package} has no __init__.py to document {forbidden}"
-        assert forbidden in init.read_text(encoding="utf-8"), (
+        documented = read_verbatim(
+            init, why="this asserts the boundary is written down, which is prose"
+        )
+        assert forbidden in documented, (
             f"{forbidden} is not documented as off limits in {package}/__init__.py"
         )
 
@@ -304,7 +308,7 @@ def test_schema_contains_no_nullable_enum() -> None:
     Model absence as an explicit enum member instead - see
     CredentialAction.NOT_APPLICABLE.
     """
-    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    schema = json.loads(read_data(SCHEMA))
     defs = schema.get("$defs", {})
     enums = {name for name, body in defs.items() if body.get("enum")}
 
