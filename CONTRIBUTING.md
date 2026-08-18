@@ -236,6 +236,36 @@ Record decisions with consequences in `docs/adr/NNNN-title.md`, and index it in
 State what you **rejected** and why. The next person will propose it again, and
 the ADR is the answer — that is most of what makes an ADR worth writing.
 
+## Cutting a release
+
+The version is declared in **exactly one place**: `version` in `pyproject.toml`.
+Everything Python reads it back from installed package metadata at runtime, so
+`api.__version__` and `/health` cannot drift from it.
+
+Three manifests cannot read Python metadata and therefore restate it. They are
+held equal by `tests/unit/test_version.py` rather than by memory:
+
+| File | Field |
+|---|---|
+| `deploy/helm/pantheon/Chart.yaml` | `version` and `appVersion` |
+| `dashboard/package.json` | `version` |
+
+To release:
+
+1. Bump `version` in `pyproject.toml`.
+2. Run `uv sync` so the installed metadata matches, then `make test` — the
+   guards fail if any manifest still disagrees.
+3. Update the four fields above to the same number.
+4. Merge to `develop`, then to `main`.
+5. Tag the merge commit `vX.Y.Z`, matching the declared version exactly.
+
+Step 5 is checked: if a `v*` tag points at a commit whose tree declares a
+different version, `make test` fails. CI fetches tags so that check is real
+there and not vacuous.
+
+This exists because `/health` served `0.1.0` for the whole of a v0.2.0 release.
+The number was written down five times and only the tag moved.
+
 ## Licence
 
 Apache 2.0. Contributions are accepted under the same licence.
