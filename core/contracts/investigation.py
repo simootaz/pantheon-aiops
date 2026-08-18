@@ -24,6 +24,7 @@ from core.contracts.base import ContractModel
 from core.contracts.credentials import AuditEntry
 from core.contracts.finding import Finding
 from core.contracts.llm import ResolutionRecord
+from core.contracts.plan import PlanStep
 from core.contracts.root_cause import RootCauseHypothesis
 from core.contracts.verdict import Verdict
 
@@ -58,18 +59,6 @@ class Trigger(ContractModel):
     source: str = Field(description="Who sent it, e.g. 'alertmanager'.")
     title: str = Field(default="", description="One line, as the source described it.")
     payload: dict[str, Any] = Field(default_factory=dict, description="Verbatim, unparsed.")
-
-
-class PlanStep(ContractModel):
-    """One agent consultation Zeus intends to make."""
-
-    agent: str = Field(description="Agent codename.")
-    reason: str = Field(description="Why this agent is being asked.")
-    depends_on: list[str] = Field(
-        default_factory=list, description="Agent codenames whose findings this step needs."
-    )
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
 
 
 class Investigation(ContractModel):

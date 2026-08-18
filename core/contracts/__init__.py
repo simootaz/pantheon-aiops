@@ -64,7 +64,6 @@ from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.investigation import (
     Investigation,
     InvestigationState,
-    PlanStep,
     Trigger,
     TriggerKind,
 )
@@ -80,6 +79,7 @@ from core.contracts.llm import (
     Tier,
 )
 from core.contracts.manifest import AgentBudget, AgentCapability, AgentManifest
+from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.root_cause import (
     HypothesisStatus,
     RootCauseCategory,
@@ -189,6 +189,7 @@ __all__ = [
     "Severity",
     "StepFinishedEvent",
     "StepStartedEvent",
+    "StepStatus",
     "Tier",
     "Trigger",
     "TriggerKind",

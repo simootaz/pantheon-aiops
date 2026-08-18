@@ -57,6 +57,16 @@ NON_PYTHON_VARIABLES: dict[str, str] = {
 
 URL_LITERAL = re.compile(r"https?://[^\s\"'<>)]+")
 
+#: URLs used as *identifiers*, never dialled. A schema `$id` and a UUIDv5
+#: namespace are both URL-shaped by specification, and neither is an endpoint
+#: anyone configures. `.local` is reserved and not routable, which is precisely
+#: why it is the right choice for a namespace constant.
+IDENTIFIER_URLS: tuple[str, ...] = (
+    "json-schema.org",
+    "github.com/simootaz",
+    "pantheon.local",
+)
+
 
 def python_sources() -> list[Path]:
     return sorted(
@@ -121,8 +131,8 @@ def test_no_hardcoded_endpoint_outside_the_config_module(module: Path) -> None:
             url = found.rstrip("/")
             if url in ALLOWED_URLS or any(url.startswith(base) for base in ALLOWED_URLS):
                 continue
-            if "json-schema.org" in url or "github.com/simootaz" in url:
-                continue  # schema identifiers, never fetched
+            if any(marker in url for marker in IDENTIFIER_URLS):
+                continue
             offenders.append(f"line {node.lineno}: {url}")
 
     assert not offenders, (
@@ -312,3 +322,60 @@ def test_every_declared_secret_appears_in_the_template() -> None:
         secret_variables(Settings, Settings.model_config.get("env_prefix", "")) - set(entries)
     )
     assert not missing, f"secrets absent from .env.example: {missing}"
+
+
+# --- and anything that merely LOOKS like a credential ------------------------
+
+#: High-confidence credential shapes, matched against values regardless of the
+#: variable name. The name-based guard above only covers variables the settings
+#: model declares as SecretStr; a credential pasted under a name that is not a
+#: field - a stray GITHUB_TOKEN_OLD, a hand-added AWS key - would slip past both
+#: it and gitleaks, since .env.example is excluded there. This closes that.
+#:
+#: Every pattern is a vendor-issued prefix or a structural marker, not a guess
+#: about entropy, so a dev-shaped default like `qwen2.5:3b` cannot trip it.
+CREDENTIAL_SHAPES: tuple[tuple[str, str], ...] = (
+    (r"glpat-[A-Za-z0-9_-]{16,}", "GitLab personal access token"),
+    (r"gh[pousr]_[A-Za-z0-9]{20,}", "GitHub token"),
+    (r"github_pat_[A-Za-z0-9_]{20,}", "GitHub fine-grained token"),
+    (r"sk-[A-Za-z0-9_-]{20,}", "OpenAI-style API key"),
+    (r"AKIA[0-9A-Z]{16}", "AWS access key id"),
+    (r"ASIA[0-9A-Z]{16}", "AWS temporary access key id"),
+    (r"xox[baprs]-[A-Za-z0-9-]{10,}", "Slack token"),
+    (r"hf_[A-Za-z0-9]{30,}", "Hugging Face token"),
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "PEM private key"),
+    (r"[A-Za-z0-9+/]{40,}={0,2}", "long base64 run"),
+    (r"[0-9a-fA-F]{40,}", "long hex run"),
+)
+
+
+def test_the_template_holds_nothing_shaped_like_a_credential() -> None:
+    """Catches a pasted secret under a name no settings field declares.
+
+    `.env.example` is excluded from gitleaks, and the guard above only knows
+    about variables the model types as SecretStr. A credential added by hand
+    under some other name - GITHUB_TOKEN_OLD, MY_KEY, a leftover from debugging
+    - is exactly what a template collects, and would be caught by neither.
+
+    So this matches vendor-issued shapes against every value, whatever it is
+    called.
+    """
+    body = read_verbatim(ENV_EXAMPLE, why="scanning the literal values for credentials")
+
+    offenders = []
+    for number, line in enumerate(body.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        value = stripped.split("=", 1)[1] if "=" in stripped else stripped
+        for pattern, what in CREDENTIAL_SHAPES:
+            if re.search(pattern, value):
+                offenders.append(f"line {number}: {what}")
+                break
+
+    assert not offenders, (
+        "the environment template contains values shaped like real credentials: "
+        + "; ".join(offenders)
+        + ". .env.example is committed and excluded from gitleaks, so a secret "
+        "here is a secret in the repository."
+    )
