@@ -2378,6 +2378,10 @@
           ],
           "default": null,
           "title": "Started At"
+        },
+        "status": {
+          "$ref": "#/$defs/StepStatus",
+          "default": "pending"
         }
       },
       "required": [
@@ -2761,6 +2765,18 @@
       "title": "StepStartedEvent",
       "type": "object"
     },
+    "StepStatus": {
+      "description": "What happened to one dispatched agent.\n\nCOMPLETE with no findings is a real result - the agent looked and saw\nnothing. DEGRADED means it could not look. SKIPPED means it was never\ndispatched. Collapsing any of these into \"no findings\" makes a clean run and\na never-run agent the same number, which is precisely the distinction agent\nscoring depends on.",
+      "enum": [
+        "pending",
+        "running",
+        "complete",
+        "degraded",
+        "skipped"
+      ],
+      "title": "StepStatus",
+      "type": "string"
+    },
     "Tier": {
       "description": "Cost/capability band an agent asks for, rather than a specific model.",
       "enum": [
@@ -2932,17 +2948,19 @@
           "title": "Investigation Id",
           "type": "string"
         },
-        "partial": {
-          "default": false,
-          "description": "True when an agent reported DEGRADED, so the conclusion rests on incomplete evidence. Surfaced to the reader rather than buried.",
-          "title": "Partial",
-          "type": "boolean"
-        },
         "recommended_actions": {
           "items": {
             "$ref": "#/$defs/Action"
           },
           "title": "Recommended Actions",
+          "type": "array"
+        },
+        "steps": {
+          "description": "What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed without knowing which agents completed is a verdict that cannot tell 'nobody found anything' from 'nobody looked'.",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "title": "Steps",
           "type": "array"
         },
         "summary": {
@@ -2956,7 +2974,8 @@
         "investigation_id",
         "summary",
         "confidence",
-        "decided_at"
+        "decided_at",
+        "steps"
       ],
       "title": "Verdict",
       "type": "object"

@@ -24,6 +24,7 @@ from pydantic import Field, model_validator
 from core.contracts.action import Action
 from core.contracts.base import ContractModel
 from core.contracts.finding import Finding
+from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.root_cause import RootCauseHypothesis
 
 
@@ -57,11 +58,27 @@ class Verdict(ContractModel):
     recommended_actions: list[Action] = Field(default_factory=list)
 
     decided_at: datetime
-    partial: bool = Field(
-        default=False,
-        description="True when an agent reported DEGRADED, so the conclusion rests on "
-        "incomplete evidence. Surfaced to the reader rather than buried.",
+
+    steps: list[PlanStep] = Field(
+        description="What actually ran. REQUIRED, and deliberately not defaulted: a "
+        "verdict formed without knowing which agents completed is a verdict that "
+        "cannot tell 'nobody found anything' from 'nobody looked'."
     )
+
+    @property
+    def partial(self) -> bool:
+        """True when the conclusion rests on incomplete evidence.
+
+        Derived from the execution record rather than set by the caller. It was
+        a free boolean, which meant a verdict could claim completeness while
+        half its agents had degraded - and nothing would contradict it.
+        """
+        return any(step.status is not StepStatus.COMPLETE for step in self.steps)
+
+    @property
+    def degraded_agents(self) -> list[str]:
+        """Who could not do their job, for the reader who asks why it is partial."""
+        return sorted(step.agent for step in self.steps if step.status is StepStatus.DEGRADED)
 
     @property
     def leading(self) -> RootCauseHypothesis | None:

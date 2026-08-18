@@ -585,11 +585,35 @@ export type DecidedAt = string;
 export type Hypotheses = RootCauseHypothesis[];
 export type Id9 = string;
 export type InvestigationId12 = string;
-/**
- * True when an agent reported DEGRADED, so the conclusion rests on incomplete evidence. Surfaced to the reader rather than buried.
- */
-export type Partial1 = boolean;
 export type RecommendedActions = Action[];
+/**
+ * Agent codename.
+ */
+export type Agent4 = string;
+/**
+ * Agent codenames whose findings this step needs.
+ */
+export type DependsOn = string[];
+export type FinishedAt = string | null;
+/**
+ * Why this agent is being asked.
+ */
+export type Reason3 = string;
+export type StartedAt = string | null;
+/**
+ * What happened to one dispatched agent.
+ *
+ * COMPLETE with no findings is a real result - the agent looked and saw
+ * nothing. DEGRADED means it could not look. SKIPPED means it was never
+ * dispatched. Collapsing any of these into "no findings" makes a clean run and
+ * a never-run agent the same number, which is precisely the distinction agent
+ * scoring depends on.
+ */
+export type StepStatus = "pending" | "running" | "complete" | "degraded" | "skipped";
+/**
+ * What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed without knowing which agents completed is a verdict that cannot tell 'nobody found anything' from 'nobody looked'.
+ */
+export type Steps = PlanStep[];
 /**
  * What happened, in one paragraph, for a human.
  */
@@ -598,14 +622,14 @@ export type InvestigationId13 = string;
 export type Type8 = "approval_requested";
 export type InvestigationId14 = string;
 export type Type9 = "access_requested";
-export type Agent4 = string;
+export type Agent5 = string;
 export type InvestigationId15 = string;
 export type LeaseId2 = string;
-export type Reason3 = "expired" | "revoked";
+export type Reason4 = "expired" | "revoked";
 export type Type10 = "lease_expired";
 export type InvokedBy = string;
 export type LeasesRevoked = number;
-export type Reason4 = string;
+export type Reason5 = string;
 export type Type11 = "break_glass";
 export type Id10 = string;
 /**
@@ -615,7 +639,7 @@ export type Sequence = number;
 /**
  * Agent codename the grant applies to, e.g. 'argus'.
  */
-export type Agent5 = string;
+export type Agent6 = string;
 /**
  * Set when mode is ALLOW_UNTIL.
  */
@@ -657,20 +681,6 @@ export type Findings = Finding[];
  */
 export type Hypotheses1 = RootCauseHypothesis[];
 export type Id12 = string;
-/**
- * Agent codename.
- */
-export type Agent6 = string;
-/**
- * Agent codenames whose findings this step needs.
- */
-export type DependsOn = string[];
-export type FinishedAt = string | null;
-/**
- * Why this agent is being asked.
- */
-export type Reason5 = string;
-export type StartedAt = string | null;
 /**
  * What Zeus decided to ask.
  */
@@ -1288,9 +1298,20 @@ export interface Verdict {
   hypotheses?: Hypotheses;
   id: Id9;
   investigation_id: InvestigationId12;
-  partial?: Partial1;
   recommended_actions?: RecommendedActions;
+  steps: Steps;
   summary: Summary1;
+}
+/**
+ * One agent consultation Zeus intends to make.
+ */
+export interface PlanStep {
+  agent: Agent4;
+  depends_on?: DependsOn;
+  finished_at?: FinishedAt;
+  reason: Reason3;
+  started_at?: StartedAt;
+  status?: StepStatus;
 }
 /**
  * An Action needs a human before it can execute.
@@ -1317,10 +1338,10 @@ export interface AccessRequestedEvent {
  * since re-prompting would undo a deliberate revocation mid-incident.
  */
 export interface LeaseExpiredEvent {
-  agent: Agent4;
+  agent: Agent5;
   investigation_id: InvestigationId15;
   lease_id: LeaseId2;
-  reason?: Reason3;
+  reason?: Reason4;
   type?: Type10;
 }
 /**
@@ -1334,7 +1355,7 @@ export interface BreakGlassEvent {
   audit_entry?: AuditEntry | null;
   invoked_by: InvokedBy;
   leases_revoked?: LeasesRevoked;
-  reason: Reason4;
+  reason: Reason5;
   type?: Type11;
 }
 /**
@@ -1342,7 +1363,7 @@ export interface BreakGlassEvent {
  */
 export interface Grant {
   action: CredentialAction;
-  agent: Agent5;
+  agent: Agent6;
   credential_ref: CredentialRef;
   expires_at?: ExpiresAt;
   granted_at: GrantedAt;
@@ -1373,16 +1394,6 @@ export interface Investigation {
    * Absent until the run reaches a conclusion.
    */
   verdict?: Verdict | null;
-}
-/**
- * One agent consultation Zeus intends to make.
- */
-export interface PlanStep {
-  agent: Agent6;
-  depends_on?: DependsOn;
-  finished_at?: FinishedAt;
-  reason: Reason5;
-  started_at?: StartedAt;
 }
 /**
  * Why Delphi chose the model it chose, for one call.

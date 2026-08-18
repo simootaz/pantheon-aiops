@@ -25,6 +25,7 @@ from pydantic import BaseModel, ValidationError
 from core.contracts import AgentManifest, EvidenceKind, RootCauseCategory
 from core.contracts.events import Event
 from core.contracts.evidence import EvidencePayload
+from core.contracts.plan import PlanStep, StepStatus
 from tests.mechanism import read_data
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -323,6 +324,7 @@ def test_a_verdict_cannot_be_confident_about_nothing() -> None:
             summary="something happened",
             confidence=0.9,
             decided_at="2026-08-15T00:00:00Z",  # type: ignore[arg-type]
+            steps=[],
         )
 
 
@@ -386,6 +388,7 @@ def test_verdict_leading_and_band_are_consistent() -> None:
             hypotheses=hypotheses,
             confidence=confidence,
             decided_at=datetime.now(UTC),
+            steps=[PlanStep(agent="argus", reason="r", status=StepStatus.COMPLETE)],
         )
 
     assert verdict(0.9).band is VerdictConfidence.HIGH

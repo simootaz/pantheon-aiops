@@ -51,6 +51,7 @@ dev = [
     # Used by the structural guards to read Helm values.
     "pyyaml>=6.0",
     "types-PyYAML>=6.0",
+    "pytest-asyncio>=1.0,<2",
 ]
 
 [build-system]
@@ -100,6 +101,7 @@ pretty = true
 minversion = "8.0"
 testpaths = ["tests", "agents"]
 # --strict-markers is on, so every marker has to be declared here.
+asyncio_mode = "auto"
 markers = [
     "integration: needs a live observability stack; run it with `make test-sim`",
 ]

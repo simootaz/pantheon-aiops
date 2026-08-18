@@ -57,6 +57,16 @@ NON_PYTHON_VARIABLES: dict[str, str] = {
 
 URL_LITERAL = re.compile(r"https?://[^\s\"'<>)]+")
 
+#: URLs used as *identifiers*, never dialled. A schema `$id` and a UUIDv5
+#: namespace are both URL-shaped by specification, and neither is an endpoint
+#: anyone configures. `.local` is reserved and not routable, which is precisely
+#: why it is the right choice for a namespace constant.
+IDENTIFIER_URLS: tuple[str, ...] = (
+    "json-schema.org",
+    "github.com/simootaz",
+    "pantheon.local",
+)
+
 
 def python_sources() -> list[Path]:
     return sorted(
@@ -121,8 +131,8 @@ def test_no_hardcoded_endpoint_outside_the_config_module(module: Path) -> None:
             url = found.rstrip("/")
             if url in ALLOWED_URLS or any(url.startswith(base) for base in ALLOWED_URLS):
                 continue
-            if "json-schema.org" in url or "github.com/simootaz" in url:
-                continue  # schema identifiers, never fetched
+            if any(marker in url for marker in IDENTIFIER_URLS):
+                continue
             offenders.append(f"line {node.lineno}: {url}")
 
     assert not offenders, (
