@@ -1,0 +1,29 @@
+# gitleaks configuration.
+#
+# Phase: 1 - Contracts & First Agent Path
+#
+# Default rules are kept in full. `.env.example` is excluded, and that exclusion
+# is a TRANSFER of responsibility, not a removal of it.
+#
+# Why: the template is a list of EMPTY placeholders, and the generic-api-key
+# rule fires on `CERBERUS_MASTER_KEY=` on the strength of the variable name
+# alone. Scoping the allowlist to "empty assignments in this file only" is the
+# right shape, but gitleaks' AND-condition allowlist did not behave that way in
+# 8.30 - tested in both directions, it either exempted the whole file or
+# exempted nothing.
+#
+# So the property is asserted where it can be verified instead:
+# `tests/unit/test_centralized_config.py::test_the_template_never_carries_a_real_secret`
+# requires every secret-shaped variable in `.env.example` to have an empty
+# value, and it is planted against a real key. That check is stricter than the
+# entropy heuristic it replaces, because it knows which variables are secrets
+# rather than guessing from shape.
+#
+# Every other file is scanned exactly as before.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "The environment template; see tests/unit/test_centralized_config.py"
+paths = ['''^\.env\.example$''']

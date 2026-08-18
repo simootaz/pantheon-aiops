@@ -27,6 +27,7 @@ from typing import Any
 import httpx
 import numpy as np
 
+from core.config import get_settings
 from simulator.cluster import CLUSTER, NAMESPACE, Pod
 from simulator.metrics_generator import SECONDS_PER_DAY, diurnal, weekly
 
@@ -106,11 +107,11 @@ class LogGenerator:
 
     def __init__(
         self,
-        loki_url: str = "http://localhost:3100",
+        loki_url: str | None = None,
         seed: int = 20260817,
         target_lines_per_pod_per_tick: float = 25.0,
     ) -> None:
-        self.loki_url = loki_url.rstrip("/")
+        self.loki_url = (loki_url or get_settings().loki.base).rstrip("/")
         self.target_lines_per_pod_per_tick = target_lines_per_pod_per_tick
         self._rng = np.random.default_rng(seed)
 

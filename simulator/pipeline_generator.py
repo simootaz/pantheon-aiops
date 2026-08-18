@@ -24,6 +24,11 @@ from typing import Any
 import httpx
 import numpy as np
 
+from core.config import get_settings
+
+#: Sample payload data. GitLab puts a web_url in its hooks, so the fixture
+#: carries one; it is never fetched, and it is not configuration.
+SAMPLE_GITLAB_HOST = "https://gitlab.example.com"
 PROJECT = "acme/checkout"
 PROJECT_ID = 4711
 BRANCHES = ("main", "feature/pool-size", "feature/retry-budget", "hotfix/timeouts")
@@ -45,10 +50,8 @@ class PipelineResult:
 class PipelineGenerator:
     """Builds GitLab-shaped payloads and posts them to the webhook."""
 
-    def __init__(
-        self, webhook_url: str = "http://localhost:8000/webhooks/gitlab", seed: int = 20260817
-    ) -> None:
-        self.webhook_url = webhook_url
+    def __init__(self, webhook_url: str | None = None, seed: int = 20260817) -> None:
+        self.webhook_url = webhook_url or get_settings().simulator.webhook
         self._rng = np.random.default_rng(seed)
         self._next_id = PROJECT_ID
 
@@ -90,7 +93,7 @@ class PipelineGenerator:
                 "id": PROJECT_ID,
                 "name": PROJECT.split("/")[-1],
                 "path_with_namespace": PROJECT,
-                "web_url": f"https://gitlab.example.com/{PROJECT}",
+                "web_url": f"{SAMPLE_GITLAB_HOST}/{PROJECT}",
             },
             "user": {"name": "CI", "username": "ci-bot"},
             "builds": builds,
@@ -120,7 +123,7 @@ class PipelineGenerator:
             "project": {
                 "id": PROJECT_ID,
                 "path_with_namespace": PROJECT,
-                "web_url": f"https://gitlab.example.com/{PROJECT}",
+                "web_url": f"{SAMPLE_GITLAB_HOST}/{PROJECT}",
             },
             "user": {"name": "Dana Okafor", "username": "dokafor"},
         }

@@ -250,6 +250,35 @@ Record decisions with consequences in `docs/adr/NNNN-title.md`, and index it in
 State what you **rejected** and why. The next person will propose it again, and
 the ADR is the answer — that is most of what makes an ADR worth writing.
 
+## Configuration
+
+`core/config.py` is the **only** module that reads the environment. Everything
+else imports from it:
+
+```python
+from core.config import get_settings
+
+settings = get_settings()
+httpx.get(f"{settings.prometheus.base}/api/v1/query")
+```
+
+Adding a setting means three things, and a guard checks each:
+
+1. a typed field on the right group in `core/config.py`;
+2. an entry in `.env.example` — the template and the model must agree in **both**
+   directions, so a field with no entry and an entry with no field both fail;
+3. if it is a secret, no default, and a row in `REQUIRED_IN_PRODUCTION` so
+   `PANTHEON_ENV=production` refuses to start without it.
+
+Never reintroduce `os.environ.get("SOMETHING", "a-default-that-looks-fine")`.
+That pattern has two failure modes and both are silent: dev and prod drift apart
+one call site at a time, and a typo'd name falls back to a working-looking
+default forever. `tests/unit/test_centralized_config.py` fails the build on it.
+
+Go modules read their own environment, but the **names** must match
+`.env.example` — a connector on `PROM_URL` while Python is on `PROMETHEUS_URL`
+configures two different systems that look like one.
+
 ## Cutting a release
 
 The version is declared in **exactly one place**: `version` in `pyproject.toml`.
