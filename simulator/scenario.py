@@ -17,6 +17,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,19 @@ class ExpectedRootCause(ContractModel):
     )
 
 
+@dataclass(frozen=True)
+class ActivePhase:
+    """A phase that is running, and how far through it we are.
+
+    Deliberately not two separate returns. A caller that receives a phase and
+    computes its own progress is free to choose a different time origin, which
+    is exactly the defect this type exists to make unrepresentable.
+    """
+
+    phase: Phase
+    progress: float
+
+
 class Scenario(ContractModel):
     """A complete fault injection with its answer key."""
 
@@ -164,10 +178,32 @@ class Scenario(ContractModel):
         """Simulated duration of the whole run, baseline included."""
         return self.baseline_seconds + max(phase.end_seconds for phase in self.phases)
 
-    def phases_at(self, simulated_seconds: float) -> list[Phase]:
-        """Every phase active at this point, measured after the baseline."""
+    def active_at(self, simulated_seconds: float) -> list[ActivePhase]:
+        """Every phase active now, each with how far through it we are.
+
+        Activity and progress share one time origin **by construction**, which
+        is the whole reason this returns a pair rather than a phase.
+
+        They used to be computed in three places against two different origins:
+        this method subtracted `baseline_seconds`, while `MetricsGenerator`
+        computed `(simulated_seconds - phase.start_seconds) / duration` from
+        absolute time, in two separate methods. Absolute time is always at
+        least `baseline_seconds`, so progress never fell inside [0, 1] - it ran
+        2.18 to 3.18 through a phase and clamped to 1.0 throughout.
+
+        The visible cost: `ramp` was indistinguishable from `step`, and `spike`
+        and `sawtooth` were **inert**, because their shape factors are 0.0 at
+        progress 1.0. Three of the four shapes did not do what they said.
+        """
         offset = simulated_seconds - self.baseline_seconds
-        return [phase for phase in self.phases if phase.start_seconds <= offset < phase.end_seconds]
+        return [
+            ActivePhase(
+                phase=phase,
+                progress=(offset - phase.start_seconds) / phase.duration_seconds,
+            )
+            for phase in self.phases
+            if phase.start_seconds <= offset < phase.end_seconds
+        ]
 
 
 def load(name: str) -> Scenario:

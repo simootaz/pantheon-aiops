@@ -333,6 +333,161 @@ positive checks it exists to qualify.
 > **Ask what the pass depends on.** A gate that reads state after the thing
 > under test has stopped may be reading an echo. If retained state can satisfy
 > the assertion, the assertion is about the store, not the system.
+## A claim repeated is not a claim verified, 2026-08-19
+
+The hardest variant so far, because nothing fires and nothing looks wrong.
+
+`dashboard/package.json` correctly declared `packageManager: pnpm@11.21.0`, and
+three files said so: `docs/REPOSITORY_MAP.md`, `README.md`, and a comment beside
+the step in `ci-dashboard.yml` reading *"action-setup reads `packageManager`
+from dashboard/package.json"*. It does not. It reads the **repository root**
+`package.json`, and this repo has none, so every dashboard job failed with *"No
+pnpm version is specified"*.
+
+`git log --all -S packageManager -- tests/` returns exactly one commit: the fix.
+**There was never a guard.** Three independent-looking statements of the same
+claim made it feel established, and repetition is not verification - it is the
+same assertion counted three times.
+
+> **A claim repeated in several places is still one claim.** Prose describing a
+> mechanism is evidence that someone intended it, not that it exists. Only a
+> test that has been watched failing is evidence.
+
+### The audit that followed
+
+Every "guarded / enforced / asserted / fails the build" claim across
+`docs/REPOSITORY_MAP.md`, `README.md`, `CONTRIBUTING.md`, the ADRs and the
+workflow comments was checked against whether a test exists: 128 claim-bearing
+lines, 9 naming a specific test - **all 9 resolve to a real test** - and the
+remainder describing a mechanism without naming one.
+
+It found a second instance immediately. CONTRIBUTING states that adding a
+setting means three things "and a guard checks each". The third - *if it is a
+secret, a row in `REQUIRED_IN_PRODUCTION`* - had **no guard**. Four `SecretStr`
+fields had fallen outside the required set with nothing noticing, one of them
+added in the same session that wrote the claim.
+
+The reason it went unseen is worth naming on its own: the existing tests iterate
+**over** `REQUIRED_IN_PRODUCTION`, so they verify every entry present and say
+nothing about entries missing. **A guard over a list is not a guard that the
+list is complete.** Fixed by partitioning: every `SecretStr` must be classified
+required or optional-with-a-reason, and the partition is enforced.
+
+## A threshold that reads as enforced and is not the one enforced, 2026-08-19
+
+`trivy config` failed with `::error::trivy config found CRITICAL or HIGH
+misconfigurations`. It had found **37 misconfigurations: 28 LOW, 9 MEDIUM, and
+zero HIGH or CRITICAL.**
+
+The step said `severity: CRITICAL,HIGH` beside `exit-code: "1"` and
+`format: sarif`. But **`severity` does not filter SARIF** - that format carries
+every severity, because code scanning does its own filtering - so `exit-code: 1`
+tripped on the LOW findings while every visible signal named a threshold that
+was not being applied. `trivy fs` had the identical defect and passed, because
+it happened to have no findings of any severity to trip over. A latent guard
+bug, passing.
+
+Two things made it expensive to see:
+
+- SARIF output means **the console prints no findings at all**, so the error
+  message was the only evidence in the log - and the error message was wrong.
+  Diagnosing it meant pulling the alerts from the code scanning API and reading
+  trivy's own severity out of each rule's `tags`.
+- GitHub's `security_severity_level` is its own remapping, not trivy's label.
+  Checking the raw tag mattered; `low`/`medium` in the API and `LOW`/`MEDIUM`
+  in trivy agreed here, but confirming that was the step that made the count
+  trustworthy.
+
+> **A threshold is enforced by the mechanism that reads it, not by the line that
+> declares it.** `severity:` next to `exit-code:` reads like a policy. Whether
+> it is one depends on the output format three lines down.
+
+Fixed by giving each step one job: a **report** (`exit-code: 0`, SARIF, every
+severity, uploaded) and a **gate** (`severity: CRITICAL,HIGH`, `exit-code: 1`,
+`format: table`, so a failure states its reason in the log). Note the effective
+threshold *loosens* - from "any finding" to the declared CRITICAL,HIGH. That is
+the point: the declared policy becomes the real one, and the 28 LOW and 9 MEDIUM
+stay visible as code scanning alerts rather than being suppressed.
+
+Guarded by `test_a_sarif_producing_scan_is_never_also_the_gate` and
+`test_every_trivy_report_has_a_gate_of_its_own` - the second because a report
+with `exit-code: 0` blocks nothing, and splitting the steps introduces exactly
+that way to end up with findings in the UI and a green build.
+
+This is the third setting in this repository that looked applied and did
+nothing, after the pnpm overrides in the file pnpm stopped reading and the
+`# trivy:ignore:` comment in a Helm template that rendering strips. The shape
+recurs often enough to check for directly: **when a setting has no observable
+effect, confirm the tool reads it there, in that form, in that mode.**
+
+## A scanner that aborts reports fewer findings, 2026-08-19
+
+`connectors/kubernetes/Dockerfile` held four comment lines and no instructions.
+Trivy reported *"dockerfile parse error: file with no instructions"* and exited
+1 - which is indistinguishable, from the outside, from exiting 1 because it
+found something. Deleting the file let the scan run to completion, and it
+immediately reported **five HIGH misconfigurations the abort had been hiding**:
+MinIO and the backup CronJob running with writable root filesystems and no
+dropped capabilities, while every other workload already used the hardened
+context sitting in `values.yaml`.
+
+> **A scanner's exit reason matters as much as its exit code.** Zero findings
+> and zero scanning look identical in a green tick and nearly identical in a red
+> one. Check that the tool read what it was pointed at.
+
+Guarded at the cause rather than the symptom: every Dockerfile must contain an
+instruction, every deploy manifest must parse, and every `.trivyignore` entry
+must carry a comment - a bare rule id is the threshold lowered one line at a
+time.
+
+A related trap in the same fix: an inline `# trivy:ignore:KSV-0109` in a Helm
+template does nothing, because trivy scans the **rendered** chart and rendering
+strips template comments. Same shape as pnpm overrides sitting in the file pnpm
+stopped reading - a suppression that looks applied and changes nothing.
+
+## The claim that named its own guard, which did not exist, 2026-08-19
+
+The README said the repository map **"cannot go stale without a test failing"**,
+and ARCHITECTURE said *"a directory that exists and is not described ... fails a
+test"*. Two files, stated as mechanism, in the present tense.
+
+The only test touching the map asserted that it **exists**, is **tracked**, and
+carries certain **headings**. Nothing about whether it is current.
+
+The proof was already in the branch that found it. `.trivyignore`,
+`dashboard/pnpm-workspace.yaml` and `tests/unit/test_ci_is_runnable.py` were
+added and committed without appearing in the map, and the suite stayed green
+across three commits. `LICENSE` had been missing from the map for far longer.
+Every one was caught by reading, late - the exact mechanism the rule exists to
+replace.
+
+> **A claim in the present tense about a test is checkable in seconds, and
+> nobody checks it.** "Fails a test" is the easiest sentence in a repository to
+> verify and among the least likely to be verified, because it reads like a
+> statement of fact rather than a claim.
+
+Now guarded in both directions: every tracked top-level entry must appear in
+the map, and every entry the folder-map tree draws must exist. Planted three
+ways - a staged file the map omits, a deleted line for an existing file, and a
+drawn path that does not exist.
+
+Two details worth keeping:
+
+- The guard reads `git ls-files`, not `git ls-tree HEAD`. With `ls-tree` a new
+  file is invisible until the commit **after** the one that added it, so the
+  planting passed and the guard looked correct. The index is the right source
+  because pre-commit runs before the commit exists.
+- The first reverse guard scanned every backticked path in the file and
+  reported ten deletions, **none of them defects**: `api/ws/` and
+  `core/llm/keyring.py` appear in the structure changelog, whose entries read
+  "Deleted `api/ws/`". A changelog naming things that are gone is a changelog
+  working. Scoped to the folder-map tree instead.
+
+And the prose was corrected rather than the guard widened where the wider claim
+was not one worth enforcing: sixty-one nested directories are described by
+pattern, not individually, so ARCHITECTURE now says top-level and says why.
+**When prose and mechanism disagree, one of them is wrong - decide which, do
+not split the difference.**
 
 ## How the audit was run
 
@@ -438,6 +593,79 @@ have shown.
 > runs against rendered output. If the planting does not reproduce that
 > context, a green planting is evidence about the test harness and silence
 > about the guard.
+## Three of four shapes did nothing, 2026-08-19
+
+`shape: ramp`, `shape: spike` and `shape: sawtooth` were declared across five
+scenarios. **Only `step` ever worked.**
+
+`Scenario.phases_at` decided a phase was running by comparing
+`simulated_seconds - baseline_seconds` against the phase bounds.
+`MetricsGenerator.sample` then computed how far through it was as
+`(simulated_seconds - phase.start_seconds) / duration` - from **absolute**
+time, against a **baseline-relative** start. Absolute time is never less than
+`baseline_seconds`, so progress never fell inside [0, 1]: measured through
+`memory_leak`'s leak it ran **2.18 to 3.18** and clamped to 1.0 throughout.
+
+At progress 1.0 the shape factors are:
+
+| shape | factor | effect |
+|---|---|---|
+| `step` | 1.0 | correct, by accident |
+| `ramp` | 1.0 | never ramps - identical to `step` |
+| `spike` | `sin(pi)**0.5` = **0.0** | **inert** |
+| `sawtooth` | `(4.0) % 1` = **0.0** | **inert** |
+
+So `memory_leak`'s OOM sawtooth and `disk_pressure`'s eviction spike changed
+nothing at all, and every ramp was a step. Fixed by returning progress *with*
+the phase from one method, `Scenario.active_at`, so activity and progress
+cannot be measured from different origins - the same computation had been
+written in three places against two origins.
+
+### The two failure modes compound, and the result looks doubly verified
+
+A guard existed. `test_a_deviation_is_absent_before_its_phase_begins` asserted
+`_apply(10.0, Deviation(factor=9.0), 0.0) == 10.0`, and passed for two
+independent reasons:
+
+- **Wrong layer.** `_apply` is *handed* a progress. Whether a phase is running,
+  and what progress it is at, are decided by its caller. Testing `_apply` proved
+  a helper multiplies correctly and said nothing about the argument it is given.
+- **One form planted.** At progress 0.0 a `ramp` contributes nothing, so the
+  default shape passed. `step` returns 1.0 whatever the progress and would have
+  failed the same line.
+
+> **Two weak guards in one test read as one strong guard.** Each flaw alone
+> leaves something visibly untested. Together they produce an assertion that
+> names the right behaviour, sits in the right file, and cannot observe the
+> defect from either direction - so nothing about it looks wrong. This is the
+> fifth too-narrow scanner and the second wrong-layer guard, and the first time
+> both have appeared in one test.
+
+Replaced with three guards, each planted: absence before the phase (**every**
+shape, driven through `sample`, on a scenario built for the purpose); every
+shape moving the metric *somewhere* in its phase, which is what catches an
+inert one; and progress staying inside [0, 1) across a **real** scenario, which
+is the only one that can see the origin defect - a fixture phase starting at
+zero makes the two origins agree, which is why every existing fixture missed it.
+
+A fourth guard was needed for `_node_disk`, the second site that recomputed
+progress. Planting there failed twice before it fired: monotonic climb does not
+separate the states, because the drift term rises either way. The signature is
+the *shape* of the climb - a ramp gains 0.445, 0.445, 0.445 of its first
+reading per step; the defect gains 0.102, 0.0001, 0.0001.
+
+### An error message that asserts a cause is a claim
+
+The alert gate failed with *"the alert fired in Prometheus but never reached
+Alertmanager"* on a run that had checked neither end. Delivery was fine; the
+gate was looking after the alert resolved. The message named a culprit, was
+believed, and pointed the investigation at the wrong component.
+
+> **An error message that asserts a cause needs the same evidence as any other
+> claim.** Say what was observed - "expected X in Alertmanager, saw []" - not
+> what it implies about a component the assertion never queried. This is the
+> same failure as present-tense prose about tests: a sentence that reads as a
+> finding when it is a guess.
 
 ## The rule
 

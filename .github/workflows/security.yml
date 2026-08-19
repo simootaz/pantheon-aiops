@@ -32,17 +32,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Scan the filesystem
-        id: scan
-        continue-on-error: true
+      # Two runs, deliberately. `severity` does NOT filter SARIF output: that
+      # format carries every severity, because code scanning does its own
+      # filtering. Combined with exit-code 1 in a single step, the job then
+      # fails on ANY finding while reporting "CRITICAL or HIGH" - a threshold
+      # that reads as enforced and is not the one enforced. So the report is
+      # one step and the gate is another, each doing only its own job.
+      - name: Report every finding to code scanning
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           scanners: vuln,secret
-          severity: CRITICAL,HIGH
-          exit-code: "1"
           ignore-unfixed: true
+          exit-code: "0" # a report, not a gate
           format: sarif
           output: trivy-fs.sarif
 
@@ -55,11 +58,19 @@ jobs:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
 
-      - name: Fail on findings
-        if: steps.scan.outcome == 'failure'
-        run: |
-          echo "::error::trivy found CRITICAL or HIGH issues; see the code scanning alerts" >&2
-          exit 1
+      # `table` on purpose: the SARIF goes to a UI, and a failing job needs its
+      # reason in the log. Diagnosing the previous failure meant pulling alerts
+      # from the API because the console said only that something was found.
+      - name: Fail on CRITICAL or HIGH
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          format: table
 
   trivy-config:
     name: trivy config
@@ -74,15 +85,12 @@ jobs:
           persist-credentials: false
 
       # Dockerfiles, Compose, Helm templates, Terraform and Kubernetes manifests.
-      - name: Scan infrastructure as code
-        id: scan
-        continue-on-error: true
+      - name: Report every finding to code scanning
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: "1"
+          exit-code: "0" # a report, not a gate - see the note in trivy-fs
           format: sarif
           output: trivy-config.sarif
 
@@ -93,11 +101,14 @@ jobs:
           sarif_file: trivy-config.sarif
           category: trivy-config
 
-      - name: Fail on findings
-        if: steps.scan.outcome == 'failure'
-        run: |
-          echo "::error::trivy config found CRITICAL or HIGH misconfigurations" >&2
-          exit 1
+      - name: Fail on CRITICAL or HIGH
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          format: table
 
   gitleaks:
     name: gitleaks

@@ -223,10 +223,14 @@ password on each sync and orphan the data.
 
 ## What holds this together
 
-Not documentation. **78 guards**, each verified against a planted violation in
-both directions — see
-[docs/guard-verification.md](docs/guard-verification.md), including three that
+Not documentation. **298 tests**, the structural and security guards among
+them each verified against a planted violation in both directions — see
+[docs/guard-verification.md](docs/guard-verification.md), including the ones that
 turned out not to work and how that was found.
 
-The repository map itself is enforced: a directory that exists and is not
-described, or an agent roster that drifts from the table, fails a test.
+The repository map itself is partly enforced: a **top-level** entry that
+exists and is not described - or one described and since deleted - fails a
+test, as does an agent roster that drifts from the table. Deeper directories
+are not covered, because the map describes them by pattern (`agents/<domain>/`)
+rather than one by one, and a guard demanding sixty formulaic rows would be
+noise. The claim is scoped to what is actually checked.

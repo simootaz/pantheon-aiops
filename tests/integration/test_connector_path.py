@@ -17,7 +17,6 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,62 +26,30 @@ import pytest
 from agents._base.base_agent import AgentContext, AgentStatus, BaseAgent
 from agents._base.testing import RecordingBus, a_context
 from connectors.prometheus.tools import build_server as build_prometheus
-from core.config import get_settings, require_stack
+from core.config import get_settings
 from core.contracts.finding import Finding
 from simulator.runner import ScenarioRunner
+from tests.integration.conftest import requires
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, requires("prometheus", "pushgateway", "api")]
 
 SETTINGS = get_settings()
 PROMETHEUS = SETTINGS.prometheus.base
 API = f"http://localhost:{SETTINGS.api.port}"
 
-READY_ATTEMPTS = 60 if require_stack() else 12
-READY_INTERVAL = 1.0
-
 #: A metric the simulator writes. If this is absent the stack is up but empty,
 #: which is a different failure and worth a different message.
 SIM_METRIC = "pantheon_pod_cpu_cores"
 
-
-def _reachable(url: str, path: str = "/") -> bool:
-    try:
-        return httpx.get(f"{url}{path}", timeout=2.0).status_code < 500
-    except httpx.HTTPError:
-        return False
-
-
-@pytest.fixture(scope="module")
-def stack() -> None:
-    """Prometheus and the API, with simulator data actually in Prometheus."""
-    for attempt in range(READY_ATTEMPTS):
-        missing = [
-            name
-            for name, ok in (
-                ("prometheus", _reachable(PROMETHEUS, "/-/ready")),
-                ("api", _reachable(API, "/health")),
-            )
-            if not ok
-        ]
-        if not missing:
-            break
-        if attempt == READY_ATTEMPTS - 1:
-            message = f"not reachable after {READY_ATTEMPTS * READY_INTERVAL:.0f}s: {missing}"
-            if require_stack():
-                pytest.fail(f"{message}\nPANTHEON_REQUIRE_STACK is set: failure, not skip.")
-            pytest.skip(f"{message}. Start it with: make up")
-        time.sleep(READY_INTERVAL)
-
-
 #: Wall seconds the fixture spends writing. At a 1s scrape and a 5s query step
-#: that is ~12 points, which is enough to prove a series came back without
-#: turning this into a second copy of the simulator gate.
+#: that is ~12 points - enough to prove a series came back without turning this
+#: into a second copy of the simulator gate.
 WRITE_SECONDS = 60.0
 QUERY_STEP = "5s"
 
 
 @pytest.fixture(scope="module")
-def simulator_data(stack: None) -> tuple[datetime, datetime]:
+def simulator_data() -> tuple[datetime, datetime]:
     """Write to Prometheus, and report the window that was actually written.
 
     Returning the window matters. The first version of this queried a fixed
@@ -144,7 +111,7 @@ async def test_an_instant_query_and_a_series_lookup_both_work(
     assert any(entry.get("__name__") == SIM_METRIC for entry in series)
 
 
-async def test_a_malformed_query_is_reported_not_swallowed(stack: None) -> None:
+async def test_a_malformed_query_is_reported_not_swallowed() -> None:
     """A connector answering a broken query with `[]` teaches an agent all is well."""
     from connectors._base.python.base_server import ToolError
 
@@ -259,7 +226,7 @@ ALERTMANAGER_PAYLOAD: dict[str, Any] = {
 }
 
 
-async def test_an_alertmanager_payload_over_real_http_is_accepted(stack: None) -> None:
+async def test_an_alertmanager_payload_over_real_http_is_accepted() -> None:
     """The real endpoint, the real payload shape, no simulator-specific route."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(f"{API}/webhooks/alertmanager", json=ALERTMANAGER_PAYLOAD)
@@ -272,7 +239,7 @@ async def test_an_alertmanager_payload_over_real_http_is_accepted(stack: None) -
     assert body["investigation_id"]
 
 
-async def test_a_body_that_is_not_a_notification_is_rejected(stack: None) -> None:
+async def test_a_body_that_is_not_a_notification_is_rejected() -> None:
     """400, not 202. Accepting anything would make the endpoint a black hole."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(f"{API}/webhooks/alertmanager", json={"nope": True})

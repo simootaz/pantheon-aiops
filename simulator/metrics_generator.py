@@ -60,7 +60,7 @@ from prometheus_client.exposition import CONTENT_TYPE_LATEST, generate_latest
 
 from core.config import get_settings
 from simulator.cluster import CLUSTER, NAMESPACE, NODES, NODES_BY_NAME, PODS, Node, Pod, pods_for
-from simulator.scenario import Deviation, MetricName, Phase, Shape
+from simulator.scenario import ActivePhase, Deviation, MetricName, Shape
 
 SECONDS_PER_DAY = 86_400.0
 SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY
@@ -231,18 +231,23 @@ class MetricsGenerator:
         return value + (deviation.offset or 0.0) * strength
 
     def sample(
-        self, pod: Pod, metric: MetricName, simulated_seconds: float, phases: list[Phase]
+        self, pod: Pod, metric: MetricName, simulated_seconds: float, active: list[ActivePhase]
     ) -> float:
-        """The value now: baseline, then any active deviation applied on top."""
+        """The value now: baseline, then any active deviation applied on top.
+
+        Progress arrives with the phase rather than being recomputed here. It
+        used to be derived from absolute `simulated_seconds` against a
+        baseline-relative `phase.start_seconds`, which put it above 1.0 for
+        every sample of every run - see `Scenario.active_at`.
+        """
         value = self._baseline(pod, metric, simulated_seconds)
 
-        for phase in phases:
-            if pod not in pods_for(phase.target):
+        for running in active:
+            if pod not in pods_for(running.phase.target):
                 continue
-            progress = (simulated_seconds - phase.start_seconds) / phase.duration_seconds
-            for deviation in phase.deviations:
+            for deviation in running.phase.deviations:
                 if deviation.metric is metric:
-                    value = self._apply(value, deviation, progress)
+                    value = self._apply(value, deviation, running.progress)
         return max(value, 0.0)
 
     # -- push -------------------------------------------------------------
@@ -250,7 +255,7 @@ class MetricsGenerator:
     def push(
         self,
         simulated_seconds: float,
-        phases: list[Phase],
+        active: list[ActivePhase],
         interval: float,
         client: httpx.Client | None = None,
     ) -> None:
@@ -312,14 +317,14 @@ class MetricsGenerator:
             state = self._state[pod.name]
             tags = [pod.name, pod.node, pod.service, NAMESPACE, CLUSTER]
 
-            cpu.labels(*tags).set(self.sample(pod, MetricName.CPU, simulated_seconds, phases))
-            memory.labels(*tags).set(self.sample(pod, MetricName.MEMORY, simulated_seconds, phases))
+            cpu.labels(*tags).set(self.sample(pod, MetricName.CPU, simulated_seconds, active))
+            memory.labels(*tags).set(self.sample(pod, MetricName.MEMORY, simulated_seconds, active))
             latency.labels(*tags).set(
-                self.sample(pod, MetricName.LATENCY, simulated_seconds, phases)
+                self.sample(pod, MetricName.LATENCY, simulated_seconds, active)
             )
 
-            rps = self.sample(pod, MetricName.REQUEST_RATE, simulated_seconds, phases)
-            errors_per_second = self.sample(pod, MetricName.ERROR_RATE, simulated_seconds, phases)
+            rps = self.sample(pod, MetricName.REQUEST_RATE, simulated_seconds, active)
+            errors_per_second = self.sample(pod, MetricName.ERROR_RATE, simulated_seconds, active)
             state.requests_total += max(rps - errors_per_second, 0.0) * interval
             state.errors_total += errors_per_second * interval
             # The registry is rebuilt each push, so incrementing by the running
@@ -327,18 +332,18 @@ class MetricsGenerator:
             requests.labels(*tags, "200").inc(state.requests_total)
             requests.labels(*tags, "500").inc(state.errors_total)
 
-            restart_rate = self.sample(pod, MetricName.RESTARTS, simulated_seconds, phases)
+            restart_rate = self.sample(pod, MetricName.RESTARTS, simulated_seconds, active)
             state.restarts_total += restart_rate * interval / SECONDS_PER_DAY
             restarts.labels(*tags).inc(state.restarts_total)
 
         for pod in PODS:
             ci_failures.labels(pod.service, CLUSTER).set(
-                min(self.sample(pod, MetricName.CI_FAILURE_RATIO, simulated_seconds, phases), 1.0)
+                min(self.sample(pod, MetricName.CI_FAILURE_RATIO, simulated_seconds, active), 1.0)
             )
 
         for node in NODES:
             disk_total.labels(node.name, CLUSTER).set(float(node.disk_bytes))
-            disk.labels(node.name, CLUSTER).set(self._node_disk(node, simulated_seconds, phases))
+            disk.labels(node.name, CLUSTER).set(self._node_disk(node, simulated_seconds, active))
 
         if client is None:
             push_to_gateway(self.gateway, job=self.job, registry=registry)
@@ -352,20 +357,22 @@ class MetricsGenerator:
         )
         response.raise_for_status()
 
-    def _node_disk(self, node: Node, simulated_seconds: float, phases: list[Phase]) -> float:
-        """Node disk, driven by whichever of its pods a phase is filling."""
+    def _node_disk(self, node: Node, simulated_seconds: float, active: list[ActivePhase]) -> float:
+        """Node disk, driven by whichever of its pods a phase is filling.
+
+        The second site that recomputed progress from the wrong origin.
+        """
         used = 0.34 * node.disk_bytes
         drift = 0.00004 * node.disk_bytes * (simulated_seconds / SECONDS_PER_DAY)
         used += drift
 
-        for phase in phases:
-            targets = pods_for(phase.target)
+        for running in active:
+            targets = pods_for(running.phase.target)
             if not any(pod.node == node.name for pod in targets):
                 continue
-            progress = (simulated_seconds - phase.start_seconds) / phase.duration_seconds
-            for deviation in phase.deviations:
+            for deviation in running.phase.deviations:
                 if deviation.metric is MetricName.DISK_USED:
-                    used = self._apply(used, deviation, progress)
+                    used = self._apply(used, deviation, running.progress)
         return min(used, float(node.disk_bytes))
 
 
