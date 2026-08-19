@@ -121,7 +121,8 @@ class ScenarioRunner:
         with httpx.Client(timeout=10.0) as client:
             simulated = 0.0
             while simulated <= scenario.total_seconds:
-                phases = scenario.phases_at(simulated)
+                active_phases = scenario.active_at(simulated)
+                phases = [running.phase for running in active_phases]
                 names = {phase.name for phase in phases}
 
                 for entering in sorted(names - active):
@@ -134,7 +135,7 @@ class ScenarioRunner:
                     report.fault_ended_wall = time.monotonic() - started
                 active = names
 
-                self.metrics.push(simulated, phases, self.tick_seconds, client)
+                self.metrics.push(simulated, active_phases, self.tick_seconds, client)
                 report.metrics_pushes += 1
 
                 lines: list[LogLine] = []

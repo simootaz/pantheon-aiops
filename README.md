@@ -31,7 +31,7 @@ Here is the honest split.
 | **Connectors** | Prometheus and Alertmanager speak MCP, read-only, with the tool allowlist enforced at bind **and** at call. |
 | **Agent runtime** | `agents/_base/` gives a subclass one required coroutine; the manifest registry loads and validates all ten. Finding ids are deterministic, so a retry cannot duplicate a claim. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
-| **282 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
+| **286 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
 | **Deploy skeleton** | Helm lints and templates, Terraform validates, Compose brings the stack up. |
 | **Six ADRs** | The decisions, and what was rejected. |
@@ -44,7 +44,7 @@ Here is the honest split.
 | **Every domain agent** | Argus first, at Phase 1. The other nine follow. |
 | **Delphi** | The LLM gateway is designed ([ADR 0004](docs/adr/0004-llm-provider-abstraction.md)) and unbuilt. |
 | **Cerberus behaviour** | Contracts and redaction exist; brokering, leases and revocation do not. |
-| **Five connectors** | Kubernetes, Loki, GitLab, GitHub and Litmus. |
+| **The remaining connectors** | Kubernetes, Loki, GitLab, GitHub and Litmus. |
 | **The AG-UI endpoint** | The dashboard renders A2UI surfaces; nothing streams into them yet. |
 
 The interesting part right now is the **guards** and the **simulator**, not the

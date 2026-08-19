@@ -14,6 +14,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import itertools
 import json
 from itertools import pairwise
 from typing import Any
@@ -22,6 +23,7 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
+from core.contracts.root_cause import RootCauseCategory
 from simulator.cli import app
 from simulator.clock import FAST, REALTIME, SECONDS_PER_DAY, SimClock, describe
 from simulator.cluster import NODES, NODES_BY_NAME, PODS, PODS_BY_NAME
@@ -31,9 +33,12 @@ from simulator.metrics_generator import MetricsGenerator, require_every_metric
 from simulator.pipeline_generator import PipelineGenerator
 from simulator.runner import ScenarioRunner
 from simulator.scenario import (
+    ActivePhase,
     Deviation,
+    ExpectedRootCause,
     MetricName,
     Phase,
+    Scenario,
     Shape,
     load,
     load_all,
@@ -113,10 +118,108 @@ def test_a_factor_deviation_scales_and_an_offset_adds() -> None:
     assert added == pytest.approx(14.0)
 
 
-def test_a_deviation_is_absent_before_its_phase_begins() -> None:
-    """At zero progress a deviation must leave the baseline alone."""
-    generator = MetricsGenerator()
-    assert generator._apply(10.0, Deviation(metric=MetricName.CPU, factor=9.0), 0.0) == 10.0
+def _scenario_with(phase: Phase) -> Scenario:
+    """A minimal scenario carrying exactly one phase, with a real baseline.
+
+    Built rather than loaded because the window and the origin only differ when
+    `baseline_seconds > 0`, and because a test that calls `active_at` on a
+    loaded scenario is asserting over *that* scenario's phases - which is how
+    the first version of the guard below passed while measuring nothing.
+    """
+    return Scenario(
+        name="fixture",
+        title="fixture",
+        description="a scenario built for one phase",
+        baseline_seconds=3600.0,
+        phases=[phase],
+        expected_root_cause=ExpectedRootCause(
+            category=RootCauseCategory.BAD_DEPLOYMENT,
+            subject="fixture",
+            statement="a fixture scenario used only to exercise phase windows",
+        ),
+    )
+
+
+@pytest.mark.parametrize("shape", list(Shape), ids=lambda s: str(s.value))
+def test_a_deviation_is_absent_before_its_phase_begins(shape: Shape) -> None:
+    """Driven through `sample`, and planted with every shape.
+
+    The version this replaces called `_apply(..., 0.0)` with the default shape
+    and passed. Two defects at once, each already named on this project's list:
+
+    - **Wrong layer.** `_apply` is handed a progress; whether a phase is
+      running, and what progress it is at, are decided in `sample` via
+      `Scenario.active_at`. Testing `_apply` proved a helper behaves and said
+      nothing about the caller that computes its argument.
+    - **One form planted.** At progress 0.0 a `ramp` contributes nothing, so
+      the default shape passed. `step` returns 1.0 regardless of progress, and
+      would have failed the same assertion.
+
+    Together they made it look doubly verified: an assertion that read as
+    covering the behaviour, in a test that could not observe it.
+    """
+    scenario = _scenario_with(
+        Phase(
+            name="later",
+            start_seconds=600.0,
+            duration_seconds=600.0,
+            target="checkout",
+            deviations=[Deviation(metric=MetricName.CPU, factor=9.0, shape=shape)],
+        )
+    )
+    phase = scenario.phases[0]
+    pod = PODS_BY_NAME["checkout-7d4f9b-a1"]
+
+    before = scenario.baseline_seconds + phase.start_seconds - 1.0
+    running = scenario.active_at(before)
+    assert not running, (
+        "the fixture phase is already active, so this test would pass whatever "
+        f"the window did. Active: {[a.phase.name for a in running]}"
+    )
+
+    # A fresh generator per call: the noise draw comes from a per-pod RNG that
+    # advances on every sample, so two calls on one generator differ by noise
+    # whatever the phases say. Comparing those made this test fail on a
+    # different shape each run.
+    quiet = MetricsGenerator().sample(pod, MetricName.CPU, before, [])
+    with_phase = MetricsGenerator().sample(pod, MetricName.CPU, before, running)
+    assert with_phase == pytest.approx(quiet), (
+        f"a {shape.value} deviation moved the metric before its phase began"
+    )
+
+
+@pytest.mark.parametrize("shape", list(Shape), ids=lambda s: str(s.value))
+def test_every_shape_actually_moves_the_metric_somewhere_in_its_phase(shape: Shape) -> None:
+    """The other direction, and the one that would have caught the real defect.
+
+    `spike` and `sawtooth` are 0.0 at progress 1.0, and progress was pinned
+    there for every sample of every run, so both were **inert** - a fault
+    declared in a scenario that changed nothing. `ramp` was pinned at full
+    strength, making it indistinguishable from `step`.
+
+    Absence-before-the-phase alone cannot see that: an inert deviation passes it
+    perfectly. A shape needs both halves - quiet outside, moving inside.
+    """
+    phase = Phase(
+        name="fault",
+        start_seconds=0.0,
+        duration_seconds=600.0,
+        target="checkout",
+        deviations=[Deviation(metric=MetricName.CPU, factor=9.0, shape=shape)],
+    )
+    pod = PODS_BY_NAME["checkout-7d4f9b-a1"]
+    quiet = MetricsGenerator().sample(pod, MetricName.CPU, 300.0, [])
+
+    moved = [
+        MetricsGenerator().sample(
+            pod, MetricName.CPU, 300.0, [ActivePhase(phase=phase, progress=step / 20)]
+        )
+        for step in range(21)
+    ]
+    assert max(moved) > quiet * 2.0, (
+        f"a {shape.value} deviation with factor 9 never moved the metric at any "
+        "progress through its phase, so declaring it in a scenario does nothing"
+    )
 
 
 def test_a_phase_only_touches_the_pods_it_targets() -> None:
@@ -130,8 +233,9 @@ def test_a_phase_only_touches_the_pods_it_targets() -> None:
         deviations=[Deviation(metric=MetricName.CPU, factor=5.0, shape=Shape.STEP)],
     )
     search = PODS_BY_NAME["search-2f6b8c-a1"]
-    assert generator.sample(search, MetricName.CPU, 300.0, [phase]) > search.base_cpu_cores * 2
-    untouched = generator.sample(POD, MetricName.CPU, 300.0, [phase])
+    running = [ActivePhase(phase=phase, progress=0.5)]
+    assert generator.sample(search, MetricName.CPU, 300.0, running) > search.base_cpu_cores * 2
+    untouched = generator.sample(POD, MetricName.CPU, 300.0, running)
     assert untouched < POD.base_cpu_cores * 2
 
 
@@ -360,12 +464,12 @@ def test_loading_a_scenario_that_does_not_exist_names_the_alternatives() -> None
     assert "bad_deploy_5xx" in str(error.value)
 
 
-def test_phases_at_is_measured_after_the_baseline() -> None:
+def test_active_at_is_measured_after_the_baseline() -> None:
     """Phase offsets are relative to the end of the baseline, not to time zero."""
     scenario = load("bad_deploy_5xx")
-    assert scenario.phases_at(0.0) == []
-    assert scenario.phases_at(scenario.baseline_seconds / 2) == []
-    landed = {phase.name for phase in scenario.phases_at(scenario.baseline_seconds + 1.0)}
+    assert scenario.active_at(0.0) == []
+    assert scenario.active_at(scenario.baseline_seconds / 2) == []
+    landed = {running.phase.name for running in scenario.active_at(scenario.baseline_seconds + 1.0)}
     assert "deploy_lands" in landed
 
 
@@ -526,7 +630,7 @@ def test_node_disk_responds_to_a_phase_that_fills_it() -> None:
         deviations=[Deviation(metric=MetricName.DISK_USED, factor=2.5, shape=Shape.STEP)],
     )
     quiet = generator._node_disk(node, 500.0, [])
-    filling = generator._node_disk(node, 500.0, [phase])
+    filling = generator._node_disk(node, 500.0, [ActivePhase(phase=phase, progress=1.0)])
     assert filling > quiet, "a disk_used deviation on the node changed nothing"
     assert filling <= float(node.disk_bytes), "disk exceeded the node's capacity"
 
@@ -541,7 +645,9 @@ def test_a_phase_targeting_another_node_leaves_this_one_alone() -> None:
         deviations=[Deviation(metric=MetricName.DISK_USED, factor=2.5, shape=Shape.STEP)],
     )
     node = NODES_BY_NAME["node-a"]
-    assert generator._node_disk(node, 500.0, [phase]) == generator._node_disk(node, 500.0, [])
+    assert generator._node_disk(
+        node, 500.0, [ActivePhase(phase=phase, progress=1.0)]
+    ) == generator._node_disk(node, 500.0, [])
 
 
 def test_push_without_a_client_falls_back_to_the_library(
@@ -616,3 +722,80 @@ def test_console_script_entrypoint_exists() -> None:
     result = runner_cli.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert callable(main)
+
+
+@pytest.mark.parametrize("name", ["bad_deploy_5xx", "memory_leak", "disk_pressure"])
+def test_progress_runs_from_zero_to_one_across_a_real_scenario_phase(name: str) -> None:
+    """The defect itself: progress computed against the wrong time origin.
+
+    Only visible with a real scenario, because it needs `baseline_seconds > 0`.
+    Activity was measured from the end of the baseline while progress was
+    measured from absolute zero, so progress entered a phase already above 1.0
+    - 2.18 rising to 3.18 through `memory_leak`'s leak, clamped to 1.0
+    throughout. Every ramp was a step, and spike and sawtooth were inert.
+
+    A synthetic phase starting at zero cannot see this: the two origins agree
+    when the baseline is zero, which is exactly why the fixtures in this file
+    missed it for as long as they did.
+    """
+    scenario = load(name)
+    phase = scenario.phases[0]
+
+    seen: list[float] = []
+    for fraction in (0.0, 0.25, 0.5, 0.75, 0.95):
+        moment = scenario.baseline_seconds + phase.start_seconds + fraction * phase.duration_seconds
+        running = [a for a in scenario.active_at(moment) if a.phase.name == phase.name]
+        assert running, f"{name}: {phase.name} is not active {fraction:.0%} through itself"
+        seen.append(running[0].progress)
+
+    assert all(0.0 <= value < 1.0 for value in seen), (
+        f"{name}: progress through {phase.name} left [0, 1): {[round(v, 3) for v in seen]}. "
+        "Activity and progress are being measured from different time origins."
+    )
+    assert seen == sorted(seen) and seen[-1] > seen[0], (
+        f"{name}: progress does not advance through {phase.name}: {[round(v, 3) for v in seen]}"
+    )
+
+
+def test_node_disk_climbs_across_a_real_fill_phase() -> None:
+    """`_node_disk` was the second site computing progress from the wrong origin.
+
+    The existing disk guards build a phase starting at zero, where absolute and
+    baseline-relative time agree - so reintroducing the defect leaves them
+    green. `disk_pressure` fills over 216000 simulated seconds on a ramp, which
+    only climbs if progress advances; pinned at 1.0 it is flat but for drift.
+    """
+    scenario = load("disk_pressure")
+    phase = next(p for p in scenario.phases if p.name == "disk_fills")
+    node = NODES_BY_NAME[PODS_BY_NAME["checkout-7d4f9b-a1"].node]
+
+    readings = [
+        MetricsGenerator()._node_disk(
+            node,
+            scenario.baseline_seconds + phase.start_seconds + fraction * phase.duration_seconds,
+            [
+                running
+                for running in scenario.active_at(
+                    scenario.baseline_seconds
+                    + phase.start_seconds
+                    + fraction * phase.duration_seconds
+                )
+                if running.phase.name == "disk_fills"
+            ],
+        )
+        for fraction in (0.05, 0.35, 0.65, 0.95)
+    ]
+
+    assert readings == sorted(readings), f"disk does not climb through the fill: {readings}"
+
+    # A ramp gains evenly. Pinned progress reaches full strength almost at once
+    # and the later gains collapse to background drift: measured, the fixed
+    # generator gains 0.445, 0.445, 0.445 of the first reading per step, and
+    # the defect gains 0.102, 0.0001, 0.0001. Asserting the climb is monotonic
+    # does not separate those - the drift term rises too - so this asserts the
+    # SHAPE of the climb rather than its direction.
+    gains = [(later - earlier) / readings[0] for earlier, later in itertools.pairwise(readings)]
+    assert gains[-1] > gains[0] * 0.5, (
+        f"disk fills unevenly across the ramp: gains {[round(g, 4) for g in gains]}. "
+        "A ramp evaluated at pinned progress climbs once and then only drifts."
+    )
