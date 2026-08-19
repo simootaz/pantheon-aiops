@@ -361,6 +361,84 @@ reported success while testing nothing.
 - **This is a snapshot.** A guard changed after this date is unverified until
   someone plants a violation against it again.
 
+## The two "delivery failures" that were not, 2026-08-19
+
+The alert gate sat at 5 of 8 with two failures reported as Alertmanager not
+receiving what Prometheus sent. The message read *"the alert fired in
+Prometheus but never reached Alertmanager"* - a sentence asserting the first
+half while testing neither.
+
+Sampling both endpoints together during a real run settled it in one pass:
+
+```
+t=326.1  prom=[CheckoutErrorRateHigh]  am=[CheckoutErrorRateHigh]   <- same 2s sample
+t=350.7  prom=[CheckoutErrorRateHigh]  am=[CheckoutErrorRateHigh]
+t=361.0  prom=[]                       am=[]                        <- ~5s after the run
+```
+
+**Delivery was never broken.** Alertmanager holds the alert in the same
+two-second sample Prometheus starts firing it. Both tests polled Alertmanager
+*after* the run returned, by which time the alert had resolved and been dropped.
+
+This is the defect already recorded on this page under *"a gate that asserts
+after the run tests retained state"* - fixed for the scenario tests on this
+same branch, and never carried across to these two. **Fixing one instance of a
+class and leaving another, twice on one branch.** The first pair was memory and
+latency; this pair is the two delivery gates.
+
+A second defect the same run exposed: the label test ran no scenario at all. It
+read Alertmanager directly and depended on the test above it having just left
+the alert there - so it would fail standalone even with delivery working, and
+passed for the wrong reason whenever ordering happened to suit it. It now runs
+its own scenario.
+
+> **A failure message that asserts half the chain hides which half broke.**
+> "Fired in Prometheus but never reached Alertmanager" named a culprit for a
+> run that had checked neither end. Assert each hop you name.
+
+## Two rules the claim audit produced, 2026-08-19
+
+### A sentence in the present tense about a test reads as a fact
+
+The audit found eight claims describing mechanisms that did not exist. The
+costliest said the repository map **"cannot go stale without a test failing"**
+- present tense, stated as fact, in the most-read file in the repository. Three
+files were committed without appearing in the map across three commits, every
+run green.
+
+Such a sentence is checkable in seconds and is among the least likely things in
+a repository to be checked, precisely because it does not read like a claim.
+"A guard asserts X" invites belief the way "we should assert X" does not.
+
+> **Any sentence asserting a mechanism must name the test that enforces it, or
+> be rewritten as intent rather than fact.** "`test_x` asserts X" is checkable
+> by one grep. "X is guarded" is a belief with no address.
+
+The nine claims in this repository that named a test all resolved to a real
+one. Every false claim was in the set that named none. That correlation is the
+whole argument: naming the test is not decoration, it is what makes the claim
+falsifiable.
+
+### Plant in the conditions the guard runs in
+
+The fourth too-narrow scanner, and the nastiest, because **the planting passed**.
+
+The map-currency guard read `git ls-tree HEAD`. Planting a new file the map
+omitted did not fail it: `ls-tree HEAD` reads the last commit, so a staged file
+is invisible until the commit *after* the one that added it. The guard looked
+verified while being blind to the exact moment it runs - pre-commit, before the
+commit exists. Switching to `git ls-files` made the same planting fail.
+
+The three earlier cases were scanners too narrow for a *syntactic* form. This
+one was narrow for a *temporal* one, which no amount of reading the regex would
+have shown.
+
+> **Plant in the conditions the guard runs in, not only the conditions
+> convenient to test.** A hook runs pre-commit, CI runs post-push, a scanner
+> runs against rendered output. If the planting does not reproduce that
+> context, a green planting is evidence about the test harness and silence
+> about the guard.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
@@ -368,5 +446,8 @@ reported success while testing nothing.
 >
 > And when a guard fires, fix the code. Narrowing the guard to make it pass
 > converts a real finding into a permanent blind spot.
+>
+> Plant it in the conditions it will actually run in, and make every sentence
+> claiming it exists name it.
 
 _Phase: 0 - Scaffold & Tooling_

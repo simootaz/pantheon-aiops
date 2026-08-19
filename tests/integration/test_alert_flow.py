@@ -120,6 +120,21 @@ def firing() -> set[str]:
     return {alert["labels"]["alertname"] for alert in response.json()}
 
 
+#: Alertmanager's view during the most recent `watching(...)` call, keyed by
+#: alert name. Captured during the run rather than read afterwards, because an
+#: alert is held only while Prometheus keeps re-sending it: `bad_deploy_5xx`
+#: fires at t=326s and Alertmanager has dropped it again by t=361s, five
+#: seconds after the run stops.
+_LAST_HELD: dict[str, dict[str, Any]] = {}
+
+
+def alertmanager_alerts() -> dict[str, dict[str, Any]]:
+    """Every alert Alertmanager holds right now, keyed by alert name."""
+    response = httpx.get(f"{ALERTMANAGER}/api/v2/alerts", timeout=15.0)
+    response.raise_for_status()
+    return {alert["labels"]["alertname"]: alert for alert in response.json()}
+
+
 def prometheus_alerts() -> set[str]:
     """Alert names Prometheus itself considers firing, before Alertmanager grouping."""
     response = httpx.get(f"{PROMETHEUS}/api/v1/alerts", timeout=15.0)
@@ -174,12 +189,14 @@ def watching(run: Callable[[], object]) -> set[str]:
     which would make it weaker than the positive checks it is meant to qualify.
     """
     seen: set[str] = set()
+    held: dict[str, dict[str, Any]] = {}
     stop = threading.Event()
 
     def watch() -> None:
         while not stop.is_set():
             with contextlib.suppress(httpx.HTTPError):
                 seen.update(prometheus_alerts())
+                held.update(alertmanager_alerts())
             time.sleep(1.5)
 
     watcher = threading.Thread(target=watch, daemon=True)
@@ -198,6 +215,8 @@ def watching(run: Callable[[], object]) -> set[str]:
     finally:
         stop.set()
         watcher.join(timeout=5.0)
+    _LAST_HELD.clear()
+    _LAST_HELD.update(held)
     return seen
 
 
@@ -263,27 +282,48 @@ def test_a_firing_alert_reaches_the_receiver_over_real_http(stack: None) -> None
     matters is that the configured route delivered - not that the endpoint would
     have accepted a payload if something had sent one, which the connector gate
     already covers.
+
+    Observed **during** the run. The first version polled Alertmanager after
+    `run_watching_for_alerts` returned and failed every time, reporting that the
+    alert "fired in Prometheus but never reached Alertmanager" - a message that
+    assumed the first half and tested neither. Sampling both endpoints together
+    showed delivery was never broken: Alertmanager holds the alert in the same
+    two-second sample Prometheus starts firing it, and drops it five seconds
+    after the run stops, which is before the old assertion ever looked.
+
+    That is the defect this branch already fixed for the scenario tests - a gate
+    reading state after the thing under test has stopped - left in place here.
+    Fixing one instance of a class and leaving another, twice on one branch.
     """
     settle()
-    run_watching_for_alerts("bad_deploy_5xx")
+    fired = run_watching_for_alerts("bad_deploy_5xx")
+    delivered = dict(_LAST_HELD)
 
-    deadline = time.monotonic() + 45.0
-    delivered: set[str] = set()
-    while time.monotonic() < deadline:
-        delivered = firing()
-        if "CheckoutErrorRateHigh" in delivered:
-            break
-        time.sleep(2.0)
-
+    assert "CheckoutErrorRateHigh" in fired, (
+        "the rule never fired in Prometheus, so this gate says nothing about "
+        f"delivery. Firing during the run: {sorted(fired)}"
+    )
     assert "CheckoutErrorRateHigh" in delivered, (
-        f"the alert fired in Prometheus but never reached Alertmanager. Held: {sorted(delivered)}"
+        "the alert fired in Prometheus but Alertmanager never held it, so the "
+        f"route did not deliver. Held during the run: {sorted(delivered)}"
     )
 
 
 def test_the_alert_carries_the_scenario_label_the_rule_set(stack: None) -> None:
-    """The label is how an investigation knows which ground truth to score against."""
-    alerts: list[dict[str, Any]] = httpx.get(f"{ALERTMANAGER}/api/v2/alerts", timeout=15.0).json()
-    matching = [a for a in alerts if a["labels"].get("alertname") == "CheckoutErrorRateHigh"]
-    assert matching, "CheckoutErrorRateHigh is not held by Alertmanager"
-    assert matching[0]["labels"].get("scenario") == "bad_deploy_5xx"
-    assert matching[0]["labels"].get("severity") == "critical"
+    """The label is how an investigation knows which ground truth to score against.
+
+    Runs its own scenario. The first version read Alertmanager directly and
+    depended on the test above having just left the alert there - so it failed
+    standalone even when delivery worked, and passed for the wrong reason when
+    ordering happened to suit it.
+    """
+    settle()
+    run_watching_for_alerts("bad_deploy_5xx")
+    held = _LAST_HELD.get("CheckoutErrorRateHigh")
+
+    assert held is not None, (
+        f"CheckoutErrorRateHigh was not held by Alertmanager during the run. "
+        f"Held: {sorted(_LAST_HELD)}"
+    )
+    assert held["labels"].get("scenario") == "bad_deploy_5xx"
+    assert held["labels"].get("severity") == "critical"
