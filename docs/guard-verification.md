@@ -426,6 +426,33 @@ reported success while testing nothing.
 - **This is a snapshot.** A guard changed after this date is unverified until
   someone plants a violation against it again.
 
+## A rejection is only evidence if the reason is the one you tested for, 2026-08-19
+
+Branch protection on `develop` was verified **behaviourally** rather than by
+reading the settings page: a direct push, and read the refusal.
+
+The first attempt was rejected with **non-fast-forward**. That is ordinary git
+behaviour on a stale ref and would have happened with no ruleset at all. Taking
+it as proof would have been the same mistake as a guard that passes for the
+wrong reason - a red result, obtained, and about something else entirely.
+
+The push that proved it was rejected with **GH013**, citing the pull-request
+requirement and the required status checks by name. That refusal can only come
+from the rule being tested for.
+
+> **A failing result is evidence only when its reason is the one under test.**
+> "It was rejected" is not a verification; "it was rejected *because of the rule
+> I am testing*" is. Read the error, not the exit code.
+
+This is the same class as every other entry here. A guard that fires for an
+unrelated reason, a scanner that exits 1 because it crashed rather than because
+it found something, a threshold that fails the build on findings it never
+claimed to gate - each looks like the mechanism working.
+
+The verified state on `develop`: `pull_request` and `required_status_checks`
+requiring the context `CI`, plus `deletion` and `non_fast_forward`. The required
+check name matches the job `ci.yml` reports, which is the detail that makes the
+rule bite rather than block forever on a check that never arrives.
 ## Three of four shapes did nothing, 2026-08-19
 
 `shape: ramp`, `shape: spike` and `shape: sawtooth` were declared across five
@@ -499,6 +526,49 @@ believed, and pointed the investigation at the wrong component.
 > what it implies about a component the assertion never queried. This is the
 > same failure as present-tense prose about tests: a sentence that reads as a
 > finding when it is a guess.
+
+## The destructive part is invisible in the verb, 2026-08-19
+
+Verifying `main`'s ruleset needed a commit to push and have rejected. The probe
+was set up with:
+
+```bash
+git checkout -B tmp/protection-probe origin/main   # DON'T
+```
+
+`-B` does not mean "branch". It means **reset the branch to this commit,
+creating it if absent**. Local branch state was rewritten as a side effect, and
+`docs/readme-front-door` was later found sitting at `Initial commit`, 132
+commits behind its remote, with the uncommitted work on it gone. The remote was
+untouched, so recovery was `git reset --hard origin/<branch>` - but the
+uncommitted half was not recoverable and had to be rebuilt.
+
+The correct form for a probe that needs a throwaway state:
+
+```bash
+git checkout --detach origin/main                  # cannot rewrite a ref
+```
+
+> **A flag that rewrites history can read as a convenience.** `-B` looks like
+> `-b`. `reset --hard` on the wrong branch looks like tidying. The destructive
+> part is not in the verb - `checkout` and `reset` both sound navigational - so
+> it cannot be caught by reading the command as English. Check what the flag
+> *writes*, not what the command is called.
+
+Two habits follow, and both are already rules here for other reasons:
+
+- **Never chain anything behind a destructive command**, which the pre-merge
+  ritual already says about merges. The probe chained `-B` behind nothing and
+  still cost work, so the rule is about the command, not the chain.
+- **Verify with a read before acting.** `git branch -v` before and after would
+  have shown the rewritten ref immediately. The same reset scare was raised
+  from the other side minutes later and dissolved in one `git rev-parse`
+  comparison: local and remote identical on every branch, nothing lost.
+
+The second is the more general lesson. **A suspected loss and a real one look
+identical until something is read.** One was real and silent; one was reported
+and false. Neither was settled by reasoning about what the command should have
+done.
 
 ## The rule
 
