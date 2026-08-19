@@ -33,8 +33,16 @@ jobs:
       # No version pinned here on purpose: action-setup reads `packageManager`
       # from dashboard/package.json, so CI uses exactly the pnpm a developer
       # uses locally. Pinning it twice is how the two drift.
+      #
+      # `package_json_file` is load-bearing. The action defaults to the
+      # repository ROOT package.json, and this repo has none - the dashboard is
+      # the only Node project. Without it the action fails with "No pnpm version
+      # is specified", which is what every run did while the comment above
+      # claimed the file was being read.
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: dashboard/package.json
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -458,3 +458,193 @@ def test_license_is_apache_2_consistently() -> None:
         import json
 
         assert json.loads(read_data(package_json)).get("license") == "Apache-2.0"
+
+
+# --- countable claims in the README ------------------------------------------
+
+_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+
+def _readme_number(pattern: str) -> int:
+    """The number the README claims, as a digit or as an English word."""
+    match = re.search(pattern, read_data(REPO_ROOT / "README.md"), re.IGNORECASE)
+    assert match, f"the README no longer makes the claim matched by {pattern!r}"
+    raw = match.group(1)
+    return int(raw) if raw.isdigit() else _NUMBER_WORDS[raw.lower()]
+
+
+#: Every typed count of a repository artifact, and how to derive the truth.
+#: Keyed by the document, so a claim cannot be moved to another file to escape.
+_COUNTED = "counted"
+
+
+def _count_models() -> int:
+    return sum(
+        len(re.findall(r"^class [A-Za-z0-9_]+\(ContractModel\):", read_data(path), re.MULTILINE))
+        for path in sorted((REPO_ROOT / "core" / "contracts").glob("*.py"))
+    )
+
+
+def _count_tests() -> int:
+    return sum(
+        len(re.findall(r"^def test_", read_data(path), re.MULTILINE))
+        for path in sorted((REPO_ROOT / "tests").rglob("test_*.py"))
+    )
+
+
+def _count_dirs(parent: str) -> int:
+    root = REPO_ROOT / parent
+    return len(
+        [
+            child
+            for child in root.iterdir()
+            if child.is_dir() and not child.name.startswith(("_", "."))
+        ]
+    )
+
+
+def test_every_typed_count_in_the_docs_is_true() -> None:
+    """A number in prose is a claim, and it goes stale in total silence.
+
+    These were the last thing the "X is guarded" audit found, because a number
+    does not read like a mechanism claim at all. They were the most wrong:
+    **19** contract models against 49, and **78** guards against 279 tests -
+    in the two most-read files in the repository, for weeks.
+
+    Fixing the README alone was not enough. The same two numbers had been
+    copied into `ARCHITECTURE.md` and `ROADMAP.md`, which the first pass did
+    not look at because they were not on the list of files to audit. Copies of
+    a claim do not stay together; that is the argument for deriving all of them
+    in one place rather than checking the file someone remembered.
+
+    The workflow, ADR, module and scenario counts were all accurate when this
+    was written, which is the point. Being right today is not the property
+    worth having.
+    """
+    actual = {
+        "models": _count_models(),
+        "tests": _count_tests(),
+        "workflows": len(list((REPO_ROOT / ".github" / "workflows").glob("*.yml"))),
+        "adrs": len(list((REPO_ROOT / "docs" / "adr").glob("0*.md"))),
+        "go_modules": len([p for p in REPO_ROOT.rglob("go.mod") if "node_modules" not in p.parts]),
+        "scenarios": len(list((REPO_ROOT / "simulator" / "scenarios").glob("*.yaml"))),
+        "agents": _count_dirs("agents"),
+        "connectors": _count_dirs("connectors"),
+    }
+
+    # (document, regex capturing the number, which count it must equal)
+    claims: list[tuple[str, str, str]] = [
+        ("README.md", r"\*\*Contracts\*\*[^|]*?(\d+) Pydantic", "models"),
+        ("README.md", r"\*\*(\d+) tests\*\*", "tests"),
+        ("README.md", r"\*\*CI\*\*[^|]*?(\d+) workflows", "workflows"),
+        ("README.md", r"\*\*(\w+) ADRs\*\*", "adrs"),
+        ("README.md", r"\|\s*\[docs/adr/\]\([^)]*\)\s*\|\s*(\w+) decision records", "adrs"),
+        ("ARCHITECTURE.md", r"\*\*(\d+) tests\*\*", "tests"),
+        ("ROADMAP.md", r"\|\s*Contracts\s*\|\s*(\d+) models", "models"),
+        ("ROADMAP.md", r"\|\s*Go\s*\|\s*workspace over (\d+) modules", "go_modules"),
+        ("ROADMAP.md", r"\|\s*CI\s*\|\s*(\d+) workflows", "workflows"),
+        ("ROADMAP.md", r"\|\s*Docs\s*\|\s*(\d+) ADRs", "adrs"),
+        ("ROADMAP.md", r"Simulator:.*?(\w+) scenarios", "scenarios"),
+        ("docs/REPOSITORY_MAP.md", r"Go workspace over the (\w+) Go modules", "go_modules"),
+        ("docs/REPOSITORY_MAP.md", r"(\w+) YAML scenarios", "scenarios"),
+        ("docs/REPOSITORY_MAP.md", r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents", "agents"),
+    ]
+
+    wrong: list[str] = []
+    for document, pattern, key in claims:
+        match = re.search(pattern, read_data(REPO_ROOT / document), re.IGNORECASE)
+        assert match, f"{document} no longer makes the claim matched by {pattern!r}"
+        raw = match.group(1)
+        claimed = int(raw) if raw.isdigit() else _NUMBER_WORDS[raw.lower()]
+        if claimed != actual[key]:
+            wrong.append(f"{document} claims {claimed} {key}; there are {actual[key]}")
+
+    assert not wrong, "typed counts that have gone stale:\n  " + "\n  ".join(wrong)
+
+
+# --- the map's currency, which nothing had ever checked -----------------------
+
+
+def _tracked_root_entries() -> list[str]:
+    """Top-level names git tracks, files and directories alike."""
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    # ls-files, not ls-tree HEAD: the index includes files staged but not yet
+    # committed, so the pre-commit hook catches a new entry at the moment it is
+    # added rather than one commit later.
+    return sorted({name.split("/")[0] for name in result.stdout.splitlines() if name.strip()})
+
+
+def test_the_map_names_every_tracked_root_entry() -> None:
+    """The README claimed a test made this impossible. There was no such test.
+
+    CONTRIBUTING makes updating the map "part of every change", and the README
+    says the map "cannot go stale without a test failing". The only test
+    touching it asserted that it exists, is tracked, and carries certain
+    headings - nothing about whether it is *current*.
+
+    The proof arrived on this branch. `.trivyignore`,
+    `dashboard/pnpm-workspace.yaml` and `tests/unit/test_ci_is_runnable.py`
+    were added and committed without appearing in the map, and the full suite
+    stayed green through three commits. It was caught by reading, late, which
+    is exactly the mechanism the rule exists to replace.
+    """
+    body = read_data(REPO_ROOT / "docs" / "REPOSITORY_MAP.md")
+    missing = [entry for entry in _tracked_root_entries() if entry not in body]
+    assert not missing, (
+        "tracked top-level entries the repository map never mentions:\n  "
+        + "\n  ".join(missing)
+        + "\n\nAdd them to the folder map in the same commit that created them."
+    )
+
+
+def test_the_folder_map_draws_nothing_that_no_longer_exists() -> None:
+    """The other direction: a map naming a deleted path misleads harder than silence.
+
+    Scoped to the folder-map tree, which is the part describing what exists.
+    The first version scanned every backticked path in the file and reported
+    ten deletions, of which none were defects: `api/ws/` and
+    `core/llm/keyring.py` appear in the **structure changelog**, whose entries
+    read "Deleted `api/ws/`" - a changelog is supposed to name things that are
+    gone. Others were future paths carrying a later phase number.
+
+    A guard whose failures are mostly noise gets read as noise, so it asserts
+    over the one section where a missing path is unambiguously wrong.
+    """
+    body = read_data(REPO_ROOT / "docs" / "REPOSITORY_MAP.md")
+    block = re.search(r"```" + chr(10) + r"(pantheon-aiops/.*?)```", body, re.DOTALL)
+    assert block, "the folder-map tree is gone from docs/REPOSITORY_MAP.md"
+
+    drawn: list[str] = []
+    for line in block.group(1).splitlines()[1:]:
+        stripped = re.sub(
+            r"^[\s|]*[" + chr(0x251C) + chr(0x2514) + chr(0x2502) + chr(0x2500) + r"]+\s*", "", line
+        ).strip()
+        if stripped:
+            drawn.append(stripped.split()[0])
+
+    assert len(drawn) >= 10, f"the folder map draws only {len(drawn)} entries; has it been gutted?"
+    gone = sorted(name for name in drawn if not (REPO_ROOT / name).exists())
+    assert not gone, (
+        "entries the folder map draws that do not exist: "
+        + ", ".join(gone)
+        + " - either restore them or correct the map."
+    )

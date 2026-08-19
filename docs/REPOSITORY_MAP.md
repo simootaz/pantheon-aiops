@@ -82,6 +82,17 @@ needs an elevated shell on Windows). The version is pinned once, as
 `packageManager` in `dashboard/package.json`; CI's `pnpm/action-setup` reads
 it from there rather than pinning a second time, so local and CI cannot drift.
 
+That last clause was false for fifteen runs. `action-setup` reads the
+**repository root** `package.json` by default, and this repo has none, so every
+dashboard job failed while three files said the mechanism worked. It needs
+`package_json_file: dashboard/package.json` stated explicitly, and
+`tests/unit/test_ci_is_runnable.py` now asserts it.
+
+pnpm **settings** live in `dashboard/pnpm-workspace.yaml`, not in a `pnpm` key
+in `package.json` - pnpm 10+ ignores that key silently. The `overrides` there
+pull `sharp` and `postcss` above the versions `next` resolves transitively,
+which `trivy fs` reports as HIGH.
+
 ### Go layout and how to build it
 
 **Shared Go libraries live in `pkg/`.** That is the idiomatic home for
@@ -162,7 +173,10 @@ pantheon-aiops/
 ├── .golangci.yml           Go lint rules, applied to every module
 ├── .env.example            every environment variable, documented
 ├── .gitattributes          LF everywhere, as a repo property not a local setting
+├── LICENSE                 Apache 2.0
 ├── .pre-commit-config.yaml ruff, ruff-format, mypy, gitleaks, codegen drift
+├── .trivyignore            misconfiguration suppressions, each with its reason
+├── .gitleaks.toml          secret-scanning rules for this repository
 └── docs/REPOSITORY_MAP.md  ★ this file — the canonical map
 ```
 
@@ -482,12 +496,22 @@ This repo uses Git Flow. `main` and `develop` already exist.
   ```
 - Commit inside the feature branch with **conventional commits**:
   `feat:`, `chore:`, `docs:`, `test:`, `build:`
-- When the feature is complete **and its checks pass**:
+- When the feature is complete, push it and open a pull request:
   ```bash
-  git checkout develop && git merge --no-ff feature/<name> && git branch -d feature/<name>
+  git push -u origin feature/<name>
+  gh pr create --base develop
   ```
+- **CI runs on the PR, and the merge waits for it.** A person merges on GitHub
+  using the merge-commit option once the `CI` check is green - never a local
+  `git merge` targeting `develop` or `main`. Branch protection on both branches
+  enforces this.
 - **Announce the branch name before starting it**, and confirm the merge and
   deletion when finishing it.
+
+> This changed on 2026-08-19. Merging locally and pushing meant CI ran *after*
+> integration, as a report - which is how sixteen red runs accumulated on
+> `develop` unnoticed. A check consulted after the decision is documentation.
+> See [CONTRIBUTING](../CONTRIBUTING.md#why-the-merge-moved-to-github).
 
 ---
 
@@ -518,6 +542,24 @@ target that is not yet wired says so and exits non-zero.
 
 A target that is not live names what it is waiting on and exits non-zero. None
 of them silently succeed.
+
+### Integration gates, and which of them CI can run
+
+Each gate under `tests/integration/` declares the services it needs, via
+`requires(...)` in `tests/integration/conftest.py`. A gate that needs the API
+cannot run in a job that starts only Prometheus, and declaring it is what stops
+one being swept into the other's target — which is exactly what happened when
+`make test-sim` ran the whole directory.
+
+| Gate | Needs | Target | CI |
+|---|---|---|---|
+| `test_simulator_data.py` | prometheus, loki, pushgateway | `make test-sim` | ✅ **runs in CI** — `ci-python.yml` starts those three |
+| `test_connector_path.py` | prometheus, pushgateway, **api** | `make test-connectors` | ⬜ **local only** — no CI job starts the API yet |
+
+`test_connector_path.py` does not run in CI today. That is stated rather than
+left implied: it is a gate that exists and never executes, which is the same
+false-green shape this repository keeps finding. ROADMAP carries the row for
+wiring it.
 
 Every row above was verified by **running the target**, under GNU Make 3.81
 (GnuWin32) on Windows and under whatever CI provides on `ubuntu-latest`. That
@@ -585,6 +627,7 @@ Every structural change gets a row. Date, what changed, which branch, which file
 
 | Date | Branch | Change |
 |---|---|---|
+| 2026-08-19 | `fix/ci-green` | **Fifteen red CI runs, five causes, none reproducible locally.** Go: every `go.mod`, `go.work`, the connector Dockerfile and both workflows move to **1.25** (the pinned generators need it), with `GOTOOLCHAIN: local` declared so a toolchain switch is an error rather than a line printed on every local run - which is how the mismatch stayed invisible for days. `make test-sim` swept the whole integration directory, so gates needing services CI does not start were dragged in; `tests/integration/conftest.py` now has each gate declare its stack with `requires(...)`, skipping normally and failing under `PANTHEON_REQUIRE_STACK`, and each gate gets its own Makefile target. **pnpm's `packageManager` was never read**: `action-setup` looks at the repository root, there is no root `package.json`, and three files claimed otherwise - `git log -S` shows the asserting guard never existed. Overrides moved to `dashboard/pnpm-workspace.yaml`, since pnpm 10+ ignores the `pnpm` key in `package.json`. `connectors/kubernetes/Dockerfile` held only comments, which **aborted** trivy rather than failing it - deleting it let the scan finish and surface five HIGH misconfigurations it had been hiding, fixed by giving MinIO and the backup CronJob the hardened `securityContext` every other workload already had. **`trivy config` then failed reporting "CRITICAL or HIGH" on 37 findings that were 28 LOW and 9 MEDIUM:** `severity` does not filter SARIF, so `exit-code: 1` in the same step gated on everything while the declared threshold gated on nothing, and `trivy fs` had the same defect and passed for want of findings. Report and gate are now separate steps, the gate printing `table` so a failure states its reason in a log SARIF leaves empty. Added `tests/unit/test_ci_is_runnable.py` (15 guards) and `.trivyignore` (KSV-0109 fires on `LLM_MAX_TOKENS`, a token *count*; the inline `# trivy:ignore:` had done nothing because rendering strips template comments). An audit of every "X is guarded" claim across the map, README, CONTRIBUTING, the ADRs and the workflow comments found two more with no mechanism: CONTRIBUTING's "a guard checks each" of three steps for adding a setting, where the third had none and four `SecretStr` fields had drifted outside `REQUIRED_IN_PRODUCTION`; and the README's counts, stale at 19 models and 78 guards against 49 and 279. Both now guarded. |
 | 2026-08-18 | `feature/prometheus-connector` | **The first real connectors, read-only and proven so.** `connectors/_base/python/` implements the MCP server shape mirroring the Go side, with `Tool.mutating` as a declared field rather than a naming convention. Prometheus exposes exactly the three tools Argus declares — asserted in both directions, so the allowlist has real subjects instead of being enforced against nothing — and Alertmanager adds two. HTTP paths are an allowlist rather than a denylist. `api/routers/alerts.py` receives real Alertmanager notifications, stores the payload verbatim and publishes `TriggerReceivedEvent`. Added `mcp` 1.29 and `make test-connectors`. Six unit guards and an empirical gate, all planted: a real PromQL query returning simulator data, a malformed query reported rather than swallowed, and the allowlist distinguishing `ToolNotDeclared` from `ToolNotBound` with a passing control between them. |
 | 2026-08-18 | `feature/agent-runtime` | **The agent runtime, and the shape ten agents will repeat.** `core/registry/` loads and validates all ten manifests and matches capabilities exactly; `agents/_base/` gives a subclass one required coroutine and owns everything else. The manifest is an **allowlist** — Argus cannot reach Loki — enforced at bind and at call, with every call counted. `FindingKind.DEGRADED` is constructed in exactly one place and a guard fails the build if an agent builds its own. Finding ids are **deterministic** (uuid5 over investigation, agent, kind, subject, window and title, deliberately excluding `detected_at`), so a Temporal retry cannot duplicate a claim — mechanism rather than a docstring asking subclasses to be idempotent. `Verdict.steps` is now **required** and `partial` is derived from it, so a verdict cannot be formed without knowing what ran and cannot claim completeness while agents degraded; this extracted `core/contracts/plan.py` to break the resulting import cycle. Guards: 14 planted both ways, plus one asserting nothing reads `max_tokens` yet. **Two real defects found by the guards:** `run()` promised never to raise but stamping ran outside the guard, so a malformed Finding escaped; and the allowlist guard passed for the wrong reason, because an undeclared tool and an unbound tool raised the same exception — now `ToolNotDeclared` and `ToolNotBound`. |
 | 2026-08-18 | `feature/centralized-config` | **One module reads the environment; everything else imports from it.** Added `core/config.py` (pydantic-settings, nested groups per subsystem, 51 variables) and migrated every call site — `api/routers/webhooks.py`, the four simulator modules, the CLI and the integration gate. Four guards, each planted both ways: nothing outside `core/config.py` touches `os.environ`; no hardcoded endpoint outside it; `.env.example` and the model agree in **both** directions; and a missing secret fails at startup under `PANTHEON_ENV=production`. A fifth guards that Go reads only variable names the template declares — it has no live subjects yet, since the Go modules read nothing, and was verified by planting one. **Two real defects found by running it:** the API container never received the connector endpoints, so in-container config fell back to `localhost` rather than the Compose service names; and no Python image installed the project, so `importlib.metadata` found no distribution and `/health` served the `0.0.0+not-installed` placeholder from a container that was otherwise healthy. Both fixed and guarded. Added `.gitleaks.toml`: `.env.example` is excluded because the generic-api-key rule fires on `CERBERUS_MASTER_KEY=` on the variable name alone — a **transfer** of responsibility, not a removal, since a guard now requires every `SecretStr` field to be empty in the template, driven by the model rather than by name-shape guessing (which flagged `LLM_MAX_TOKENS` and `S3_ACCESS_KEY`). Secret scanning elsewhere is unchanged, verified by staging a real GitLab PAT. Also made the gate's readiness budget asymmetric: 12s when a missing stack means skip, 60s when `PANTHEON_REQUIRE_STACK` asserts it must be there — `make sim` pushing 268k lines leaves Loki busy for longer than twelve seconds, and busy is not absent. |

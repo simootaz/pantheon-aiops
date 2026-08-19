@@ -48,11 +48,12 @@ import httpx
 import numpy as np
 import pytest
 
-from core.config import get_settings, require_stack
+from core.config import get_settings
 from simulator.cluster import PODS_BY_NAME
 from simulator.runner import KEEP_UP_THRESHOLD as KEEP_UP_FRACTION
 from simulator.runner import RunReport, ScenarioRunner
 from simulator.scenario import load
+from tests.integration.conftest import requires
 
 # Read through core.config like everything else, so the gate cannot end up
 # pointed at a different Prometheus than the code it is testing.
@@ -61,7 +62,7 @@ PROMETHEUS = _settings.prometheus.base
 LOKI = _settings.loki.base
 PUSHGATEWAY = _settings.pushgateway.host_port
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, requires("prometheus", "loki", "pushgateway")]
 
 # --- constants derived from two measured limits, not guessed ----------------
 #
@@ -115,93 +116,6 @@ class Series:
 
     def __len__(self) -> int:
         return len(self.values)
-
-
-#: Readiness is retried rather than decided by one request. Loki answers 503
-#: for a grace period after start and while it settles under load, and a single
-#: probe landing in that window is not evidence the stack is absent.
-#:
-#: The budget is asymmetric on purpose.
-#:
-#: Without PANTHEON_REQUIRE_STACK the answer to "not reachable" is a skip, so
-#: failing fast is the kindness: a laptop with no Docker should not wait two
-#: minutes to be told what it already knows.
-#:
-#: With it, the caller has *asserted* the stack is there, and a slow start is
-#: not the same as an absent one. Loki answers 503 for a while after a heavy
-#: ingest — `make sim` pushing 268k lines left it unready for longer than twelve
-#: seconds, and the gate failed on a stack that was merely busy.
-READY_ATTEMPTS_FAST = 12
-READY_ATTEMPTS_REQUIRED = 60
-READY_INTERVAL = 1.0
-READY_TIMEOUT = 2.0
-
-
-def ready_attempts() -> int:
-    return READY_ATTEMPTS_REQUIRED if require_stack() else READY_ATTEMPTS_FAST
-
-
-def _reachable(url: str, path: str = "/") -> bool:
-    try:
-        return httpx.get(f"{url}{path}", timeout=READY_TIMEOUT).status_code < 500
-    except httpx.HTTPError:
-        return False
-
-
-def _unready() -> list[str]:
-    """Names of the services not answering, retried as one loop.
-
-    Retrying each service in turn would multiply the wait by three when nothing
-    is running — two minutes before a laptop without Docker gets its skip. One
-    loop over all three costs the same grace period and returns the moment they
-    are all up, which is the common case.
-    """
-    attempts = ready_attempts()
-    for attempt in range(attempts):
-        missing = [
-            name
-            for name, ok in (
-                ("prometheus", _reachable(PROMETHEUS, "/-/ready")),
-                ("loki", _reachable(LOKI, "/ready")),
-                ("pushgateway", _reachable(f"http://{PUSHGATEWAY}", "/-/ready")),
-            )
-            if not ok
-        ]
-        if not missing:
-            return []
-        if attempt < attempts - 1:
-            time.sleep(READY_INTERVAL)
-    return missing
-
-
-@pytest.fixture(scope="module")
-def stack() -> None:
-    """Require the observability stack, or skip — depending on who is asking.
-
-    On a laptop, skipping with the reason beats failing: `pytest` should not go
-    red because Docker is not running.
-
-    But a skip is reported as a pass, and `make test-sim` exists precisely to
-    assert on real data. Running it and getting a green tick that asserted
-    nothing is worse than a failure, because it looks like evidence. So the
-    target sets PANTHEON_REQUIRE_STACK and this fails instead.
-
-    This is not a theoretical distinction. `make test-sim` skipped all nine
-    tests and exited 0 on this machine, moments after `make sim` had pushed
-    240k lines into Loki and left it briefly unready.
-    """
-    missing = _unready()
-    if not missing:
-        return
-
-    message = (
-        f"observability stack not reachable after "
-        f"{ready_attempts() * READY_INTERVAL:.0f}s: {missing}. "
-        "Start it with: make up  (or docker compose -f ... up -d prometheus loki pushgateway)"
-    )
-    if require_stack():
-        pytest.fail(f"{message}\nPANTHEON_REQUIRE_STACK is set, so this is a failure, not a skip.")
-    pytest.skip(message)
 
 
 def reset_pushgateway() -> None:
@@ -327,7 +241,7 @@ class Run:
 
 
 @pytest.fixture(scope="module")
-def tick_cost(stack: None) -> float:
+def tick_cost() -> float:
     """What one tick costs on *this* machine, in wall seconds.
 
     A tick is two HTTP round trips whatever span of simulated time it covers, so
@@ -356,7 +270,7 @@ def tick_for(speed: float, cost: float) -> float:
 
 
 @pytest.fixture(scope="module")
-def baseline_run(stack: None, tick_cost: float) -> Run:
+def baseline_run(tick_cost: float) -> Run:
     """Emit only normal behaviour, for long enough to see several days."""
     reset_pushgateway()
     runner = ScenarioRunner(
@@ -372,7 +286,7 @@ def baseline_run(stack: None, tick_cost: float) -> Run:
 
 
 @pytest.fixture(scope="module")
-def scenario_run(stack: None, tick_cost: float) -> Run:
+def scenario_run(tick_cost: float) -> Run:
     """Run bad_deploy_5xx end to end against the live stack."""
     reset_pushgateway()
     runner = ScenarioRunner(
@@ -634,7 +548,7 @@ def test_logs_reach_loki_for_the_pods_the_metrics_describe(scenario_run: Run) ->
 # --- real time ----------------------------------------------------------------
 
 
-def test_realtime_produces_live_varying_data(stack: None) -> None:
+def test_realtime_produces_live_varying_data() -> None:
     """Real time is available, and the data still varies.
 
     Seasonality is deliberately NOT asserted here, and that is not an oversight.

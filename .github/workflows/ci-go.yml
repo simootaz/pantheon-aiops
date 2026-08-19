@@ -19,7 +19,22 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.23"
+  # 1.25, not the 1.23 in go.work. go.work states the LANGUAGE version
+  # the modules are written against; this is the TOOLCHAIN installed on the
+  # runner, and the pinned generators need it: go-jsonschema v0.24.1 and
+  # golangci-lint v2.12.2 both require go >= 1.25.0.
+  #
+  # GOTOOLCHAIN=local is deliberate and stays. A developer machine running
+  # 1.23 silently downloads 1.25 to satisfy those tools and prints one line
+  # saying so; CI must not, or the version actually used stops being the
+  # version anyone pinned. That auto-switch is why fifteen runs failed while
+  # every local run passed.
+  GO_VERSION: "1.25"
+  # Declared rather than inherited. `actions/setup-go` happens to default to
+  # local, but a guard that asserts an action's default is asserting someone
+  # else's implementation detail - and the comment above claimed this was set
+  # while nothing set it.
+  GOTOOLCHAIN: local
   MODULE_PATTERN: github.com/simootaz/pantheon-aiops/...
 
 jobs:

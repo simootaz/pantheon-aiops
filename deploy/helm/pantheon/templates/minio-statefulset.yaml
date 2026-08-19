@@ -24,9 +24,17 @@ spec:
         {{- include "pantheon.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: minio
     spec:
+      # The same hardened context every other workload in this chart uses. It
+      # was missing here, and trivy's KSV-0014 and KSV-0118 caught it - MinIO
+      # holds the artifacts and backups, so it is the last workload that should
+      # have been running with a writable root and no dropped capabilities.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: minio
           image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           args: ["server", "/data", "--console-address", ":9001"]
           env:
             - name: MINIO_ROOT_USER

@@ -1,0 +1,352 @@
+"""Guards over the things that made fifteen CI runs fail while local runs passed.
+
+Every failure below was invisible locally, and each for its own reason. That is
+the pattern worth guarding: a local pass is evidence about a laptop, and these
+assert the properties CI depends on that a laptop does not.
+
+Phase: 1 - Contracts & First Agent Path
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+from pathlib import Path
+
+import yaml
+
+from tests.mechanism import read_data, read_mechanism
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+MAKEFILE = REPO_ROOT / "Makefile"
+
+#: Go toolchain the runners install. Not the language version in `go.work`:
+#: that says what the modules are written against, this says what is installed.
+#: The pinned generators require it - go-jsonschema v0.24.1 and golangci-lint
+#: v2.12.2 both need >= 1.25.0.
+REQUIRED_GO_MAJOR_MINOR = (1, 25)
+
+
+def workflows() -> list[Path]:
+    return sorted(WORKFLOWS.glob("*.yml"))
+
+
+def go_versions() -> dict[str, str]:
+    """`GO_VERSION` as declared by each workflow that declares one."""
+    found: dict[str, str] = {}
+    for path in workflows():
+        match = re.search(r'^\s*GO_VERSION:\s*"([^"]+)"', read_mechanism(path), re.MULTILINE)
+        if match:
+            found[path.name] = match.group(1)
+    return found
+
+
+# --- the Go toolchain that broke two jobs ------------------------------------
+
+
+def test_every_workflow_installs_a_go_new_enough_for_the_pinned_tools() -> None:
+    """The failure that hid behind a one-line message on every local run.
+
+    A developer machine on Go 1.23 downloads 1.25 to satisfy these tools and
+    prints `switching to go1.25.13`. CI sets GOTOOLCHAIN=local, which forbids
+    that, so it fails where the laptop silently succeeded. Fifteen runs.
+    """
+    declared = go_versions()
+    assert declared, "no workflow declares GO_VERSION any more"
+
+    for name, version in declared.items():
+        parts = tuple(int(piece) for piece in version.split(".")[:2])
+        assert parts >= REQUIRED_GO_MAJOR_MINOR, (
+            f"{name} installs Go {version}, but the pinned generators need "
+            f"{'.'.join(map(str, REQUIRED_GO_MAJOR_MINOR))}+. With GOTOOLCHAIN=local "
+            "the runner cannot switch, so the job fails."
+        )
+
+
+def test_the_workflows_agree_on_one_go_version() -> None:
+    """Two workflows drifting apart is the same bug arriving twice."""
+    declared = go_versions()
+    assert len(set(declared.values())) == 1, f"workflows disagree on GO_VERSION: {declared}"
+
+
+def test_gotoolchain_stays_local_in_ci() -> None:
+    """The auto-switch is the thing that hid the mismatch; keep it off in CI.
+
+    Without `GOTOOLCHAIN=local` a runner would quietly download whatever the
+    tools ask for, and the version actually used stops being the version anyone
+    pinned - which is exactly the state that produced fifteen red runs while
+    every local run looked fine.
+    """
+    using_go = [path.name for path in workflows() if "GO_VERSION" in read_mechanism(path)]
+    assert using_go, "no workflow sets up Go"
+    for name in using_go:
+        body = read_mechanism(WORKFLOWS / name)
+        assert "GOTOOLCHAIN: local" in body, (
+            f"{name} sets up Go without GOTOOLCHAIN=local, so it would silently "
+            "use a toolchain nobody pinned"
+        )
+
+
+def declared_go_versions() -> dict[str, str]:
+    """Every place a Go version is written down, as major.minor."""
+    found: dict[str, str] = {name: v for name, v in go_versions().items()}
+
+    for rel in [
+        "go.work",
+        *sorted(
+            str(p).replace("\\", "/")
+            for p in REPO_ROOT.rglob("go.mod")
+            if "node_modules" not in str(p)
+        ),
+    ]:
+        path = REPO_ROOT / rel if not rel.startswith(str(REPO_ROOT)) else pathlib.Path(rel)
+        match = re.search(r"^go (\d+\.\d+)$", read_mechanism(path), re.MULTILINE)
+        if match:
+            found[path.relative_to(REPO_ROOT).as_posix()] = match.group(1)
+
+    dockerfile = REPO_ROOT / "deploy" / "docker" / "Dockerfile.connector-go"
+    if dockerfile.is_file():
+        match = re.search(r"golang:(\d+\.\d+)", read_mechanism(dockerfile))
+        if match:
+            found["deploy/docker/Dockerfile.connector-go"] = match.group(1)
+    return found
+
+
+def test_every_declaration_of_a_go_version_agrees() -> None:
+    """go.work, all five go.mod, the Dockerfile and the workflows, as one set.
+
+    Not cosmetic. `GOTOOLCHAIN=local` makes a mismatch an ERROR rather than a
+    silent download, which is the point - but only if the thing declared is the
+    thing installed. These are the declarations; GOTOOLCHAIN is what makes them
+    binding at use time. Neither half works alone.
+    """
+    declared = declared_go_versions()
+    assert len(declared) >= 7, f"expected go.work, five go.mod and the workflows, found {declared}"
+
+    versions = set(declared.values())
+    assert len(versions) == 1, "Go versions disagree across the repository: " + "; ".join(
+        f"{where}={what}" for where, what in sorted(declared.items())
+    )
+
+    only = next(iter(versions))
+    parts = tuple(int(piece) for piece in only.split("."))
+    assert parts >= REQUIRED_GO_MAJOR_MINOR, (
+        f"everything declares Go {only}, below the "
+        f"{'.'.join(map(str, REQUIRED_GO_MAJOR_MINOR))} the pinned generators need"
+    )
+
+
+# --- the pnpm setup that broke the dashboard job -----------------------------
+
+
+def test_the_pnpm_action_is_pointed_at_the_dashboard_package_json() -> None:
+    """`action-setup` reads the ROOT package.json by default, and there is none.
+
+    Every run failed with "No pnpm version is specified" while a comment beside
+    the step claimed dashboard/package.json was being read. The comment was the
+    intent; `package_json_file` is the mechanism.
+    """
+    body = read_data(WORKFLOWS / "ci-dashboard.yml")
+    assert "pnpm/action-setup" in body, "the dashboard workflow no longer sets up pnpm"
+    assert "package_json_file: dashboard/package.json" in body, (
+        "pnpm/action-setup has no package_json_file, so it looks for a root "
+        "package.json this repo does not have"
+    )
+    assert not (REPO_ROOT / "package.json").exists(), (
+        "a root package.json now exists - if that is deliberate, this guard's "
+        "reasoning needs revisiting rather than deleting"
+    )
+
+
+def test_the_dashboard_declares_the_pnpm_it_wants() -> None:
+    """The version CI installs comes from here, so it has to be here."""
+    import json
+
+    package = json.loads(read_data(REPO_ROOT / "dashboard" / "package.json"))
+    assert package.get("packageManager", "").startswith("pnpm@"), (
+        "dashboard/package.json declares no packageManager, so CI has no version to install"
+    )
+
+
+def test_pnpm_settings_live_where_pnpm_reads_them() -> None:
+    """Since pnpm 10 a `pnpm` key in package.json is IGNORED, silently.
+
+    Overrides were first added there and changed nothing - pnpm warned and the
+    warning scrolled past. A fix that looks applied and does nothing is worse
+    than no fix.
+    """
+    import json
+
+    package = json.loads(read_data(REPO_ROOT / "dashboard" / "package.json"))
+    assert "pnpm" not in package, (
+        "dashboard/package.json has a `pnpm` key. pnpm 10+ ignores it; settings "
+        "belong in pnpm-workspace.yaml"
+    )
+
+    workspace = REPO_ROOT / "dashboard" / "pnpm-workspace.yaml"
+    assert workspace.is_file(), "dashboard/pnpm-workspace.yaml is missing"
+    settings = yaml.safe_load(read_data(workspace)) or {}
+    assert settings.get("overrides"), (
+        "no overrides in pnpm-workspace.yaml. sharp and postcss carry HIGH "
+        "advisories transitively through next, and trivy fs fails CI on them."
+    )
+
+
+# --- the make target that swept in gates CI cannot serve ---------------------
+
+
+def test_each_integration_gate_has_its_own_target() -> None:
+    """`make test-sim` ran the whole directory, so new gates joined it silently.
+
+    CI's simulator job starts prometheus, loki and pushgateway - not the API,
+    not alertmanager. When the connector and alert gates landed in the same
+    directory they were swept in and errored, while the simulator assertions
+    they were reported alongside had all passed.
+    """
+    body = read_mechanism(MAKEFILE)
+    sweeping = re.findall(r"pytest tests/integration\s+-m", body)
+    assert not sweeping, (
+        "a target runs `pytest tests/integration` wholesale. Each gate needs "
+        "different services up, so each names its own file."
+    )
+
+    gates = sorted(path.name for path in (REPO_ROOT / "tests" / "integration").glob("test_*.py"))
+    for gate in gates:
+        assert gate in body, (
+            f"{gate} is not named by any Makefile target, so nothing runs it. "
+            "Add a target, or the gate exists and never executes."
+        )
+
+
+# --- a scanner that aborts reports fewer findings ----------------------------
+
+
+def test_every_dockerfile_has_at_least_one_instruction() -> None:
+    """A comments-only Dockerfile aborts trivy's scan of it.
+
+    `connectors/kubernetes/Dockerfile` held four comment lines and no
+    instructions. Trivy reported "dockerfile parse error: file with no
+    instructions", exited 1, and the job failed - which looked like a finding
+    and was a crash. Removing it let the scan run to completion, whereupon it
+    reported FIVE HIGH misconfigurations that the abort had been hiding.
+
+    Absence of findings and absence of scanning are indistinguishable from the
+    outside. This asserts the scanner can read what it is pointed at.
+    """
+    offenders: list[str] = []
+    for path in sorted(REPO_ROOT.rglob("Dockerfile*")):
+        if "node_modules" in path.parts or not path.is_file():
+            continue
+        instructions = [
+            line
+            for line in read_data(path).splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if not instructions:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert not offenders, (
+        "Dockerfiles with no instructions, which abort trivy rather than being "
+        f"scanned: {offenders}. Write a real one or delete it."
+    )
+
+
+def test_every_deploy_manifest_parses() -> None:
+    """Same reasoning for YAML: a file trivy cannot parse is a file it cannot scan."""
+    import yaml
+
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "deploy").rglob("*.yaml")):
+        if "templates" in path.parts or "charts" in path.parts:
+            continue  # Helm templates are Go templates, not YAML, until rendered
+        try:
+            list(yaml.safe_load_all(read_data(path)))
+        except yaml.YAMLError as error:
+            offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {error}")
+
+    assert not offenders, "deploy manifests that do not parse: " + "; ".join(offenders)
+
+
+def test_suppressions_carry_a_reason() -> None:
+    """A bare rule id in .trivyignore is a threshold lowered one line at a time."""
+    ignorefile = REPO_ROOT / ".trivyignore"
+    if not ignorefile.is_file():
+        return
+
+    lines = read_data(ignorefile).splitlines()
+    for number, line in enumerate(lines, 1):
+        rule = line.strip()
+        if not rule or rule.startswith("#"):
+            continue
+        preceding = [x for x in lines[: number - 1] if x.strip()]
+        assert preceding and preceding[-1].strip().startswith("#"), (
+            f"{rule} on line {number} of .trivyignore has no comment above it. "
+            "Every suppression states why, or it is indistinguishable from "
+            "lowering the bar."
+        )
+
+
+# --- a threshold that reads as enforced and is not the one enforced ----------
+
+
+def trivy_steps() -> list[tuple[str, str, dict[str, object]]]:
+    """Every trivy-action step, as (workflow, step name, `with:` block)."""
+    found: list[tuple[str, str, dict[str, object]]] = []
+    for path in workflows():
+        document = yaml.safe_load(read_data(path)) or {}
+        for job in (document.get("jobs") or {}).values():
+            for step in job.get("steps") or []:
+                if "trivy-action" in str(step.get("uses", "")):
+                    found.append((path.name, str(step.get("name", "?")), step.get("with") or {}))
+    return found
+
+
+def test_a_sarif_producing_scan_is_never_also_the_gate() -> None:
+    """`severity` does not filter SARIF, and one step cannot do both jobs.
+
+    SARIF carries every severity by design, because code scanning does its own
+    filtering. Put `exit-code: 1` in that same step and the job fails on ANY
+    finding - while the step reads `severity: CRITICAL,HIGH` and the error says
+    the same. The declared threshold is not the enforced one.
+
+    It cost a full diagnosis to see: `trivy config` failed with "found CRITICAL
+    or HIGH misconfigurations" on 37 findings of which 28 were LOW, 9 MEDIUM
+    and none HIGH. Nothing in the log said so - SARIF output means the console
+    prints no findings at all - so the message was the only evidence, and it
+    was wrong. `trivy fs` had the identical defect and passed, because it
+    happened to have no findings of any severity to trip over.
+    """
+    for workflow, name, block in trivy_steps():
+        where = f"{workflow} / {name}"
+        gates = str(block.get("exit-code", "0")) == "1"
+        if str(block.get("format", "")) == "sarif":
+            assert not gates, (
+                f"{where} writes SARIF and sets exit-code 1. SARIF is unfiltered, "
+                "so this gates on every severity while `severity` suggests "
+                "otherwise. Report and gate in separate steps."
+            )
+        if gates:
+            assert block.get("severity"), (
+                f"{where} fails the build without naming a severity, so it gates "
+                "on everything found. Say which severities are a failure."
+            )
+
+
+def test_every_trivy_report_has_a_gate_of_its_own() -> None:
+    """A report with exit-code 0 blocks nothing; something must still fail."""
+    reports = {
+        str(block.get("scan-type"))
+        for _w, _n, block in trivy_steps()
+        if str(block.get("format", "")) == "sarif"
+    }
+    gates = {
+        str(block.get("scan-type"))
+        for _w, _n, block in trivy_steps()
+        if str(block.get("exit-code", "0")) == "1"
+    }
+    ungated = sorted(reports - gates)
+    assert not ungated, (
+        f"trivy scan-type(s) {ungated} report to code scanning and gate nothing. "
+        "Findings would appear in the UI while CI stayed green."
+    )

@@ -19,9 +19,23 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          # Written out rather than templated: this manifest is applied
+          # directly, so it cannot reach the chart's values. Kept identical to
+          # `podSecurityContext` and `securityContext` in
+          # deploy/helm/pantheon/values.yaml - if those change, this changes.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
           containers:
             - name: dump
               image: postgres:16-alpine
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
               envFrom:
                 - configMapRef:
                     name: pantheon-pantheon-config
