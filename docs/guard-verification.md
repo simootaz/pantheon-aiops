@@ -426,6 +426,34 @@ reported success while testing nothing.
 - **This is a snapshot.** A guard changed after this date is unverified until
   someone plants a violation against it again.
 
+## A rejection is only evidence if the reason is the one you tested for, 2026-08-19
+
+Branch protection on `develop` was verified **behaviourally** rather than by
+reading the settings page: a direct push, and read the refusal.
+
+The first attempt was rejected with **non-fast-forward**. That is ordinary git
+behaviour on a stale ref and would have happened with no ruleset at all. Taking
+it as proof would have been the same mistake as a guard that passes for the
+wrong reason - a red result, obtained, and about something else entirely.
+
+The push that proved it was rejected with **GH013**, citing the pull-request
+requirement and the required status checks by name. That refusal can only come
+from the rule being tested for.
+
+> **A failing result is evidence only when its reason is the one under test.**
+> "It was rejected" is not a verification; "it was rejected *because of the rule
+> I am testing*" is. Read the error, not the exit code.
+
+This is the same class as every other entry here. A guard that fires for an
+unrelated reason, a scanner that exits 1 because it crashed rather than because
+it found something, a threshold that fails the build on findings it never
+claimed to gate - each looks like the mechanism working.
+
+The verified state on `develop`: `pull_request` and `required_status_checks`
+requiring the context `CI`, plus `deletion` and `non_fast_forward`. The required
+check name matches the job `ci.yml` reports, which is the detail that makes the
+rule bite rather than block forever on a check that never arrives.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

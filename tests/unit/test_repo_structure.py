@@ -552,6 +552,10 @@ def test_every_typed_count_in_the_docs_is_true() -> None:
         ("README.md", r"\*\*CI\*\*[^|]*?(\d+) workflows", "workflows"),
         ("README.md", r"\*\*(\w+) ADRs\*\*", "adrs"),
         ("README.md", r"\|\s*\[docs/adr/\]\([^)]*\)\s*\|\s*(\w+) decision records", "adrs"),
+        ("README.md", r"Zeus dispatches to the (\w+) domain agents", "agents"),
+        ("README.md", r"\*\*Go 1\.25\*\*[^|]*\|[^|]*?(\d+) modules", "go_modules"),
+        ("README.md", r"(\w+) scenarios ship", "scenarios"),
+        ("README.md", r"\*\*Simulator\*\*\s*\|\s*(\w+) YAML scenarios", "scenarios"),
         ("ARCHITECTURE.md", r"\*\*(\d+) tests\*\*", "tests"),
         ("ROADMAP.md", r"\|\s*Contracts\s*\|\s*(\d+) models", "models"),
         ("ROADMAP.md", r"\|\s*Go\s*\|\s*workspace over (\d+) modules", "go_modules"),
@@ -560,7 +564,11 @@ def test_every_typed_count_in_the_docs_is_true() -> None:
         ("ROADMAP.md", r"Simulator:.*?(\w+) scenarios", "scenarios"),
         ("docs/REPOSITORY_MAP.md", r"Go workspace over the (\w+) Go modules", "go_modules"),
         ("docs/REPOSITORY_MAP.md", r"(\w+) YAML scenarios", "scenarios"),
-        ("docs/REPOSITORY_MAP.md", r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents", "agents"),
+        (
+            "docs/REPOSITORY_MAP.md",
+            r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents",
+            "agents",
+        ),
     ]
 
     wrong: list[str] = []
@@ -648,3 +656,42 @@ def test_the_folder_map_draws_nothing_that_no_longer_exists() -> None:
         + ", ".join(gone)
         + " - either restore them or correct the map."
     )
+
+
+def test_every_test_named_in_the_docs_exists() -> None:
+    """The rule the claim audit produced, enforced rather than remembered.
+
+    A sentence asserting a mechanism must name the test enforcing it, or be
+    written as intent. Naming one is only worth anything if the name resolves:
+    the audit found eight false mechanism claims, and every one of them was in
+    the set that named no test - but a stale name would be worse than none,
+    since it reads as checkable and is not.
+
+    This caught a real one immediately. The README's "measured, not chosen"
+    section cited `tests/unit/test_alert_rules.py`, which lives on an unmerged
+    branch. It would have shipped as a mechanism claim pointing at a file that
+    does not exist here.
+    """
+    documents = [
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "ARCHITECTURE.md",
+        REPO_ROOT / "CONTRIBUTING.md",
+        REPO_ROOT / "docs" / "REPOSITORY_MAP.md",
+        *sorted((REPO_ROOT / "docs" / "adr").glob("*.md")),
+    ]
+
+    broken: list[str] = []
+    for document in documents:
+        if not document.is_file():
+            continue
+        body = read_data(document)
+        for match in re.finditer(r"(tests/[a-z0-9_/]+\.py)(?:::([a-z0-9_]+))?", body):
+            path, function = match.group(1), match.group(2)
+            where = f"{document.name} -> {match.group(0)}"
+            target = REPO_ROOT / path
+            if not target.is_file():
+                broken.append(f"{where}: no such file")
+            elif function and f"def {function}" not in read_data(target):
+                broken.append(f"{where}: no such test in {path}")
+
+    assert not broken, "documentation naming tests that do not exist:\n  " + "\n  ".join(broken)
