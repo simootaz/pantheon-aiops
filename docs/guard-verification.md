@@ -355,6 +355,50 @@ template does nothing, because trivy scans the **rendered** chart and rendering
 strips template comments. Same shape as pnpm overrides sitting in the file pnpm
 stopped reading - a suppression that looks applied and changes nothing.
 
+## The claim that named its own guard, which did not exist, 2026-08-19
+
+The README said the repository map **"cannot go stale without a test failing"**,
+and ARCHITECTURE said *"a directory that exists and is not described ... fails a
+test"*. Two files, stated as mechanism, in the present tense.
+
+The only test touching the map asserted that it **exists**, is **tracked**, and
+carries certain **headings**. Nothing about whether it is current.
+
+The proof was already in the branch that found it. `.trivyignore`,
+`dashboard/pnpm-workspace.yaml` and `tests/unit/test_ci_is_runnable.py` were
+added and committed without appearing in the map, and the suite stayed green
+across three commits. `LICENSE` had been missing from the map for far longer.
+Every one was caught by reading, late - the exact mechanism the rule exists to
+replace.
+
+> **A claim in the present tense about a test is checkable in seconds, and
+> nobody checks it.** "Fails a test" is the easiest sentence in a repository to
+> verify and among the least likely to be verified, because it reads like a
+> statement of fact rather than a claim.
+
+Now guarded in both directions: every tracked top-level entry must appear in
+the map, and every entry the folder-map tree draws must exist. Planted three
+ways - a staged file the map omits, a deleted line for an existing file, and a
+drawn path that does not exist.
+
+Two details worth keeping:
+
+- The guard reads `git ls-files`, not `git ls-tree HEAD`. With `ls-tree` a new
+  file is invisible until the commit **after** the one that added it, so the
+  planting passed and the guard looked correct. The index is the right source
+  because pre-commit runs before the commit exists.
+- The first reverse guard scanned every backticked path in the file and
+  reported ten deletions, **none of them defects**: `api/ws/` and
+  `core/llm/keyring.py` appear in the structure changelog, whose entries read
+  "Deleted `api/ws/`". A changelog naming things that are gone is a changelog
+  working. Scoped to the folder-map tree instead.
+
+And the prose was corrected rather than the guard widened where the wider claim
+was not one worth enforcing: sixty-one nested directories are described by
+pattern, not individually, so ARCHITECTURE now says top-level and says why.
+**When prose and mechanism disagree, one of them is wrong - decide which, do
+not split the difference.**
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run

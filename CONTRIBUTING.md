@@ -11,18 +11,41 @@ this repository, and it tells you where things go.
 git checkout develop && git pull
 git checkout -b feature/<name>
 # ... work, with conventional commits ...
-git checkout develop && git merge --no-ff feature/<name> && git branch -d feature/<name>
+git push -u origin feature/<name>
+gh pr create --base develop            # CI runs on the PR
+# ... watch it go green, then merge on GitHub ...
 ```
 
 - Conventional commits: `feat:` `fix:` `refactor:` `chore:` `docs:` `test:` `build:` `ci:`
-- Merge only when the branch's checks **actually pass** — not when they look
-  like they would.
-- `--no-ff` always, so a feature stays visible as a unit in history.
+- **Never run `git merge` targeting `develop` or `main`.** Integration happens
+  on GitHub, through a pull request, after CI is green.
+- GitHub's **merge commit** option is the one to use. It produces the same
+  result `--no-ff` did, so a feature stays visible as a unit in history.
+
+### Why the merge moved to GitHub
+
+Git Flow is unchanged - same branches, same `--no-ff` shape. What changed is
+*when CI runs relative to the merge.*
+
+Merging locally and pushing means CI runs **after** integration, on `develop`,
+where its verdict is a report on something already done. **Sixteen consecutive
+red runs landed on `develop` that way without anyone noticing**, because
+nothing was waiting on them. The workflows were correct the whole time; they
+were simply being consulted too late to matter.
+
+A pull request inverts that. CI runs on the branch, the merge button is the
+thing waiting for it, and a red run blocks integration instead of describing
+it. Branch protection on `develop` and `main` requires the `CI` check, so this
+is enforced by the remote rather than by anyone remembering it - which is the
+only version of a rule this repository trusts.
+
+The same reasoning as every guard here: **a check whose result arrives after
+the decision is documentation.**
 
 ### The pre-merge ritual
 
-**Never chain a branch switch or a merge behind anything.** Verify, then act, as
-separate commands:
+**Push, open a PR, verify the run is green, request the merge.** Verify, then
+act, as separate commands - never chained:
 
 ```bash
 git commit -F - <<'MSG'
@@ -31,8 +54,19 @@ MSG
 git log --oneline -1        # is the NEW commit at HEAD?
 git status --porcelain      # empty?
 # only now:
-git checkout develop && git merge --no-ff feature/<name>
+git push -u origin feature/<name>
+gh pr create --base develop
+gh run watch <id> --exit-status
+gh run view <id> --json conclusion   # green, stated - not assumed
 ```
+
+The last step is the one that matters: **read the conclusion, do not infer it
+from the absence of a complaint.** A run can end `cancelled` with most jobs
+green, which reads like success at a glance and is not one. Two runs ended
+that way on `fix/ci-green` because a push superseded them mid-flight.
+
+Then the merge happens **on GitHub**, by a person, using the merge-commit
+option. Nothing below runs against `develop` locally.
 
 This is a rule rather than a resolution because the failure has happened. A
 commit was blocked by the gitleaks hook, but the command was written as
@@ -44,6 +78,10 @@ Nothing was lost that time — the branch had no commits of its own, so `-d`
 removed a pointer — but the work sat staged on `develop`, which the first rule
 on this page forbids. `&&` only guards against the *immediately preceding*
 command, and a merge is not something to run on that assumption.
+
+That failure is now structurally impossible for `develop` and `main`: there is
+no local merge to chain anything behind. The rule stays because the reasoning
+generalises to every destructive command.
 
 Commit messages carry no tool attribution of any kind — no co-author trailers,
 no generated-by footers, no emoji sign-offs

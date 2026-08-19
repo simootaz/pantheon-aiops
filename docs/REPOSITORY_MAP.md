@@ -173,6 +173,7 @@ pantheon-aiops/
 ├── .golangci.yml           Go lint rules, applied to every module
 ├── .env.example            every environment variable, documented
 ├── .gitattributes          LF everywhere, as a repo property not a local setting
+├── LICENSE                 Apache 2.0
 ├── .pre-commit-config.yaml ruff, ruff-format, mypy, gitleaks, codegen drift
 ├── .trivyignore            misconfiguration suppressions, each with its reason
 ├── .gitleaks.toml          secret-scanning rules for this repository
@@ -495,12 +496,22 @@ This repo uses Git Flow. `main` and `develop` already exist.
   ```
 - Commit inside the feature branch with **conventional commits**:
   `feat:`, `chore:`, `docs:`, `test:`, `build:`
-- When the feature is complete **and its checks pass**:
+- When the feature is complete, push it and open a pull request:
   ```bash
-  git checkout develop && git merge --no-ff feature/<name> && git branch -d feature/<name>
+  git push -u origin feature/<name>
+  gh pr create --base develop
   ```
+- **CI runs on the PR, and the merge waits for it.** A person merges on GitHub
+  using the merge-commit option once the `CI` check is green - never a local
+  `git merge` targeting `develop` or `main`. Branch protection on both branches
+  enforces this.
 - **Announce the branch name before starting it**, and confirm the merge and
   deletion when finishing it.
+
+> This changed on 2026-08-19. Merging locally and pushing meant CI ran *after*
+> integration, as a report - which is how sixteen red runs accumulated on
+> `develop` unnoticed. A check consulted after the decision is documentation.
+> See [CONTRIBUTING](../CONTRIBUTING.md#why-the-merge-moved-to-github).
 
 ---
 
