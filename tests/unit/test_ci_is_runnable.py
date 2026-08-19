@@ -285,3 +285,68 @@ def test_suppressions_carry_a_reason() -> None:
             "Every suppression states why, or it is indistinguishable from "
             "lowering the bar."
         )
+
+
+# --- a threshold that reads as enforced and is not the one enforced ----------
+
+
+def trivy_steps() -> list[tuple[str, str, dict[str, object]]]:
+    """Every trivy-action step, as (workflow, step name, `with:` block)."""
+    found: list[tuple[str, str, dict[str, object]]] = []
+    for path in workflows():
+        document = yaml.safe_load(read_data(path)) or {}
+        for job in (document.get("jobs") or {}).values():
+            for step in job.get("steps") or []:
+                if "trivy-action" in str(step.get("uses", "")):
+                    found.append((path.name, str(step.get("name", "?")), step.get("with") or {}))
+    return found
+
+
+def test_a_sarif_producing_scan_is_never_also_the_gate() -> None:
+    """`severity` does not filter SARIF, and one step cannot do both jobs.
+
+    SARIF carries every severity by design, because code scanning does its own
+    filtering. Put `exit-code: 1` in that same step and the job fails on ANY
+    finding - while the step reads `severity: CRITICAL,HIGH` and the error says
+    the same. The declared threshold is not the enforced one.
+
+    It cost a full diagnosis to see: `trivy config` failed with "found CRITICAL
+    or HIGH misconfigurations" on 37 findings of which 28 were LOW, 9 MEDIUM
+    and none HIGH. Nothing in the log said so - SARIF output means the console
+    prints no findings at all - so the message was the only evidence, and it
+    was wrong. `trivy fs` had the identical defect and passed, because it
+    happened to have no findings of any severity to trip over.
+    """
+    for workflow, name, block in trivy_steps():
+        where = f"{workflow} / {name}"
+        gates = str(block.get("exit-code", "0")) == "1"
+        if str(block.get("format", "")) == "sarif":
+            assert not gates, (
+                f"{where} writes SARIF and sets exit-code 1. SARIF is unfiltered, "
+                "so this gates on every severity while `severity` suggests "
+                "otherwise. Report and gate in separate steps."
+            )
+        if gates:
+            assert block.get("severity"), (
+                f"{where} fails the build without naming a severity, so it gates "
+                "on everything found. Say which severities are a failure."
+            )
+
+
+def test_every_trivy_report_has_a_gate_of_its_own() -> None:
+    """A report with exit-code 0 blocks nothing; something must still fail."""
+    reports = {
+        str(block.get("scan-type"))
+        for _w, _n, block in trivy_steps()
+        if str(block.get("format", "")) == "sarif"
+    }
+    gates = {
+        str(block.get("scan-type"))
+        for _w, _n, block in trivy_steps()
+        if str(block.get("exit-code", "0")) == "1"
+    }
+    ungated = sorted(reports - gates)
+    assert not ungated, (
+        f"trivy scan-type(s) {ungated} report to code scanning and gate nothing. "
+        "Findings would appear in the UI while CI stayed green."
+    )

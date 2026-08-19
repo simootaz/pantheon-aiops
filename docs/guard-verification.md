@@ -283,6 +283,53 @@ nothing about entries missing. **A guard over a list is not a guard that the
 list is complete.** Fixed by partitioning: every `SecretStr` must be classified
 required or optional-with-a-reason, and the partition is enforced.
 
+## A threshold that reads as enforced and is not the one enforced, 2026-08-19
+
+`trivy config` failed with `::error::trivy config found CRITICAL or HIGH
+misconfigurations`. It had found **37 misconfigurations: 28 LOW, 9 MEDIUM, and
+zero HIGH or CRITICAL.**
+
+The step said `severity: CRITICAL,HIGH` beside `exit-code: "1"` and
+`format: sarif`. But **`severity` does not filter SARIF** - that format carries
+every severity, because code scanning does its own filtering - so `exit-code: 1`
+tripped on the LOW findings while every visible signal named a threshold that
+was not being applied. `trivy fs` had the identical defect and passed, because
+it happened to have no findings of any severity to trip over. A latent guard
+bug, passing.
+
+Two things made it expensive to see:
+
+- SARIF output means **the console prints no findings at all**, so the error
+  message was the only evidence in the log - and the error message was wrong.
+  Diagnosing it meant pulling the alerts from the code scanning API and reading
+  trivy's own severity out of each rule's `tags`.
+- GitHub's `security_severity_level` is its own remapping, not trivy's label.
+  Checking the raw tag mattered; `low`/`medium` in the API and `LOW`/`MEDIUM`
+  in trivy agreed here, but confirming that was the step that made the count
+  trustworthy.
+
+> **A threshold is enforced by the mechanism that reads it, not by the line that
+> declares it.** `severity:` next to `exit-code:` reads like a policy. Whether
+> it is one depends on the output format three lines down.
+
+Fixed by giving each step one job: a **report** (`exit-code: 0`, SARIF, every
+severity, uploaded) and a **gate** (`severity: CRITICAL,HIGH`, `exit-code: 1`,
+`format: table`, so a failure states its reason in the log). Note the effective
+threshold *loosens* - from "any finding" to the declared CRITICAL,HIGH. That is
+the point: the declared policy becomes the real one, and the 28 LOW and 9 MEDIUM
+stay visible as code scanning alerts rather than being suppressed.
+
+Guarded by `test_a_sarif_producing_scan_is_never_also_the_gate` and
+`test_every_trivy_report_has_a_gate_of_its_own` - the second because a report
+with `exit-code: 0` blocks nothing, and splitting the steps introduces exactly
+that way to end up with findings in the UI and a green build.
+
+This is the third setting in this repository that looked applied and did
+nothing, after the pnpm overrides in the file pnpm stopped reading and the
+`# trivy:ignore:` comment in a Helm template that rendering strips. The shape
+recurs often enough to check for directly: **when a setting has no observable
+effect, confirm the tool reads it there, in that form, in that mode.**
+
 ## A scanner that aborts reports fewer findings, 2026-08-19
 
 `connectors/kubernetes/Dockerfile` held four comment lines and no instructions.

@@ -148,28 +148,69 @@ def test_continue_on_error_is_always_paired_with_an_outcome_check() -> None:
     assert not offenders, "steps whose failure would go unnoticed:\n  " + "\n  ".join(offenders)
 
 
-def test_security_scans_use_continue_on_error_correctly() -> None:
-    """The deliberate case, confirmed rather than merely tolerated.
+def test_security_scans_upload_findings_and_can_still_fail() -> None:
+    """The invariant, not the shape that used to express it.
 
-    Every scan must be lenient *and* have a step that fails the job on its
-    outcome - otherwise findings would upload and the build would stay green.
+    Findings must reach code scanning **and** the build must still be able to
+    fail. `continue-on-error` plus a step reading `steps.scan.outcome` is one
+    way to get there. A report step that cannot fail (`exit-code: 0`) followed
+    by a separate gating step is another, and it is the stronger one: nothing
+    depends on remembering the lenient flag.
+
+    This asserted the first shape literally, so splitting trivy's report from
+    its gate broke it while improving the property it exists to protect. A
+    guard written against one implementation of an invariant fails the next
+    correct implementation - assert what must be true, not how it is done.
     """
     workflow = yaml.safe_load(read_data(WORKFLOWS / "security.yml"))
 
-    scanning_jobs = [
+    uploading = [
         (name, job)
         for name, job in workflow["jobs"].items()
-        if any(step.get("continue-on-error") for step in _steps(job))
+        if any("upload-sarif" in str(step.get("uses", "")) for step in _steps(job))
     ]
-    assert len(scanning_jobs) >= 4, (
-        f"expected at least four lenient scan jobs, found {len(scanning_jobs)}"
+    assert len(uploading) >= 4, (
+        f"expected at least four jobs uploading findings, found {len(uploading)}"
     )
 
-    for name, job in scanning_jobs:
-        rendered = yaml.safe_dump(_steps(job))
-        assert "steps.scan.outcome == 'failure'" in rendered, (
-            f"security.yml:{name} scans leniently but never fails on the outcome"
+    for name, job in uploading:
+        steps = _steps(job)
+        upload = next(step for step in steps if "upload-sarif" in str(step.get("uses", "")))
+        assert "always()" in str(upload.get("if", "")), (
+            f"security.yml:{name} uploads findings only on success, so a failing "
+            "scan would hide exactly what needs looking at"
         )
+
+        can_fail = [
+            step
+            for step in steps
+            if "outcome == 'failure'" in yaml.safe_dump(step)
+            or str((step.get("with") or {}).get("exit-code", "0")) == "1"
+        ]
+        assert can_fail, (
+            f"security.yml:{name} uploads findings and nothing can fail the "
+            "build. Alerts would appear in the UI while CI stayed green."
+        )
+
+
+def test_every_lenient_step_has_its_outcome_read() -> None:
+    """`continue-on-error` with nothing reading the result means "ignore this"."""
+    workflow = yaml.safe_load(read_data(WORKFLOWS / "security.yml"))
+
+    for name, job in workflow["jobs"].items():
+        rendered = yaml.safe_dump(_steps(job))
+        for step in _steps(job):
+            if not step.get("continue-on-error"):
+                continue
+            identifier = step.get("id")
+            assert identifier, (
+                f"security.yml:{name} has a lenient step with no id, so its "
+                "outcome cannot be read and the leniency is unconditional"
+            )
+            assert f"steps.{identifier}.outcome" in rendered, (
+                f"security.yml:{name} step {identifier} is lenient and nothing "
+                "reads its outcome, which is the same as ignoring the result"
+            )
 
 
 def test_verify_sh_prints_the_diff_it_captured() -> None:

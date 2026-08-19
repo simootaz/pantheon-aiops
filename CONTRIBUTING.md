@@ -148,8 +148,14 @@ So:
   sends generator stdout to `/dev/null` under `set -e` and prints every captured
   diff to stderr on failure — the noise goes, the verdict stays.
 - `continue-on-error` must always be paired with a later step reading
-  `steps.<id>.outcome`. `security.yml` uses it correctly, so SARIF uploads before
-  the job fails; without the later step it would mean "ignore this result".
+  `steps.<id>.outcome`; without it, the flag means "ignore this result". Better
+  still, avoid needing it: a **report** step that cannot fail (`exit-code: 0`)
+  followed by a separate **gate** step gets findings uploaded and the build
+  failed without depending on anyone remembering the lenient flag. `security.yml`
+  uses the first shape for gitleaks and bandit and the second for both trivy
+  jobs. The guard asserts the invariant - findings upload, the build can still
+  fail - rather than either shape, because it was written against the shape once
+  and broke on the better implementation.
 - If you capture output to a file, **print it on failure**. Drift detected and
   not reported is drift nobody fixes.
 
