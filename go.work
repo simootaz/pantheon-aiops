@@ -6,7 +6,7 @@
 // what lets connectors/kubernetes depend on pkg/mcpserver without either module
 // being published.
 
-go 1.23
+go 1.25
 
 use (
 	./cmd/collector

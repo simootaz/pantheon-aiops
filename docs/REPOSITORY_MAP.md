@@ -519,6 +519,24 @@ target that is not yet wired says so and exits non-zero.
 A target that is not live names what it is waiting on and exits non-zero. None
 of them silently succeed.
 
+### Integration gates, and which of them CI can run
+
+Each gate under `tests/integration/` declares the services it needs, via
+`requires(...)` in `tests/integration/conftest.py`. A gate that needs the API
+cannot run in a job that starts only Prometheus, and declaring it is what stops
+one being swept into the other's target — which is exactly what happened when
+`make test-sim` ran the whole directory.
+
+| Gate | Needs | Target | CI |
+|---|---|---|---|
+| `test_simulator_data.py` | prometheus, loki, pushgateway | `make test-sim` | ✅ **runs in CI** — `ci-python.yml` starts those three |
+| `test_connector_path.py` | prometheus, pushgateway, **api** | `make test-connectors` | ⬜ **local only** — no CI job starts the API yet |
+
+`test_connector_path.py` does not run in CI today. That is stated rather than
+left implied: it is a gate that exists and never executes, which is the same
+false-green shape this repository keeps finding. ROADMAP carries the row for
+wiring it.
+
 Every row above was verified by **running the target**, under GNU Make 3.81
 (GnuWin32) on Windows and under whatever CI provides on `ubuntu-latest`. That
 distinction earned itself: the targets had previously only been exercised by

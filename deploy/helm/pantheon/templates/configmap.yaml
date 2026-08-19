@@ -21,6 +21,11 @@ data:
   LLM_TIER_CHEAP_MODEL: {{ .Values.delphi.tiers.cheap | quote }}
   LLM_TIER_BALANCED_MODEL: {{ .Values.delphi.tiers.balanced | quote }}
   LLM_TIER_FRONTIER_MODEL: {{ .Values.delphi.tiers.frontier | quote }}
+  # trivy:ignore:KSV-0109 - a token COUNT, not a credential. The rule matches
+  # on the name containing "TOKEN"; the value is an integer limit and every
+  # real secret in this chart comes from a Secret, never from this ConfigMap.
+  # The same name-shape trap caught the repository's own secret guard, which
+  # now derives credential-ness from the settings model instead of the name.
   LLM_MAX_TOKENS: {{ .Values.delphi.limits.maxTokens | quote }}
   LLM_REQUEST_TIMEOUT_SECONDS: {{ .Values.delphi.limits.requestTimeoutSeconds | quote }}
   {{- with .Values.delphi.limits.maxCostPerCall }}

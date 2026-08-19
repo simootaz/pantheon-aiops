@@ -1,6 +1,6 @@
 module github.com/simootaz/pantheon-aiops/connectors/kubernetes
 
-go 1.23
+go 1.25
 
 require github.com/simootaz/pantheon-aiops/pkg/mcpserver v0.0.0
 

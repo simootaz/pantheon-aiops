@@ -9,6 +9,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import pathlib
 import re
 from pathlib import Path
 
@@ -85,6 +86,55 @@ def test_gotoolchain_stays_local_in_ci() -> None:
             f"{name} sets up Go without GOTOOLCHAIN=local, so it would silently "
             "use a toolchain nobody pinned"
         )
+
+
+def declared_go_versions() -> dict[str, str]:
+    """Every place a Go version is written down, as major.minor."""
+    found: dict[str, str] = {name: v for name, v in go_versions().items()}
+
+    for rel in [
+        "go.work",
+        *sorted(
+            str(p).replace("\\", "/")
+            for p in REPO_ROOT.rglob("go.mod")
+            if "node_modules" not in str(p)
+        ),
+    ]:
+        path = REPO_ROOT / rel if not rel.startswith(str(REPO_ROOT)) else pathlib.Path(rel)
+        match = re.search(r"^go (\d+\.\d+)$", read_mechanism(path), re.MULTILINE)
+        if match:
+            found[path.relative_to(REPO_ROOT).as_posix()] = match.group(1)
+
+    dockerfile = REPO_ROOT / "deploy" / "docker" / "Dockerfile.connector-go"
+    if dockerfile.is_file():
+        match = re.search(r"golang:(\d+\.\d+)", read_mechanism(dockerfile))
+        if match:
+            found["deploy/docker/Dockerfile.connector-go"] = match.group(1)
+    return found
+
+
+def test_every_declaration_of_a_go_version_agrees() -> None:
+    """go.work, all five go.mod, the Dockerfile and the workflows, as one set.
+
+    Not cosmetic. `GOTOOLCHAIN=local` makes a mismatch an ERROR rather than a
+    silent download, which is the point - but only if the thing declared is the
+    thing installed. These are the declarations; GOTOOLCHAIN is what makes them
+    binding at use time. Neither half works alone.
+    """
+    declared = declared_go_versions()
+    assert len(declared) >= 7, f"expected go.work, five go.mod and the workflows, found {declared}"
+
+    versions = set(declared.values())
+    assert len(versions) == 1, "Go versions disagree across the repository: " + "; ".join(
+        f"{where}={what}" for where, what in sorted(declared.items())
+    )
+
+    only = next(iter(versions))
+    parts = tuple(int(piece) for piece in only.split("."))
+    assert parts >= REQUIRED_GO_MAJOR_MINOR, (
+        f"everything declares Go {only}, below the "
+        f"{'.'.join(map(str, REQUIRED_GO_MAJOR_MINOR))} the pinned generators need"
+    )
 
 
 # --- the pnpm setup that broke the dashboard job -----------------------------
