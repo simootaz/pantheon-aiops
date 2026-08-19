@@ -50,6 +50,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, field
 
@@ -121,8 +122,21 @@ require_every_metric("SEASONAL_AMPLITUDE", SEASONAL_AMPLITUDE)
 
 
 def _seed(*parts: str) -> int:
-    """A stable seed from names, so runs reproduce without a global RNG."""
-    return abs(hash("::".join(parts))) % (2**32)
+    """A stable seed from names, so runs reproduce without a global RNG.
+
+    `hashlib`, not `hash()`. Python randomises `hash()` for `str` per process
+    unless `PYTHONHASHSEED` is set, so the original returned a different seed
+    every run and the series above was different every run - while this
+    docstring and the DETERMINISM note at the top of the module both said
+    otherwise. Two runs of the same measurement differed by 70% in peak
+    latency, which is what surfaced it.
+
+    An env pin would have fixed the symptom and moved the property out of the
+    code: anyone importing this module directly, in a notebook or a REPL, would
+    get non-determinism back. The stable hash holds however the process starts.
+    """
+    digest = hashlib.blake2b("::".join(parts).encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, "big")
 
 
 def diurnal(day_fraction: float, phase_shift: float = 0.0) -> float:

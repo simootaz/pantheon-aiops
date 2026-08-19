@@ -105,8 +105,19 @@ groups:
       # own trailing average never shows much of a ratio - the average follows
       # it up. Measured against the generator: node-c's worst pod latency peaks
       # at 0.386s across seven simulated days of baseline and reaches 0.69s or
-      # more mid-fault, so 0.45 sits above every clean peak with margin and well
-      # under the fault.
+      # Re-measured against the corrected generator, 2026-08-20. Baseline over
+      # 5761 samples: p50 0.214, p95 0.248, max 0.248 - a very tight
+      # distribution. The fault reaches 0.721, median 0.355.
+      #
+      # 0.45 was above the fault's median, so it held for only 7.0s wall
+      # against a `for: 10s` - it fired on peaks and never sustained. 0.32
+      # holds 11.1s while sitting 1.29x above the highest baseline value in
+      # those 5761 samples and 1.49x above the median.
+      #
+      # The binding constraint here is sustain, not separation: 0.34 also
+      # clears the baseline but holds only 10.5s, and at a 5s evaluation
+      # interval half a second of headroom is one evaluation away from
+      # flaking.
       #
       # Grouped by NODE, not by service, because that is the scenario's whole
       # point: the symptom is on catalog and notifier while the cause is search
@@ -117,7 +128,7 @@ groups:
       # cannot touch it.
       - alert: NodeLatencyElevated
         expr: |
-          max by (node) (pantheon_http_request_duration_seconds) > 0.45
+          max by (node) (pantheon_http_request_duration_seconds) > 0.32
         for: 10s
         labels:
           severity: warning
@@ -149,11 +160,20 @@ groups:
       # --- flaky_test_storm -----------------------------------------------
       # CI telemetry, not a production symptom - which is the whole point of the
       # scenario: production metrics stay flat while CI goes red. The ratio is
-      # published as a gauge for exactly this reason. Baseline tops out near
-      # 0.04; the storm peaks above 0.5.
+      # published as a gauge for exactly this reason.
+      #
+      # Re-measured against the corrected generator, 2026-08-20. Baseline over
+      # 2881 samples: p50 0.033, p95 0.037, max 0.037. The storm reaches 0.471,
+      # median 0.138.
+      #
+      # 0.20 sat above the storm's median, so it held 8.6s against a
+      # `for: 10s` and the rule could never fire. 0.12 holds 11.4s at 3.26x
+      # the highest baseline value seen. Dropping further buys no sustain -
+      # 0.10 and 0.08 also hold 11.4s - so 0.12 is the most specific threshold
+      # that fires.
       - alert: CiFailureRatioHigh
         expr: |
-          pantheon_ci_pipeline_failure_ratio > 0.20
+          pantheon_ci_pipeline_failure_ratio > 0.12
         for: 10s
         labels:
           severity: warning

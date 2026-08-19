@@ -593,6 +593,33 @@ have shown.
 > runs against rendered output. If the planting does not reproduce that
 > context, a green planting is evidence about the test harness and silence
 > about the guard.
+## A rejection is only evidence if the reason is the one you tested for, 2026-08-19
+
+Branch protection on `develop` was verified **behaviourally** rather than by
+reading the settings page: a direct push, and read the refusal.
+
+The first attempt was rejected with **non-fast-forward**. That is ordinary git
+behaviour on a stale ref and would have happened with no ruleset at all. Taking
+it as proof would have been the same mistake as a guard that passes for the
+wrong reason - a red result, obtained, and about something else entirely.
+
+The push that proved it was rejected with **GH013**, citing the pull-request
+requirement and the required status checks by name. That refusal can only come
+from the rule being tested for.
+
+> **A failing result is evidence only when its reason is the one under test.**
+> "It was rejected" is not a verification; "it was rejected *because of the rule
+> I am testing*" is. Read the error, not the exit code.
+
+This is the same class as every other entry here. A guard that fires for an
+unrelated reason, a scanner that exits 1 because it crashed rather than because
+it found something, a threshold that fails the build on findings it never
+claimed to gate - each looks like the mechanism working.
+
+The verified state on `develop`: `pull_request` and `required_status_checks`
+requiring the context `CI`, plus `deletion` and `non_fast_forward`. The required
+check name matches the job `ci.yml` reports, which is the detail that makes the
+rule bite rather than block forever on a check that never arrives.
 ## Three of four shapes did nothing, 2026-08-19
 
 `shape: ramp`, `shape: spike` and `shape: sawtooth` were declared across five
@@ -666,6 +693,119 @@ believed, and pointed the investigation at the wrong component.
 > what it implies about a component the assertion never queried. This is the
 > same failure as present-tense prose about tests: a sentence that reads as a
 > finding when it is a guess.
+
+## The destructive part is invisible in the verb, 2026-08-19
+
+Verifying `main`'s ruleset needed a commit to push and have rejected. The probe
+was set up with:
+
+```bash
+git checkout -B tmp/protection-probe origin/main   # DON'T
+```
+
+`-B` does not mean "branch". It means **reset the branch to this commit,
+creating it if absent**. Local branch state was rewritten as a side effect, and
+`docs/readme-front-door` was later found sitting at `Initial commit`, 132
+commits behind its remote, with the uncommitted work on it gone. The remote was
+untouched, so recovery was `git reset --hard origin/<branch>` - but the
+uncommitted half was not recoverable and had to be rebuilt.
+
+The correct form for a probe that needs a throwaway state:
+
+```bash
+git checkout --detach origin/main                  # cannot rewrite a ref
+```
+
+> **A flag that rewrites history can read as a convenience.** `-B` looks like
+> `-b`. `reset --hard` on the wrong branch looks like tidying. The destructive
+> part is not in the verb - `checkout` and `reset` both sound navigational - so
+> it cannot be caught by reading the command as English. Check what the flag
+> *writes*, not what the command is called.
+
+Two habits follow, and both are already rules here for other reasons:
+
+- **Never chain anything behind a destructive command**, which the pre-merge
+  ritual already says about merges. The probe chained `-B` behind nothing and
+  still cost work, so the rule is about the command, not the chain.
+- **Verify with a read before acting.** `git branch -v` before and after would
+  have shown the rewritten ref immediately. The same reset scare was raised
+  from the other side minutes later and dissolved in one `git rev-parse`
+  comparison: local and remote identical on every branch, nothing lost.
+
+The second is the more general lesson. **A suspected loss and a real one look
+identical until something is read.** One was real and silent; one was reported
+and false. Neither was settled by reasoning about what the command should have
+done.
+
+## No in-process assertion could have caught it, 2026-08-19
+
+The concrete case for *plant in the conditions the guard runs in*.
+
+`simulator/metrics_generator.py` opened with a DETERMINISM note: *"The generator
+is seeded per pod and metric, so two runs of the same scenario produce the same
+series. A scenario that behaves differently each run cannot be ground truth."*
+`_seed` was:
+
+```python
+return abs(hash("::".join(parts))) % (2**32)
+```
+
+Python randomises `hash()` for `str` **per process** unless `PYTHONHASHSEED` is
+set. Every run produced a different series. Two runs of one measurement of
+`noisy_neighbor` differed by 70% in peak latency - 0.7487 against 1.2345 - and
+one rule flipped from passing to failing between them.
+
+> **Within one interpreter, `hash()` is perfectly stable.** A same-process test
+> of `_seed` passes whatever it does. The defect exists only in the boundary
+> between runs, so a guard that never crosses that boundary cannot see it, no
+> matter how carefully it is written.
+
+`test_the_generator_is_deterministic_across_processes` spawns two real
+subprocesses and compares a digest of the same series. Planted two ways: the
+original `hash()` restored, and a subtler variant where the seed is stable but
+the per-metric phase shift still routes through `hash()`. Both fail; the fixed
+code passes.
+
+The two hash seeds are set explicitly to `1` and `2` rather than left to the
+interpreter. Left to chance, two runs draw random seeds that can coincide, and
+the guard would pass for the wrong reason at some low rate - a flake that reads
+as a pass, which is the failure mode this whole document exists for.
+
+The fix is a stable hash in the code, **not** `PYTHONHASHSEED=0` in the
+environment. An env pin moves the property out of the module: anyone importing
+it from a notebook or a REPL gets non-determinism back, and the guarantee then
+depends on how the process was launched rather than on what the code says.
+
+This was the ninth false mechanism claim found, and the first found by
+**measuring** rather than by reading. The audit sweeps for claims naming no
+test; this one named no test and was also invisible to inspection, because the
+code looks correct and the docstring describes what it intends.
+
+## A measurement aimed at the wrong subject, 2026-08-19
+
+While measuring the five alert thresholds, `memory_leak`'s self-relative memory
+rule was measured against `checkout` pods. The scenario targets **`search`**.
+
+The result: *"baseline max 1.156, fault max 1.156 - no usable threshold at any
+offset"*, reported as a finding that the rule could not work. It was measuring
+pure baseline. Against the pods the fault actually touches, the ratio peaks at
+**3.38** against a baseline of 1.16, and the existing threshold sustains three
+times longer than it needs to. The rule was never in trouble.
+
+> **A measurement aimed at the wrong subject returns a real number about the
+> wrong thing.** It has the shape of a result - plausible magnitude, consistent
+> across parameters, no error - so nothing about it looks wrong. Confirm what
+> the instrument is pointed at before believing what it says.
+
+The tell, in hindsight, was that baseline max and fault max were **identical to
+three decimals** across five different offsets. Identical numbers where a fault
+should have moved one of them is a signal about the instrument, not the system.
+
+This is the fourth time the instrument rather than the code was the defect,
+after the audit's `replace(..., 1)` stopping at the first occurrence, the
+phase-window diagnostic that bypassed `phases_at` and invented a defect that
+did not exist, and the connector gate whose five-minute window could not see a
+fault lasting one. **The instrument is code too, and nothing checks it.**
 
 ## The rule
 

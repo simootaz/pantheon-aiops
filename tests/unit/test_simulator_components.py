@@ -16,7 +16,11 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
+import subprocess
+import sys
 from itertools import pairwise
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -44,6 +48,7 @@ from simulator.scenario import (
     load_all,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 POD = PODS_BY_NAME["checkout-7d4f9b-a1"]
 runner_cli = CliRunner()
 
@@ -798,4 +803,69 @@ def test_node_disk_climbs_across_a_real_fill_phase() -> None:
     assert gains[-1] > gains[0] * 0.5, (
         f"disk fills unevenly across the ramp: gains {[round(g, 4) for g in gains]}. "
         "A ramp evaluated at pinned progress climbs once and then only drifts."
+    )
+
+
+#: Generates a short series and prints a digest of it. Run in a subprocess so
+#: the interpreter's hash seed is a real variable rather than a fixed one.
+_DETERMINISM_PROBE = """
+import hashlib, sys
+sys.path.insert(0, {root!r})
+from simulator.scenario import load, MetricName
+from simulator.metrics_generator import MetricsGenerator, PODS
+
+scenario = load("noisy_neighbor")
+digest = hashlib.blake2b(digest_size=8)
+moment = scenario.baseline_seconds
+for _ in range(40):
+    active = scenario.active_at(moment)
+    generator = MetricsGenerator()
+    for pod in PODS:
+        value = generator.sample(pod, MetricName.LATENCY, moment, active)
+        digest.update(f"{{value:.9f}}".encode())
+    moment += 60.0
+print(digest.hexdigest())
+"""
+
+
+def _series_digest(hash_seed: str) -> str:
+    """The digest a fresh interpreter produces, at a chosen PYTHONHASHSEED."""
+    environment = {**os.environ, "PYTHONHASHSEED": hash_seed}
+    result = subprocess.run(
+        [sys.executable, "-c", _DETERMINISM_PROBE.format(root=str(REPO_ROOT))],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO_ROOT,
+        env=environment,
+    )
+    return result.stdout.strip()
+
+
+def test_the_generator_is_deterministic_across_processes() -> None:
+    """The module promises reproducible series. Only a subprocess can check it.
+
+    `_seed` used `hash()` on a string, which Python randomises per process
+    unless `PYTHONHASHSEED` is set - so every run produced a different series
+    while the docstring said "two runs of the same scenario produce the same
+    series. A scenario that behaves differently each run cannot be ground
+    truth." Two runs of one measurement differed by 70% in peak latency.
+
+    **No in-process assertion could ever have caught this.** Within a single
+    interpreter `hash()` is perfectly stable, so a same-process test passes
+    whatever `_seed` does. The defect lives in the boundary between runs, and a
+    guard has to cross that boundary to see it.
+
+    The two hash seeds are set explicitly rather than left to chance. Left to
+    chance, two runs draw random seeds that could coincide, and the guard would
+    pass for the wrong reason at some low rate - a flake that reads as a pass.
+    """
+    first = _series_digest("1")
+    second = _series_digest("2")
+
+    assert first, "the probe produced no digest"
+    assert first == second, (
+        "the simulator produces a different series per process. Something in "
+        "the seeding path depends on the interpreter's hash seed - `hash()` on "
+        f"a str is the usual cause. {first} != {second}"
     )

@@ -516,6 +516,35 @@ def _count_dirs(parent: str) -> int:
     )
 
 
+def _documented_counts() -> list[tuple[str, str, str]]:
+    """(document, regex capturing the number, which derived count it must equal)."""
+    return [
+        ("README.md", r"\*\*Contracts\*\*[^|]*?(\d+) Pydantic", "models"),
+        ("README.md", r"\*\*(\d+) tests\*\*", "tests"),
+        ("README.md", r"\*\*CI\*\*[^|]*?(\d+) workflows", "workflows"),
+        ("README.md", r"\*\*(\w+) ADRs\*\*", "adrs"),
+        ("README.md", r"\|\s*\[docs/adr/\]\([^)]*\)\s*\|\s*(\w+) decision records", "adrs"),
+        ("README.md", r"Zeus dispatches to the (\w+) domain agents", "agents"),
+        ("README.md", r"subgraph agents\[\"The (\w+) domain agents\"\]", "agents"),
+        ("README.md", r"\*\*Go 1\.25\*\*[^|]*\|[^|]*?(\d+) modules", "go_modules"),
+        ("README.md", r"(\w+) scenarios ship", "scenarios"),
+        ("README.md", r"\*\*Simulator\*\*\s*\|\s*(\w+) YAML scenarios", "scenarios"),
+        ("ARCHITECTURE.md", r"\*\*(\d+) tests\*\*", "tests"),
+        ("ROADMAP.md", r"\|\s*Contracts\s*\|\s*(\d+) models", "models"),
+        ("ROADMAP.md", r"\|\s*Go\s*\|\s*workspace over (\d+) modules", "go_modules"),
+        ("ROADMAP.md", r"\|\s*CI\s*\|\s*(\d+) workflows", "workflows"),
+        ("ROADMAP.md", r"\|\s*Docs\s*\|\s*(\d+) ADRs", "adrs"),
+        ("ROADMAP.md", r"Simulator:.*?(\w+) scenarios", "scenarios"),
+        ("docs/REPOSITORY_MAP.md", r"Go workspace over the (\w+) Go modules", "go_modules"),
+        ("docs/REPOSITORY_MAP.md", r"(\w+) YAML scenarios", "scenarios"),
+        (
+            "docs/REPOSITORY_MAP.md",
+            r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents",
+            "agents",
+        ),
+    ]
+
+
 def test_every_typed_count_in_the_docs_is_true() -> None:
     """A number in prose is a claim, and it goes stale in total silence.
 
@@ -546,22 +575,7 @@ def test_every_typed_count_in_the_docs_is_true() -> None:
     }
 
     # (document, regex capturing the number, which count it must equal)
-    claims: list[tuple[str, str, str]] = [
-        ("README.md", r"\*\*Contracts\*\*[^|]*?(\d+) Pydantic", "models"),
-        ("README.md", r"\*\*(\d+) tests\*\*", "tests"),
-        ("README.md", r"\*\*CI\*\*[^|]*?(\d+) workflows", "workflows"),
-        ("README.md", r"\*\*(\w+) ADRs\*\*", "adrs"),
-        ("README.md", r"\|\s*\[docs/adr/\]\([^)]*\)\s*\|\s*(\w+) decision records", "adrs"),
-        ("ARCHITECTURE.md", r"\*\*(\d+) tests\*\*", "tests"),
-        ("ROADMAP.md", r"\|\s*Contracts\s*\|\s*(\d+) models", "models"),
-        ("ROADMAP.md", r"\|\s*Go\s*\|\s*workspace over (\d+) modules", "go_modules"),
-        ("ROADMAP.md", r"\|\s*CI\s*\|\s*(\d+) workflows", "workflows"),
-        ("ROADMAP.md", r"\|\s*Docs\s*\|\s*(\d+) ADRs", "adrs"),
-        ("ROADMAP.md", r"Simulator:.*?(\w+) scenarios", "scenarios"),
-        ("docs/REPOSITORY_MAP.md", r"Go workspace over the (\w+) Go modules", "go_modules"),
-        ("docs/REPOSITORY_MAP.md", r"(\w+) YAML scenarios", "scenarios"),
-        ("docs/REPOSITORY_MAP.md", r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents", "agents"),
-    ]
+    claims = _documented_counts()
 
     wrong: list[str] = []
     for document, pattern, key in claims:
@@ -647,4 +661,120 @@ def test_the_folder_map_draws_nothing_that_no_longer_exists() -> None:
         "entries the folder map draws that do not exist: "
         + ", ".join(gone)
         + " - either restore them or correct the map."
+    )
+
+
+def test_every_test_named_in_the_docs_exists() -> None:
+    """The rule the claim audit produced, enforced rather than remembered.
+
+    A sentence asserting a mechanism must name the test enforcing it, or be
+    written as intent. Naming one is only worth anything if the name resolves:
+    the audit found eight false mechanism claims, and every one of them was in
+    the set that named no test - but a stale name would be worse than none,
+    since it reads as checkable and is not.
+
+    This caught a real one immediately. The README's "measured, not chosen"
+    section cited `tests/unit/test_alert_rules.py`, which lives on an unmerged
+    branch. It would have shipped as a mechanism claim pointing at a file that
+    does not exist here.
+    """
+    documents = [
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "ARCHITECTURE.md",
+        REPO_ROOT / "CONTRIBUTING.md",
+        REPO_ROOT / "docs" / "REPOSITORY_MAP.md",
+        *sorted((REPO_ROOT / "docs" / "adr").glob("*.md")),
+    ]
+
+    broken: list[str] = []
+    for document in documents:
+        if not document.is_file():
+            continue
+        body = read_data(document)
+        for match in re.finditer(r"(tests/[a-z0-9_/]+\.py)(?:::([a-z0-9_]+))?", body):
+            path, function = match.group(1), match.group(2)
+            where = f"{document.name} -> {match.group(0)}"
+            target = REPO_ROOT / path
+            if not target.is_file():
+                broken.append(f"{where}: no such file")
+            elif function and f"def {function}" not in read_data(target):
+                broken.append(f"{where}: no such test in {path}")
+
+    assert not broken, "documentation naming tests that do not exist:\n  " + "\n  ".join(broken)
+
+
+#: Nouns naming a countable repository artifact. A number in front of one of
+#: these is a claim about the tree, and must be derived rather than typed.
+COUNTED_NOUNS = (
+    "Pydantic",
+    "tests",
+    "workflows",
+    "ADRs",
+    "decision records",
+    "domain agents",
+    "modules",
+    "scenarios",
+    "connectors",
+    "models",
+)
+
+
+def test_every_counted_noun_in_the_docs_is_derived() -> None:
+    """The sibling of `test_every_test_named_in_the_docs_exists`, and the harder half.
+
+    That guard asks whether a named test exists. This one asks whether a stated
+    number is **derived** - whether `_documented_counts` can recompute it from
+    the tree. A number nobody derives is a number nobody can keep true.
+
+    The hole it closes was demonstrated at merge time rather than argued.
+    `fix/simulator-phase-window` and `develop` each said 281 tests, each
+    correctly, and their merge had 284; this branch then said 282 against a
+    merged tree of 285. Every side internally consistent, every union wrong.
+    Only a derivation catches that, because there is no moment at which a
+    person is looking at both numbers.
+
+    Adding "12 connectors" to the README now fails here until a row deriving it
+    exists, so a claim cannot outrun the mechanism by being newly written.
+    """
+    table = _documented_counts()
+    documents = sorted({document for document, _pattern, _key in table})
+
+    undeclared: list[str] = []
+    for document in documents:
+        body = read_data(REPO_ROOT / document)
+        covered = [
+            match.span()
+            for doc, pattern, _key in table
+            if doc == document
+            for match in re.finditer(pattern, body, re.IGNORECASE)
+        ]
+        # The structure changelog records what a past branch did - "added three
+        # guards", "19 models" - and is deliberately NOT kept current. Holding
+        # history to today's numbers would rewrite it every time the tree moved,
+        # the same reason the folder-map guard ignores paths a changelog says
+        # were deleted.
+        changelog = {
+            index
+            for index, line in enumerate(body.splitlines())
+            if line.lstrip().startswith("| 2026-")
+        }
+        for noun in COUNTED_NOUNS:
+            for found in re.finditer(rf"\b(\d{{1,4}}|[A-Za-z]+)\s+{re.escape(noun)}\b", body):
+                raw = found.group(1)
+                if not raw.isdigit() and raw.lower() not in _NUMBER_WORDS:
+                    continue  # "every workflow", "these tests" - prose, not a count
+                if any(start <= found.start() and found.end() <= end for start, end in covered):
+                    continue
+                line = body[: found.start()].count(chr(10))
+                if line in changelog:
+                    continue
+                undeclared.append(f"{document}:{line + 1}  {found.group(0)!r}")
+
+    assert not undeclared, (
+        "counts stated in the docs that no derivation covers:"
+        + chr(10)
+        + "  "
+        + (chr(10) + "  ").join(undeclared)
+        + chr(10) * 2
+        + "Add a row to _documented_counts() deriving it, or reword to state no number."
     )
