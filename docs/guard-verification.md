@@ -426,6 +426,80 @@ reported success while testing nothing.
 - **This is a snapshot.** A guard changed after this date is unverified until
   someone plants a violation against it again.
 
+## Three of four shapes did nothing, 2026-08-19
+
+`shape: ramp`, `shape: spike` and `shape: sawtooth` were declared across five
+scenarios. **Only `step` ever worked.**
+
+`Scenario.phases_at` decided a phase was running by comparing
+`simulated_seconds - baseline_seconds` against the phase bounds.
+`MetricsGenerator.sample` then computed how far through it was as
+`(simulated_seconds - phase.start_seconds) / duration` - from **absolute**
+time, against a **baseline-relative** start. Absolute time is never less than
+`baseline_seconds`, so progress never fell inside [0, 1]: measured through
+`memory_leak`'s leak it ran **2.18 to 3.18** and clamped to 1.0 throughout.
+
+At progress 1.0 the shape factors are:
+
+| shape | factor | effect |
+|---|---|---|
+| `step` | 1.0 | correct, by accident |
+| `ramp` | 1.0 | never ramps - identical to `step` |
+| `spike` | `sin(pi)**0.5` = **0.0** | **inert** |
+| `sawtooth` | `(4.0) % 1` = **0.0** | **inert** |
+
+So `memory_leak`'s OOM sawtooth and `disk_pressure`'s eviction spike changed
+nothing at all, and every ramp was a step. Fixed by returning progress *with*
+the phase from one method, `Scenario.active_at`, so activity and progress
+cannot be measured from different origins - the same computation had been
+written in three places against two origins.
+
+### The two failure modes compound, and the result looks doubly verified
+
+A guard existed. `test_a_deviation_is_absent_before_its_phase_begins` asserted
+`_apply(10.0, Deviation(factor=9.0), 0.0) == 10.0`, and passed for two
+independent reasons:
+
+- **Wrong layer.** `_apply` is *handed* a progress. Whether a phase is running,
+  and what progress it is at, are decided by its caller. Testing `_apply` proved
+  a helper multiplies correctly and said nothing about the argument it is given.
+- **One form planted.** At progress 0.0 a `ramp` contributes nothing, so the
+  default shape passed. `step` returns 1.0 whatever the progress and would have
+  failed the same line.
+
+> **Two weak guards in one test read as one strong guard.** Each flaw alone
+> leaves something visibly untested. Together they produce an assertion that
+> names the right behaviour, sits in the right file, and cannot observe the
+> defect from either direction - so nothing about it looks wrong. This is the
+> fifth too-narrow scanner and the second wrong-layer guard, and the first time
+> both have appeared in one test.
+
+Replaced with three guards, each planted: absence before the phase (**every**
+shape, driven through `sample`, on a scenario built for the purpose); every
+shape moving the metric *somewhere* in its phase, which is what catches an
+inert one; and progress staying inside [0, 1) across a **real** scenario, which
+is the only one that can see the origin defect - a fixture phase starting at
+zero makes the two origins agree, which is why every existing fixture missed it.
+
+A fourth guard was needed for `_node_disk`, the second site that recomputed
+progress. Planting there failed twice before it fired: monotonic climb does not
+separate the states, because the drift term rises either way. The signature is
+the *shape* of the climb - a ramp gains 0.445, 0.445, 0.445 of its first
+reading per step; the defect gains 0.102, 0.0001, 0.0001.
+
+### An error message that asserts a cause is a claim
+
+The alert gate failed with *"the alert fired in Prometheus but never reached
+Alertmanager"* on a run that had checked neither end. Delivery was fine; the
+gate was looking after the alert resolved. The message named a culprit, was
+believed, and pointed the investigation at the wrong component.
+
+> **An error message that asserts a cause needs the same evidence as any other
+> claim.** Say what was observed - "expected X in Alertmanager, saw []" - not
+> what it implies about a component the assertion never queried. This is the
+> same failure as present-tense prose about tests: a sentence that reads as a
+> finding when it is a guess.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

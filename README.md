@@ -23,7 +23,7 @@ here is the honest split:
 |---|---|
 | **Contracts** — 49 Pydantic v2 models, the single source of truth | Agent implementations (all eleven) |
 | **Codegen** — Pydantic → JSON Schema → Go + TypeScript, with drift detection | The orchestrator (Zeus) |
-| **281 tests** — structural, security and type-level guards among them, each guard verified against a planted violation | Connectors (all seven) |
+| **284 tests** — structural, security and type-level guards among them, each guard verified against a planted violation | Connectors (all seven) |
 | **Deploy skeleton** — Helm lints and templates, Terraform validates, Compose runs | Delphi and Cerberus behaviour (structure and contracts only) |
 | **CI** — 9 workflows, SHA-pinned, one required check | The AG-UI endpoint and A2UI surfaces |
 | **Dashboard** — builds, with the AG-UI client and A2UI renderer | Anything that produces a Finding |
