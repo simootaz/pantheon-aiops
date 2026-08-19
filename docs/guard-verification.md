@@ -570,6 +570,76 @@ identical until something is read.** One was real and silent; one was reported
 and false. Neither was settled by reasoning about what the command should have
 done.
 
+## No in-process assertion could have caught it, 2026-08-19
+
+The concrete case for *plant in the conditions the guard runs in*.
+
+`simulator/metrics_generator.py` opened with a DETERMINISM note: *"The generator
+is seeded per pod and metric, so two runs of the same scenario produce the same
+series. A scenario that behaves differently each run cannot be ground truth."*
+`_seed` was:
+
+```python
+return abs(hash("::".join(parts))) % (2**32)
+```
+
+Python randomises `hash()` for `str` **per process** unless `PYTHONHASHSEED` is
+set. Every run produced a different series. Two runs of one measurement of
+`noisy_neighbor` differed by 70% in peak latency - 0.7487 against 1.2345 - and
+one rule flipped from passing to failing between them.
+
+> **Within one interpreter, `hash()` is perfectly stable.** A same-process test
+> of `_seed` passes whatever it does. The defect exists only in the boundary
+> between runs, so a guard that never crosses that boundary cannot see it, no
+> matter how carefully it is written.
+
+`test_the_generator_is_deterministic_across_processes` spawns two real
+subprocesses and compares a digest of the same series. Planted two ways: the
+original `hash()` restored, and a subtler variant where the seed is stable but
+the per-metric phase shift still routes through `hash()`. Both fail; the fixed
+code passes.
+
+The two hash seeds are set explicitly to `1` and `2` rather than left to the
+interpreter. Left to chance, two runs draw random seeds that can coincide, and
+the guard would pass for the wrong reason at some low rate - a flake that reads
+as a pass, which is the failure mode this whole document exists for.
+
+The fix is a stable hash in the code, **not** `PYTHONHASHSEED=0` in the
+environment. An env pin moves the property out of the module: anyone importing
+it from a notebook or a REPL gets non-determinism back, and the guarantee then
+depends on how the process was launched rather than on what the code says.
+
+This was the ninth false mechanism claim found, and the first found by
+**measuring** rather than by reading. The audit sweeps for claims naming no
+test; this one named no test and was also invisible to inspection, because the
+code looks correct and the docstring describes what it intends.
+
+## A measurement aimed at the wrong subject, 2026-08-19
+
+While measuring the five alert thresholds, `memory_leak`'s self-relative memory
+rule was measured against `checkout` pods. The scenario targets **`search`**.
+
+The result: *"baseline max 1.156, fault max 1.156 - no usable threshold at any
+offset"*, reported as a finding that the rule could not work. It was measuring
+pure baseline. Against the pods the fault actually touches, the ratio peaks at
+**3.38** against a baseline of 1.16, and the existing threshold sustains three
+times longer than it needs to. The rule was never in trouble.
+
+> **A measurement aimed at the wrong subject returns a real number about the
+> wrong thing.** It has the shape of a result - plausible magnitude, consistent
+> across parameters, no error - so nothing about it looks wrong. Confirm what
+> the instrument is pointed at before believing what it says.
+
+The tell, in hindsight, was that baseline max and fault max were **identical to
+three decimals** across five different offsets. Identical numbers where a fault
+should have moved one of them is a signal about the instrument, not the system.
+
+This is the fourth time the instrument rather than the code was the defect,
+after the audit's `replace(..., 1)` stopping at the first occurrence, the
+phase-window diagnostic that bypassed `phases_at` and invented a defect that
+did not exist, and the connector gate whose five-minute window could not see a
+fault lasting one. **The instrument is code too, and nothing checks it.**
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
