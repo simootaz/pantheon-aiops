@@ -243,6 +243,97 @@ ten shapes were planted under undeclared names and all ten fire.
 > An exemption is a transfer of responsibility, not a removal of it. Write down
 > where the responsibility went, and test that it arrived.
 
+## Two kinds of guard, and a scanner rule
+
+### An absence assertion, deleted to add the feature
+
+`test_cross_attempt_dedup_is_not_claimed_to_exist` is a new shape here, and the
+opposite of everything else on this page. Every other guard protects the code
+from drifting away from its documentation. This one protects the **documentation
+from drifting ahead of the code**.
+
+It asserts what is true *today* - two retried attempts produce two Finding
+objects sharing one deterministic id, and nothing merges them, because no
+persistence layer exists to upsert into. Building that upsert **breaks the
+test**, which is the point: the failure is the reminder to retire the ROADMAP
+row and rewrite the `base_agent` RETRIES docstring in the same commit as the
+feature, rather than leaving a true-sounding claim about a component nobody
+built.
+
+> **An absence assertion must be deleted to add the feature.** When a docstring
+> describes a property the code does not yet have, assert the absence. The test
+> that fails when you finally build it is the one that makes the documentation
+> catch up.
+
+The overstatement it replaced was "an upsert-shaped consumer cannot duplicate
+it" - true of a consumer that did not exist. A design resting on a component
+nobody built reads exactly like a design resting on a component that works.
+
+### A scanner must enumerate every form of what it forbids
+
+Four guards in this repository have been too narrow, and each was found by
+running rather than by reading:
+
+| Guard | Form it missed |
+|---|---|
+| `.PHONY` completeness | a backslash continuation, so it never read the second line and reported six false positives |
+| the raw-file-read sweep | `.read_bytes()`, while `.read_text()` and `.open()` were covered |
+| the step-event guard | `from core.contracts.events import StepStartedEvent` — it walked `Name` and `Attribute` nodes only |
+| the alert look-back scanner | `offset 30s` — it enumerated `[range]` selectors only, so a rule needing 40s of history was measured at 10 and given a speed at which it could never fire |
+
+Each looked complete. Each was verified against one planted violation, and that
+violation happened to use the one form the scanner understood.
+
+> **A scanner must enumerate every syntactic form of the thing it forbids, and
+> planting one form verifies only that form.** Where something is expressible
+> several ways - an import versus a reference, `read_text` versus `read_bytes`,
+> a continued line versus a single one - plant each way. One green planting on a
+> multi-form rule is evidence about one form and silence about the rest.
+
+## The alert gate, and what running it found, 2026-08-18
+
+Two defects, neither visible from the YAML, both found by running the rules
+against real Prometheus rather than by reasoning about them.
+
+### A ramp measured against its own trailing average barely moves
+
+The memory rule compared working set against `avg_over_time(...[45s])`. That
+reads as a reasonable leak detector and is not one: the fault is a **ramp**, and
+a trailing average follows a ramp up, so the ratio sits near 1.2 however far the
+leak goes. Measured against Prometheus, it crossed the 1.5 threshold only
+momentarily - on the sawtooth of the OOM phase - and never held long enough to
+satisfy `for: 10s`.
+
+The same defect had already been diagnosed and fixed for the latency rule
+earlier in the branch. It was not carried across to memory. **Fixing one
+instance of a class and leaving another is its own failure mode**, and the only
+reason it surfaced is that the gate ran every rule rather than a representative
+one.
+
+`offset` compares two points instead of a point against a smear, so a sustained
+climb reads as sustained.
+
+### A gate that asserts after the run tests retained state
+
+The pushgateway holds the last values pushed. After a run whose fault is still
+active, those faulty numbers persist, Prometheus keeps scraping them, and an
+absolute-threshold rule keeps firing indefinitely. Three scenarios were passing
+partly on that - not on live data.
+
+A self-relative rule is what exposed it: once the run stops, the retained
+constant makes the series equal to its own past, the comparison collapses to 1,
+and the alert can never fire however long the test waits. The rule was correct
+and the gate was wrong.
+
+Both directions now watch **during** the run. The negative case too, and
+deliberately: a clean-baseline check that only looked at the end would miss a
+rule firing transiently in the middle, which would make it weaker than the
+positive checks it exists to qualify.
+
+> **Ask what the pass depends on.** A gate that reads state after the thing
+> under test has stopped may be reading an echo. If retained state can satisfy
+> the assertion, the assertion is about the store, not the system.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run

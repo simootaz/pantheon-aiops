@@ -20,7 +20,14 @@ phases:
     start_seconds: 0
     duration_seconds: 21600
     target: checkout
-    note: "CI failures with no production symptom - the metrics stay normal."
+    note: "CI failures with no production symptom - production metrics stay normal."
+    deviations:
+      # CI telemetry, not a production symptom. The scenario's whole tell is
+      # that production is fine while CI is red, so this is the one signal
+      # allowed to move.
+      - metric: ci_failure_ratio
+        factor: 3.5
+        shape: ramp
     logs:
       - template: test_flake
         per_minute: 3
@@ -31,6 +38,10 @@ phases:
     duration_seconds: 14400
     target: checkout
     note: "Failure rate rises; still nothing wrong in production."
+    deviations:
+      - metric: ci_failure_ratio
+        factor: 5.0
+        shape: step
     logs:
       - template: test_flake
         per_minute: 9

@@ -1,0 +1,165 @@
+# Alerting rules for the SIMULATOR ONLY.
+#
+# Phase: 1 - Contracts & First Agent Path
+#
+# ⚠️ NEVER DEPLOY THIS. Every `for:` clause below is measured in seconds because
+# the simulator compresses time; on a real cluster these are hair triggers that
+# would page on a single slow minute. The production-shaped rules, when they
+# exist, live beside prometheus.yml - and
+# tests/unit/test_observability_stack.py fails the build if this file is
+# referenced from any deployment path.
+#
+# WHY EVERY RULE IS A GAUGE OR A RATIO
+# ------------------------------------
+# The simulator advances simulated time faster than wall time, and Prometheus
+# scrapes in wall time. A counter therefore reads `speed` times faster than the
+# rate it represents: `rate(pantheon_http_requests_total[10s])` at 240x is 240x
+# the simulated request rate. An absolute counter threshold would fire at one
+# compression factor and be unreachable at another.
+#
+# Two things are immune, and every rule here is one of them:
+#
+#   * a **gauge** - a CPU reading or a memory reading is the same number
+#     whatever the clock does;
+#   * a **ratio of two rates** - the compression factor appears in numerator and
+#     denominator and cancels exactly.
+#
+# So these rules mean the same thing at `--speed 1` and at `--speed 500`, and
+# `tests/unit/test_alert_rules.py` fails the build on a rule that compares a
+# bare `rate()` against a constant.
+#
+# WHY THE WINDOWS ARE SHORT
+# -------------------------
+# `for:` and range selectors are wall-clock. A fault lasting D simulated seconds
+# is visible for only D/speed wall seconds, so:
+#
+#     range_window + for_duration  <  fault_simulated_duration / speed
+#
+# The tightest scenario is bad_deploy_5xx: 11400 simulated seconds of fault,
+# which at the 240x reference speed is 47.5 wall seconds. A `for: 5m` clause
+# would never fire; a 10s window plus a 10s hold uses 20 of those 47 seconds and
+# leaves room for the scrape to catch up. That inequality is enforced by
+# `test_every_rule_can_fire_within_its_scenarios_fault_window`, so a rule cannot
+# silently become unfirable at one speed and a hair trigger at another.
+
+groups:
+  - name: pantheon-simulator
+    # 5s, matching evaluation_interval in prometheus.sim.yml. A rule evaluated
+    # more slowly than its `for:` window can miss a compressed fault entirely.
+    interval: 5s
+    rules:
+      # --- bad_deploy_5xx -------------------------------------------------
+      # A ratio of two rates, so the compression factor cancels. Baseline is
+      # ~0.004 (error_rate 0.72/s against 180 rps); the scenario steps error
+      # rate 9x, giving ~0.036. The 0.02 threshold sits between them, five
+      # times baseline and well inside the fault.
+      - alert: CheckoutErrorRateHigh
+        expr: |
+          sum by (service) (rate(pantheon_http_requests_total{status="500"}[10s]))
+            /
+          sum by (service) (rate(pantheon_http_requests_total[10s]))
+            > 0.02
+        for: 10s
+        labels:
+          severity: critical
+          scenario: bad_deploy_5xx
+        annotations:
+          summary: "{{ $labels.service }} is serving 5xx above baseline"
+          description: >-
+            The 5xx ratio for {{ $labels.service }} is {{ $value | humanizePercentage }},
+            more than five times its normal rate.
+
+      # --- memory_leak ----------------------------------------------------
+      # Compared against ITSELF A WHILE AGO, not against a trailing average.
+      #
+      # The distinction is the whole rule. The fault is a ramp, and a ramp
+      # measured against its own trailing average barely moves - the average
+      # follows it up, and the ratio sits near 1.2 no matter how far the leak
+      # goes. Measured against Prometheus, the `avg_over_time` form only ever
+      # crossed 1.5 momentarily, on the sawtooth of the OOM phase, and never
+      # held long enough to fire. `offset` compares two points instead of a
+      # point against a smear, so a sustained climb reads as a sustained climb.
+      #
+      # Memory is a gauge, so compression cannot touch the comparison. At
+      # memory_leak's gate speed a 30s offset looks back about six simulated
+      # hours, over which the scenario's 2.6x ramp has moved roughly 1.9x -
+      # comfortably past the threshold and sustained rather than transient.
+      - alert: MemoryGrowingAgainstItsOwnBaseline
+        expr: |
+          pantheon_pod_memory_working_set_bytes
+            >
+          1.5 * (pantheon_pod_memory_working_set_bytes offset 30s)
+        for: 10s
+        labels:
+          severity: warning
+          scenario: memory_leak
+        annotations:
+          summary: "{{ $labels.pod }} working set is climbing against its own past"
+          description: >-
+            {{ $labels.pod }} is holding {{ $value | humanize1024 }}B, half again
+            what it held moments ago, while its request rate is unchanged.
+
+      # --- noisy_neighbor -------------------------------------------------
+      # An absolute latency threshold, SLO-style, and deliberately not a
+      # self-relative one. The fault is a RAMP, and a ramp compared against its
+      # own trailing average never shows much of a ratio - the average follows
+      # it up. Measured against the generator: node-c's worst pod latency peaks
+      # at 0.386s across seven simulated days of baseline and reaches 0.69s or
+      # more mid-fault, so 0.45 sits above every clean peak with margin and well
+      # under the fault.
+      #
+      # Grouped by NODE, not by service, because that is the scenario's whole
+      # point: the symptom is on catalog and notifier while the cause is search
+      # eating the node. An alert per service would send three pages and name
+      # the wrong culprit in all of them.
+      #
+      # Latency is a gauge, so no range selector is needed and compression
+      # cannot touch it.
+      - alert: NodeLatencyElevated
+        expr: |
+          max by (node) (pantheon_http_request_duration_seconds) > 0.45
+        for: 10s
+        labels:
+          severity: warning
+          scenario: noisy_neighbor
+        annotations:
+          summary: "every workload on {{ $labels.node }} is slow"
+          description: >-
+            Worst-case latency on {{ $labels.node }} is {{ $value }}s. Look for a
+            neighbour saturating the node before looking at the slow service.
+
+      # --- disk_pressure --------------------------------------------------
+      # A ratio of two gauges, so it is both compression-proof and independent
+      # of node size. Baseline is 0.34 of capacity; the scenario ramps to ~0.88
+      # over three simulated days. 0.75 fires with time to spare before the
+      # kubelet's own eviction threshold.
+      - alert: NodeDiskFillingUp
+        expr: |
+          pantheon_node_disk_used_bytes / pantheon_node_disk_total_bytes > 0.75
+        for: 10s
+        labels:
+          severity: warning
+          scenario: disk_pressure
+        annotations:
+          summary: "{{ $labels.node }} disk is {{ $value | humanizePercentage }} full"
+          description: >-
+            Disk on {{ $labels.node }} is filling steadily. Eviction starts well
+            before it reaches 100%.
+
+      # --- flaky_test_storm -----------------------------------------------
+      # CI telemetry, not a production symptom - which is the whole point of the
+      # scenario: production metrics stay flat while CI goes red. The ratio is
+      # published as a gauge for exactly this reason. Baseline tops out near
+      # 0.04; the storm peaks above 0.5.
+      - alert: CiFailureRatioHigh
+        expr: |
+          pantheon_ci_pipeline_failure_ratio > 0.20
+        for: 10s
+        labels:
+          severity: warning
+          scenario: flaky_test_storm
+        annotations:
+          summary: "{{ $labels.service }} CI is failing {{ $value | humanizePercentage }} of runs"
+          description: >-
+            Pipelines are failing far above the normal flake rate while
+            production metrics are unchanged. Suspect the suite, not the service.

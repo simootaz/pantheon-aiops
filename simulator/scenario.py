@@ -40,6 +40,12 @@ class MetricName(StrEnum):
     LATENCY = "latency"
     RESTARTS = "restarts"
     DISK_USED = "disk_used"
+    #: Fraction of CI pipelines failing, 0 to 1. A ratio rather than a count so
+    #: that it means the same thing at every compression factor - see
+    #: `deploy/observability/prometheus/rules.sim.yml`. It is CI telemetry, not
+    #: a production symptom, which is what lets `flaky_test_storm` keep its
+    #: defining property: production metrics stay flat while CI goes red.
+    CI_FAILURE_RATIO = "ci_failure_ratio"
 
 
 class Shape(StrEnum):

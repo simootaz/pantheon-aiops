@@ -1,0 +1,33 @@
+# Alertmanager configuration for the SIMULATOR ONLY.
+#
+# Phase: 1 - Contracts & First Agent Path
+#
+# ⚠️ NEVER DEPLOY THIS. group_wait and repeat_interval below are seconds because
+# the simulator compresses time; on a real cluster this would page continuously.
+# tests/unit/test_observability_stack.py fails the build if this file is
+# referenced from any deployment path.
+#
+# There is exactly one receiver and no inhibition: the point is to prove the
+# path from a firing rule to POST /webhooks/alertmanager, and routing logic
+# would only make a failed run harder to explain.
+
+global:
+  resolve_timeout: 30s
+
+route:
+  receiver: pantheon
+  # Seconds, not minutes. A fault visible for 47 wall seconds cannot survive a
+  # 30s group_wait plus a 5m group_interval, so both are sized against the
+  # tightest scenario the same way the rule windows are.
+  group_by: ['alertname', 'scenario']
+  group_wait: 2s
+  group_interval: 10s
+  repeat_interval: 1h
+
+receivers:
+  - name: pantheon
+    webhook_configs:
+      # The same endpoint a real Alertmanager posts to. No simulator-specific
+      # route, for the same reason the GitLab hook has none.
+      - url: http://api:8000/webhooks/alertmanager
+        send_resolved: true

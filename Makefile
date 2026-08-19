@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-connectors test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-alerts test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -67,6 +67,12 @@ test-sim:
 # this one exists to prove a real query reaches a real Prometheus.
 test-connectors:
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
+
+## test-alerts: prove flow 1 - a scenario fires its alert, baseline fires none
+# The negative case is the point: a rule that fires on everything passes every
+# positive test and is worse than no rule.
+test-alerts:
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_alert_flow.py -m integration --no-cov -v
 
 ## test-go: build and test every Go module in the workspace
 test-go:

@@ -48,16 +48,19 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 The first end-to-end slice: an alert produces a Finding.
 
-**Two of six items are done.** The phase is not complete until an alert
-actually produces a Finding — contracts and a simulator do not, on their own,
-do that. A heading that reads as finished when four items are stubs is how a
-phase gets declared over.
+**Five of seven items are done.** The phase is not complete until an alert
+actually produces a Finding. The trigger half now runs end to end — a scenario
+fires a real alert, Alertmanager delivers it, and an Investigation opens — but
+nothing yet turns that into a Finding, which is the half that remains.
 
 - ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
-- `core/registry/` — manifest discovery, capability matching
-- `agents/_base/` — `BaseAgent`, tool binding, test fixtures
+- ✅ `core/registry/` — manifest discovery, capability matching
+- ✅ `agents/_base/` — `BaseAgent`, tool binding, test fixtures
 - **Argus** (anomaly detection) — the first real agent
-- Prometheus and Alertmanager connectors
+- ✅ Prometheus and Alertmanager connectors, read-only
+- ✅ **Alerting rules and the trigger path** — one rule per scenario, wired
+  through Alertmanager to `POST /webhooks/alertmanager`. Gated both directions
+  per rule: the scenario fires its alert, a clean baseline fires none.
 - `api/routers/` — investigations, agents, health
 - ✅ Simulator: metric, log and pipeline generation, five scenarios, `pantheon-sim`
 - ✅ **Coverage floor raised.** Set from what the code measures rather than an

@@ -77,6 +77,8 @@ NOISE: dict[MetricName, float] = {
     # Restarts are events, not a level. A healthy pod restarts zero times, and
     # jittering that would invent restarts nothing caused.
     MetricName.RESTARTS: 0.0,
+    # A flaky suite is noisy by nature; that is what makes it hard to call.
+    MetricName.CI_FAILURE_RATIO: 0.35,
 }
 
 #: How strongly each metric follows the daily cycle. Memory barely does - a
@@ -90,6 +92,8 @@ SEASONAL_AMPLITUDE: dict[MetricName, float] = {
     MetricName.DISK_USED: 0.01,
     # Restarts have no daily rhythm: a crash loop does not wait for the morning.
     MetricName.RESTARTS: 0.0,
+    # CI failures follow the working day, because that is when commits land.
+    MetricName.CI_FAILURE_RATIO: 0.30,
 }
 
 
@@ -195,6 +199,9 @@ class MetricsGenerator:
             # perturb restarts with `offset` and never `factor`: a multiple of
             # zero is still zero, and the injection would silently do nothing.
             MetricName.RESTARTS: 0.0,
+            # A healthy suite still flakes occasionally. Zero would make any
+            # `factor` deviation inert, exactly as it would for restarts.
+            MetricName.CI_FAILURE_RATIO: 0.02,
         }[metric]
 
         value = base * (1.0 + season) * week
@@ -284,6 +291,22 @@ class MetricsGenerator:
         disk = Gauge(
             "pantheon_node_disk_used_bytes", "Disk used", ["node", "cluster"], registry=registry
         )
+        # Capacity, so an alert can be written as a fraction rather than as a
+        # per-node byte threshold that silently breaks when a node is resized.
+        disk_total = Gauge(
+            "pantheon_node_disk_total_bytes",
+            "Disk capacity",
+            ["node", "cluster"],
+            registry=registry,
+        )
+        # A ratio, not a count: gauges are unaffected by compression, so this
+        # rule means the same thing at 1x and at 500x.
+        ci_failures = Gauge(
+            "pantheon_ci_pipeline_failure_ratio",
+            "Fraction of CI pipelines failing",
+            ["service", "cluster"],
+            registry=registry,
+        )
 
         for pod in PODS:
             state = self._state[pod.name]
@@ -308,7 +331,13 @@ class MetricsGenerator:
             state.restarts_total += restart_rate * interval / SECONDS_PER_DAY
             restarts.labels(*tags).inc(state.restarts_total)
 
+        for pod in PODS:
+            ci_failures.labels(pod.service, CLUSTER).set(
+                min(self.sample(pod, MetricName.CI_FAILURE_RATIO, simulated_seconds, phases), 1.0)
+            )
+
         for node in NODES:
+            disk_total.labels(node.name, CLUSTER).set(float(node.disk_bytes))
             disk.labels(node.name, CLUSTER).set(self._node_disk(node, simulated_seconds, phases))
 
         if client is None:
