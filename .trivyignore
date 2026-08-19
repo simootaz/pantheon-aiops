@@ -1,0 +1,22 @@
+# Trivy suppressions. One rule, one reason, one line each.
+#
+# Phase: 1 - Contracts & First Agent Path
+#
+# This file rather than an inline `# trivy:ignore:` comment because trivy scans
+# the RENDERED Helm output, and rendering strips template comments - an inline
+# suppression in a chart template silently does nothing. That is the same shape
+# as the pnpm overrides that sat in package.json where pnpm no longer reads
+# them: a fix that looks applied and changes nothing.
+#
+# Threshold stays CRITICAL,HIGH. Suppressing one rule with a reason is not the
+# same as lowering the bar, and nothing here may be added without one.
+
+# KSV-0109 "ConfigMap with secrets" fires on LLM_MAX_TOKENS because the key
+# contains "TOKEN". It is a token COUNT - an integer request limit - and every
+# real credential in this chart comes from a Secret, never from the ConfigMap
+# (see minio-secret.yaml and the secretRef entries in api-deployment.yaml).
+#
+# The identical name-shape trap caught this repository's own secret guard,
+# which flagged LLM_MAX_TOKENS and S3_ACCESS_KEY before being rewritten to
+# derive credential-ness from the settings model rather than from the name.
+KSV-0109

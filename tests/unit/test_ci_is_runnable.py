@@ -217,3 +217,71 @@ def test_each_integration_gate_has_its_own_target() -> None:
             f"{gate} is not named by any Makefile target, so nothing runs it. "
             "Add a target, or the gate exists and never executes."
         )
+
+
+# --- a scanner that aborts reports fewer findings ----------------------------
+
+
+def test_every_dockerfile_has_at_least_one_instruction() -> None:
+    """A comments-only Dockerfile aborts trivy's scan of it.
+
+    `connectors/kubernetes/Dockerfile` held four comment lines and no
+    instructions. Trivy reported "dockerfile parse error: file with no
+    instructions", exited 1, and the job failed - which looked like a finding
+    and was a crash. Removing it let the scan run to completion, whereupon it
+    reported FIVE HIGH misconfigurations that the abort had been hiding.
+
+    Absence of findings and absence of scanning are indistinguishable from the
+    outside. This asserts the scanner can read what it is pointed at.
+    """
+    offenders: list[str] = []
+    for path in sorted(REPO_ROOT.rglob("Dockerfile*")):
+        if "node_modules" in path.parts or not path.is_file():
+            continue
+        instructions = [
+            line
+            for line in read_data(path).splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if not instructions:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert not offenders, (
+        "Dockerfiles with no instructions, which abort trivy rather than being "
+        f"scanned: {offenders}. Write a real one or delete it."
+    )
+
+
+def test_every_deploy_manifest_parses() -> None:
+    """Same reasoning for YAML: a file trivy cannot parse is a file it cannot scan."""
+    import yaml
+
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "deploy").rglob("*.yaml")):
+        if "templates" in path.parts or "charts" in path.parts:
+            continue  # Helm templates are Go templates, not YAML, until rendered
+        try:
+            list(yaml.safe_load_all(read_data(path)))
+        except yaml.YAMLError as error:
+            offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {error}")
+
+    assert not offenders, "deploy manifests that do not parse: " + "; ".join(offenders)
+
+
+def test_suppressions_carry_a_reason() -> None:
+    """A bare rule id in .trivyignore is a threshold lowered one line at a time."""
+    ignorefile = REPO_ROOT / ".trivyignore"
+    if not ignorefile.is_file():
+        return
+
+    lines = read_data(ignorefile).splitlines()
+    for number, line in enumerate(lines, 1):
+        rule = line.strip()
+        if not rule or rule.startswith("#"):
+            continue
+        preceding = [x for x in lines[: number - 1] if x.strip()]
+        assert preceding and preceding[-1].strip().startswith("#"), (
+            f"{rule} on line {number} of .trivyignore has no comment above it. "
+            "Every suppression states why, or it is indistinguishable from "
+            "lowering the bar."
+        )
