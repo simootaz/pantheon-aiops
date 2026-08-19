@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -61,6 +61,12 @@ test:
 test-sim:
 	@echo "test-sim: needs the stack up; runs real scenarios, so it takes minutes."
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration -m integration --no-cov -v -s
+
+## test-connectors: prove the connector path against a live stack
+# Same require-stack discipline as test-sim: a skipped gate reads as a pass, and
+# this one exists to prove a real query reaches a real Prometheus.
+test-connectors:
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
 
 ## test-go: build and test every Go module in the workspace
 test-go:
