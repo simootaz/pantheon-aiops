@@ -30,6 +30,7 @@ dependencies = [
     # docs/adr/0006-agentic-ui-protocols.md.
     "ag-ui-protocol>=0.1.20,<0.2",
     "pydantic-settings>=2.7,<3",
+    "mcp>=1.2,<2",
 ]
 
 [project.scripts]
@@ -138,4 +139,10 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+    # A __main__ guard cannot execute under pytest by construction, so counting
+    # it as uncovered measures the test runner rather than the code. What the
+    # guard calls is tested directly - see the stdio entrypoint test in
+    # tests/unit/test_connectors.py, which asserts the wiring rather than
+    # excusing it.
+    'if __name__ == "__main__":',
 ]

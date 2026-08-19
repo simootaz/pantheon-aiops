@@ -232,3 +232,100 @@ def test_the_endpoint_has_no_simulator_specific_handling() -> None:
             f"webhooks.py references {forbidden!r} in executable code; the endpoint "
             "must not know the simulator exists"
         )
+
+
+# --- the Alertmanager receiver ------------------------------------------------
+
+
+def _alertmanager_body(status: str = "firing", alerts: int = 1) -> dict[str, object]:
+    return {
+        "version": "4",
+        "status": status,
+        "receiver": "pantheon",
+        "commonLabels": {"alertname": "CheckoutErrorRateHigh", "service": "checkout"},
+        "alerts": [
+            {
+                "status": status,
+                "labels": {"alertname": "CheckoutErrorRateHigh", "service": "checkout"},
+                "startsAt": "2026-08-18T12:00:00Z",
+                "fingerprint": f"aa{index:014x}",
+            }
+            for index in range(alerts)
+        ],
+    }
+
+
+def test_an_alertmanager_notification_opens_an_investigation(
+    client: TestClient, bus: InMemoryEventBus
+) -> None:
+    """Phase 1's headline, first half: an alert arrives and something begins."""
+    response = client.post("/webhooks/alertmanager", json=_alertmanager_body())
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["accepted"] is True
+    assert body["alert_count"] == 1
+
+    published = [envelope.event for envelope in bus.published]
+    assert [event.type for event in published] == ["trigger_received"]
+    event = published[0]
+    assert isinstance(event, TriggerReceivedEvent)
+    assert event.trigger.source == "alertmanager"
+
+
+def test_a_resolved_notification_is_accepted_too(client: TestClient, bus: InMemoryEventBus) -> None:
+    """Resolved is how an investigation learns its subject stopped."""
+    response = client.post("/webhooks/alertmanager", json=_alertmanager_body("resolved"))
+    assert response.status_code == 202
+    assert response.json()["status"] == "resolved"
+    assert len(bus.published) == 1
+
+
+def test_the_alertmanager_payload_is_stored_verbatim(
+    client: TestClient, bus: InMemoryEventBus
+) -> None:
+    """Its schema varies by version; parsing it down discards the useful half."""
+    payload = _alertmanager_body(alerts=3)
+    client.post("/webhooks/alertmanager", json=payload)
+    event = bus.published[0].event
+    assert isinstance(event, TriggerReceivedEvent)
+    assert event.trigger.payload == payload
+
+
+def test_a_body_without_alerts_is_rejected(client: TestClient, bus: InMemoryEventBus) -> None:
+    """400 rather than 202: accepting anything makes the endpoint a black hole."""
+    assert client.post("/webhooks/alertmanager", json={"status": "firing"}).status_code == 400
+    assert bus.published == []
+
+
+def test_a_title_is_derived_even_from_a_sparse_payload(
+    client: TestClient, bus: InMemoryEventBus
+) -> None:
+    """Alertmanager can omit commonLabels; the title must survive that."""
+    client.post("/webhooks/alertmanager", json={"status": "firing", "alerts": []})
+    event = bus.published[0].event
+    assert isinstance(event, TriggerReceivedEvent)
+    assert "alertmanager" in event.trigger.title
+
+
+def test_the_alertmanager_token_is_required_when_configured(
+    client: TestClient, bus: InMemoryEventBus, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same discipline as the GitLab hook, including the constant-time compare."""
+    monkeypatch.setenv("ALERTMANAGER_WEBHOOK_TOKEN", "s3cret-alert-token")
+    get_settings.cache_clear()
+
+    rejected = client.post(
+        "/webhooks/alertmanager",
+        json=_alertmanager_body(),
+        headers={"X-Pantheon-Token": "wrong"},
+    )
+    assert rejected.status_code == 401
+    assert bus.published == []
+
+    accepted = client.post(
+        "/webhooks/alertmanager",
+        json=_alertmanager_body(),
+        headers={"X-Pantheon-Token": "s3cret-alert-token"},
+    )
+    assert accepted.status_code == 202

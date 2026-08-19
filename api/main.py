@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api import __version__
-from api.routers import health, webhooks
+from api.routers import alerts, health, webhooks
 from core.bus import EventBus, InMemoryEventBus
 
 TITLE = "Pantheon API"
@@ -43,6 +43,7 @@ def create_app(*, event_bus: EventBus | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(webhooks.router)
+    app.include_router(alerts.router)
 
     return app
 

@@ -159,6 +159,10 @@ class AlertmanagerSettings(BaseSettings):
     model_config = _group("ALERTMANAGER_")
 
     url: HttpUrl = HttpUrl("http://localhost:9093")
+    #: Shared secret for POST /webhooks/alertmanager. Empty disables
+    #: verification, which is fine locally and is not fine anywhere a real
+    #: Alertmanager can reach.
+    webhook_token: SecretStr | None = None
 
     @property
     def base(self) -> str:
