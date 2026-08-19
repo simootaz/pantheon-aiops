@@ -58,9 +58,15 @@ test:
 # unreachable Loki makes all nine tests skip and pytest exit 0, so this target
 # reports success having asserted nothing. That is not hypothetical - it
 # happened on this machine, right after `make sim` loaded Loki with 240k lines.
+#
+# Named file, not the directory. This target ran `tests/integration` wholesale,
+# so adding the connector and alert gates swept them in - and CI's simulator job
+# starts only prometheus, loki and pushgateway, so they errored on a missing API
+# while the simulator assertions themselves all passed. Each gate needs its own
+# services, so each gets its own target.
 test-sim:
 	@echo "test-sim: needs the stack up; runs real scenarios, so it takes minutes."
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration -m integration --no-cov -v -s
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_simulator_data.py -m integration --no-cov -v -s
 
 ## test-connectors: prove the connector path against a live stack
 # Same require-stack discipline as test-sim: a skipped gate reads as a pass, and

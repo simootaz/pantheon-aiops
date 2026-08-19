@@ -21,9 +21,9 @@ here is the honest split:
 
 | What genuinely exists and works | What does not exist yet |
 |---|---|
-| **Contracts** — 19 Pydantic v2 models, the single source of truth | Agent implementations (all eleven) |
+| **Contracts** — 49 Pydantic v2 models, the single source of truth | Agent implementations (all eleven) |
 | **Codegen** — Pydantic → JSON Schema → Go + TypeScript, with drift detection | The orchestrator (Zeus) |
-| **78 guards** — structural, security and type-level, each verified against a planted violation | Connectors (all seven) |
+| **284 tests** — structural, security and type-level guards among them, each guard verified against a planted violation | Connectors (all seven) |
 | **Deploy skeleton** — Helm lints and templates, Terraform validates, Compose runs | Delphi and Cerberus behaviour (structure and contracts only) |
 | **CI** — 9 workflows, SHA-pinned, one required check | The AG-UI endpoint and A2UI surfaces |
 | **Dashboard** — builds, with the AG-UI client and A2UI renderer | Anything that produces a Finding |
@@ -32,9 +32,10 @@ here is the honest split:
 The interesting part right now is the **guards**, not the features. The
 scaffolding enforces its own rules: the allowlist cannot drift from the
 contract, agents cannot import the modules that hold plaintext, generated code
-cannot be hand-edited, and the repository map cannot go stale without a test
-failing. See [docs/guard-verification.md](docs/guard-verification.md) — including
-the three guards that turned out not to work, and how that was discovered.
+cannot be hand-edited, and the repository map cannot gain or lose a top-level
+entry without a test failing. See
+[docs/guard-verification.md](docs/guard-verification.md) — including the guards
+that turned out not to work, and how each was discovered.
 
 [ROADMAP.md](ROADMAP.md) has the phase plan.
 
