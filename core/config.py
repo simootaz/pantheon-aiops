@@ -116,7 +116,10 @@ class ApiSettings(BaseSettings):
 
     model_config = _group("PANTHEON_API_")
 
-    host: str = "0.0.0.0"
+    # nosec B104 - binding every interface is the point in a container; the
+    # network boundary is the container, not the bind address. Suppressed here
+    # rather than repo-wide so a real 0.0.0.0 bind elsewhere still trips.
+    host: str = "0.0.0.0"  # nosec B104
     port: int = Field(default=8000, ge=1, le=65535)
 
 

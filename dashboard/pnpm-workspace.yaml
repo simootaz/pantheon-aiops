@@ -1,3 +1,20 @@
+# pnpm settings. Since pnpm 10 these live here rather than under a `pnpm` key
+# in package.json - that key is silently IGNORED, which is how a fix can look
+# applied and change nothing. pnpm warns about it; the warning is easy to scroll
+# past, and this comment exists so the next person does not have to learn it
+# twice.
+#
+# Phase: 1 - Contracts & First Agent Path
+
+# Both are transitive through next@15.5.23 and both carry HIGH advisories that
+# `trivy fs` fails CI on. Overridden rather than bumping the framework, so the
+# change is narrow and reversible when next ships them itself:
+#
+#   sharp    GHSA-f88m-g3jw-g9cj  fixed in 0.35.0
+#   postcss  CVE-2026-73646       fixed in 8.5.18
+overrides:
+  sharp: '>=0.35.0'
+  postcss: '>=8.5.18'
 # pnpm policy for the dashboard.
 #
 # Phase: 4 - Delivery Flow
