@@ -42,6 +42,39 @@
 # `test_every_rule_can_fire_within_its_scenarios_fault_window`, so a rule cannot
 # silently become unfirable at one speed and a hair trigger at another.
 
+# HOW EVERY THRESHOLD HERE IS DERIVED
+# -----------------------------------
+# Not chosen. Each one is measured against the generator and must satisfy two
+# conditions, in this order of priority:
+#
+#   1. SUSTAIN. The signal must stay past the threshold for longer than the
+#      `for:` clause, with margin measured in EVALUATION INTERVALS - not in
+#      percent. The interval here is 5s, so a rule holding 10.5s against a
+#      `for: 10s` has half a second of slack: one evaluation landing late and
+#      it never fires. Treat anything under roughly one extra interval of
+#      headroom as failing.
+#
+#   2. CLEAR THE BASELINE. The threshold must sit above the **highest observed
+#      baseline value**, not the mean and not p99. A rule that fires on the
+#      worst clean minute of the week is an alarm, not a detector, and the
+#      tail is exactly where that happens.
+#
+# **Sustain is the binding constraint, and it is the counter-intuitive one.**
+# The instinct when tuning is to maximise separation from baseline by raising
+# the threshold, which is precisely how both rules that failed here were set:
+# each sat above the fault's own MEDIAN, so it fired on peaks and never held
+# its `for:`. noisy_neighbor's fault has median 0.355 against a 0.45 threshold;
+# flaky_test_storm's has median 0.138 against 0.20.
+#
+# So compare against the fault's median, not its peak. A threshold under the
+# median sustains; a threshold over it only touches. Where the two conditions
+# compete, take the lower threshold and the longer sustain: separation you can
+# spare is cheaper than a rule that cannot fire.
+#
+# Every value below states its measurement - baseline distribution, fault
+# median and peak, and the wall seconds it holds. A threshold without those
+# numbers beside it has not been derived, whatever it is set to.
+
 groups:
   - name: pantheon-simulator
     # 5s, matching evaluation_interval in prometheus.sim.yml. A rule evaluated

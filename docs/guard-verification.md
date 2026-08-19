@@ -807,6 +807,59 @@ phase-window diagnostic that bypassed `phases_at` and invented a defect that
 did not exist, and the connector gate whose five-minute window could not see a
 fault lasting one. **The instrument is code too, and nothing checks it.**
 
+## Right for reasons you did not have, 2026-08-20
+
+Before the simulator's determinism was fixed, the prediction was *"expect more
+than flaky_test_storm to move"*. Then a measurement said the other four had
+margin, and it was retracted on that evidence. With the generator producing a
+stable series, **two** rules moved - the original prediction was right.
+
+It does not count. The retraction rested on measurements that flipped
+`noisy_neighbor` between 11.4s and 7.0s across two runs of the same script;
+the re-assertion rested on measurements that reproduce exactly. Same
+conclusion, different epistemic status.
+
+> **A prediction that turns out right for reasons you did not have is not a
+> correct prediction.** Grade the reasoning, not the outcome. Otherwise the
+> lesson recorded is "trust the hunch", when the actual lesson is "the
+> instrument was broken and every number it produced was noise".
+
+Same family as the two already on this page: a push rejected for
+non-fast-forward rather than the ruleset under test, and a scanner exiting 1
+because it crashed rather than because it found something. In all three the
+**result** is what was expected and the **reason** is not the one claimed, and
+only the reason makes it evidence.
+
+## Identical numbers where a change was expected, 2026-08-20
+
+Worth its own heuristic, because it is cheap and it fires early.
+
+Measuring `memory_leak` produced this, across five different look-back offsets:
+
+```
+offset  10s: baseline max 1.065  fault max 1.065
+offset  20s: baseline max 1.121  fault max 1.121
+offset  30s: baseline max 1.156  fault max 1.156
+offset  45s: baseline max 1.175  fault max 1.175
+offset  60s: baseline max 1.152  fault max 1.152
+```
+
+Baseline and fault agreeing **to three decimals, five times**, was read as
+"this rule cannot separate the fault from the daily cycle" and reported as a
+finding. It meant the measurement was sampling `checkout` while the scenario
+faults `search`: both columns were the same clean series.
+
+> **A fault that moves nothing has either no effect, or is not being observed -
+> and the second is far more likely.** Identical numbers where a change was
+> expected is a signal about the instrument. Check what it is pointed at before
+> believing what it says.
+
+The reason it is worth a rule of its own: a *wrong* number invites suspicion,
+but an *unchanged* number reads as a finding - "no effect" is a legitimate
+result, so nothing about it looks like an error. That is what made it costly
+here, and it is the same reason a guard that cannot fail looks like a guard
+that passes.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
