@@ -458,3 +458,67 @@ def test_license_is_apache_2_consistently() -> None:
         import json
 
         assert json.loads(read_data(package_json)).get("license") == "Apache-2.0"
+
+
+# --- countable claims in the README ------------------------------------------
+
+_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+
+def _readme_number(pattern: str) -> int:
+    """The number the README claims, as a digit or as an English word."""
+    match = re.search(pattern, read_data(REPO_ROOT / "README.md"), re.IGNORECASE)
+    assert match, f"the README no longer makes the claim matched by {pattern!r}"
+    raw = match.group(1)
+    return int(raw) if raw.isdigit() else _NUMBER_WORDS[raw.lower()]
+
+
+def test_the_readme_counts_are_true() -> None:
+    """A number in prose is a claim, and it goes stale in total silence.
+
+    The audit of "X is guarded" claims found these last, because they do not
+    read like mechanism claims at all. They were the most wrong: 19 contract
+    models when there were 49, and "78 guards" when the suite had grown to 278
+    tests. Nothing had ever checked them, so nothing had ever objected.
+
+    The workflow and ADR counts were accurate at the time - which is the point.
+    Being right today is not the property worth having.
+    """
+    models = len(
+        [
+            line
+            for path in sorted((REPO_ROOT / "core" / "contracts").glob("*.py"))
+            for line in read_data(path).splitlines()
+            if re.match(r"^class [A-Za-z0-9_]+\(ContractModel\):", line)
+        ]
+    )
+    workflows = len(list((REPO_ROOT / ".github" / "workflows").glob("*.yml")))
+    adrs = len(list((REPO_ROOT / "docs" / "adr").glob("0*.md")))
+    tests = sum(
+        len(re.findall(r"^def test_", read_data(path), re.MULTILINE))
+        for path in sorted((REPO_ROOT / "tests").rglob("test_*.py"))
+    )
+
+    for claimed, actual, what in [
+        (_readme_number(r"\*\*Contracts\*\*[^|]*?(\d+) Pydantic"), models, "contract models"),
+        (_readme_number(r"\*\*(\d+) tests\*\*"), tests, "tests"),
+        (_readme_number(r"\*\*CI\*\*[^|]*?(\d+) workflows"), workflows, "workflows"),
+        (_readme_number(r"\*\*(\w+) ADRs\*\*"), adrs, "ADRs"),
+    ]:
+        assert claimed == actual, (
+            f"the README claims {claimed} {what}; there are {actual}. Update the "
+            "README in the same commit that changed the count."
+        )
