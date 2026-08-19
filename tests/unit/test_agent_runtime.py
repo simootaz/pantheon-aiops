@@ -524,3 +524,92 @@ def test_nothing_reads_the_token_budget_yet() -> None:
         "enforced until Delphi provides a meter (see ROADMAP). Wiring it means "
         "wiring it deliberately, with a test that can fail."
     )
+
+
+# --- retry semantics, encoded rather than promised ---------------------------
+
+STEP_EVENTS = ("StepStartedEvent", "StepFinishedEvent")
+
+
+def test_nothing_under_agents_emits_a_step_event() -> None:
+    """A retried run() cannot re-emit a step event, because it emits none.
+
+    `StepStartedEvent` is documented as "Zeus dispatched an agent" - it is a
+    plan-layer fact, and an agent does not know its plan step. Leaving that as a
+    docstring would make "retries do not double-count steps" a promise. This
+    makes it a property.
+    """
+    offenders: list[str] = []
+    for path in sorted(AGENTS_DIR.rglob("*.py")):
+        for node in ast.walk(ast.parse(read_data(path))):
+            # Importing one is the smell too, not only constructing one: nothing
+            # in the agent layer has any business naming a plan-layer event.
+            # The first version of this guard looked only at Name and Attribute
+            # nodes, so a planted `from core.contracts.events import
+            # StepStartedEvent` went straight past it.
+            names: list[str] = []
+            line = getattr(node, "lineno", 0)
+            if isinstance(node, ast.ImportFrom | ast.Import):
+                names = [alias.name.rsplit(".", 1)[-1] for alias in node.names]
+            elif isinstance(node, ast.Name):
+                names = [node.id]
+            elif isinstance(node, ast.Attribute):
+                names = [node.attr]
+
+            for name in names:
+                if name in STEP_EVENTS:
+                    offenders.append(f"{path.relative_to(REPO_ROOT)}:{line} ({name})")
+
+    assert not offenders, (
+        "step events emitted from the agent layer: "
+        + ", ".join(offenders)
+        + ". They belong to whoever owns the PlanStep. Emitting from an agent "
+        "double-counts on every retry, which surfaces weeks later as a number "
+        "nobody can explain."
+    )
+
+
+async def test_the_same_claim_twice_in_one_run_is_collapsed() -> None:
+    """Deduplication, for the half of it that can be enforced without a store."""
+
+    async def twice(_ctx: AgentContext) -> list[Finding]:
+        return [_an_observation("cpu high"), _an_observation("cpu high")]
+
+    outcome = await _Probe(twice).run(a_context())
+    assert len(outcome.findings) == 1, (
+        "the agent made the same claim twice and both survived; every downstream "
+        "consumer would count it twice"
+    )
+
+
+async def test_two_different_claims_in_one_run_both_survive() -> None:
+    """The control: collapsing must not swallow distinct claims."""
+
+    async def two(_ctx: AgentContext) -> list[Finding]:
+        return [_an_observation("cpu high"), _an_observation("memory high")]
+
+    outcome = await _Probe(two).run(a_context())
+    assert len(outcome.findings) == 2
+
+
+async def test_cross_attempt_dedup_is_not_claimed_to_exist() -> None:
+    """Two attempts yield two objects sharing one id, and nothing merges them.
+
+    Asserting the *current* behaviour rather than the intended one, so that
+    building the persistence upsert at Phase 2 breaks this test and forces the
+    docstring and the ROADMAP row to be updated together with the code.
+    """
+
+    async def one(_ctx: AgentContext) -> list[Finding]:
+        return [_an_observation("cpu high")]
+
+    ctx = a_context()
+    first = await _Probe(one).run(ctx)
+    second = await _Probe(one).run(ctx)
+
+    assert first.findings[0].id == second.findings[0].id, "the id must still be stable"
+    assert first.findings[0] is not second.findings[0], (
+        "nothing deduplicates across attempts yet - there is no store to upsert "
+        "into. If this now fails, persistence has landed: update the RETRIES "
+        "docstring in base_agent.py and retire the ROADMAP row."
+    )

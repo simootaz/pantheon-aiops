@@ -36,12 +36,24 @@ activities. The decisions, made now because ten agents will inherit them:
 
 * **`investigate()` need not be idempotent.** The runtime derives each Finding's
   id from its content - investigation, agent, kind, subject, window and title -
-  so the same claim gets the same id on every attempt and an upsert-shaped
-  consumer cannot duplicate it. `detected_at` is excluded from that key on
-  purpose: it is wall clock, and including it would make every retry a new id.
-  A retry that legitimately observes something different produces a different
-  id, and both are kept. Deduplicating identical claims is achievable; requiring
-  statistical logic over live data to be idempotent is a promise nobody keeps.
+  so the same claim carries the same id on every attempt. `detected_at` is
+  excluded from that key on purpose: it is wall clock, and including it would
+  make every retry a new id. A retry that legitimately observes something
+  different produces a different id, and both are kept. Requiring statistical
+  logic over live data to be idempotent is a promise nobody keeps; making
+  identical claims *identifiable* is achievable, so that is what is done.
+
+  **Deduplication itself is only half-built, and the half that exists is here.**
+  Same-id findings within one outcome are collapsed by `_collapse_duplicates`.
+  Collapsing across *attempts* needs a store to upsert into, and there is no
+  persistence layer yet - so today two attempts genuinely yield two objects
+  carrying one id, and nothing merges them. ROADMAP tracks that against Phase 2.
+
+* **Step lifecycle events are never emitted from here.** `StepStartedEvent` is
+  documented as *"Zeus dispatched an agent"*, which makes it the dispatcher's.
+  An agent does not know its plan step, so a retried `run()` cannot re-emit one.
+  `tests/unit/test_agent_runtime.py` fails the build if anything under `agents/`
+  constructs a step event - the claim is a guard, not a promise.
 * **A crash discards that attempt's findings.** Half a claim-set presented as
   complete is worse than an honest degradation, and the deterministic id means a
   successful retry recreates them. Where partial results genuinely matter, raise
@@ -50,11 +62,6 @@ activities. The decisions, made now because ten agents will inherit them:
   per-execution resources. The aggregate bound belongs to the retry policy.
 * **Budget exhaustion is not retryable**, and says so, so Phase 2 can map it to
   a non-retryable failure instead of burning attempts against the same wall.
-
-Step lifecycle events are deliberately absent: `StepStartedEvent` is documented
-as *"Zeus dispatched an agent"*, which makes it the dispatcher's to emit. An
-agent does not know its plan step, and emitting from here would double-count on
-every retry.
 
 Phase: 1 - Contracts & First Agent Path
 """
@@ -243,6 +250,7 @@ class BaseAgent(ABC):
             retryable = False
             stamped = [self._stamp(ctx, self._degraded_finding(ctx, reason, None))]
 
+        stamped = self._collapse_duplicates(stamped)
         await self._publish(ctx, stamped)
 
         return AgentOutcome(
@@ -318,6 +326,25 @@ class BaseAgent(ABC):
             )
         )
         return uuid5(FINDING_NAMESPACE, key)
+
+    @staticmethod
+    def _collapse_duplicates(findings: list[Finding]) -> list[Finding]:
+        """Two findings with the same id are the same claim, by construction.
+
+        The id is derived from investigation, agent, kind, subject, window and
+        title, so a collision means the agent said the same thing twice in one
+        run. Keeping both would double-count it in every downstream consumer.
+
+        This is the half of deduplication that can be enforced here. The other
+        half - two *attempts* of a retried activity each producing that claim -
+        is a persistence upsert, and there is no persistence yet. ROADMAP tracks
+        it against Phase 2 rather than leaving "retries cannot duplicate" to
+        stand as though it were already true.
+        """
+        seen: dict[UUID, Finding] = {}
+        for finding in findings:
+            seen.setdefault(finding.id, finding)
+        return list(seen.values())
 
     async def _publish(self, ctx: AgentContext, findings: list[Finding]) -> None:
         if self.bus is None:
