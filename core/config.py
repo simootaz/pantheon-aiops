@@ -313,6 +313,27 @@ class SimulatorSettings(BaseSettings):
         return _base(self.webhook_url)
 
 
+#: Secrets deliberately allowed to be absent in production, and why. Every
+#: SecretStr field must appear here or in REQUIRED_IN_PRODUCTION - a guard
+#: enforces the partition, so adding a credential forces a decision instead of
+#: letting it default to unguarded.
+#:
+#: This exists because CONTRIBUTING claimed "a guard checks each" of the three
+#: steps for adding a setting, and the third step had no guard at all. Four
+#: SecretStr fields had quietly fallen outside the required set, including one
+#: added in the same session that wrote the claim.
+OPTIONAL_IN_PRODUCTION: dict[str, str] = {
+    "GITHUB_TOKEN": "only needed by the GitHub connector; a Prometheus-only "
+    "deployment must not be forced to invent one",
+    "GITLAB_TOKEN": "same - the GitLab connector is optional. Note the webhook "
+    "token IS required: that one guards an inbound endpoint",
+    "LLM_API_KEY": "a local provider needs none. DelphiSettings already refuses "
+    "an auth_mode that wants a key without one, which is the tighter check",
+    "ALERTMANAGER_WEBHOOK_TOKEN": "empty disables verification, which is right "
+    "for a cluster where only Alertmanager can reach the endpoint. Unlike the "
+    "GitLab hook, this one is not reachable from the public internet",
+}
+
 #: Secrets that must be present when PANTHEON_ENV=production, and the variable
 #: an operator has to set. Mirrors the Helm chart's productionMode checks.
 REQUIRED_IN_PRODUCTION: tuple[tuple[str, str, str], ...] = (

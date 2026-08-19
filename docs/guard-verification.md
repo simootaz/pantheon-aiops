@@ -243,6 +243,71 @@ ten shapes were planted under undeclared names and all ten fire.
 > An exemption is a transfer of responsibility, not a removal of it. Write down
 > where the responsibility went, and test that it arrived.
 
+## A claim repeated is not a claim verified, 2026-08-19
+
+The hardest variant so far, because nothing fires and nothing looks wrong.
+
+`dashboard/package.json` correctly declared `packageManager: pnpm@11.21.0`, and
+three files said so: `docs/REPOSITORY_MAP.md`, `README.md`, and a comment beside
+the step in `ci-dashboard.yml` reading *"action-setup reads `packageManager`
+from dashboard/package.json"*. It does not. It reads the **repository root**
+`package.json`, and this repo has none, so every dashboard job failed with *"No
+pnpm version is specified"*.
+
+`git log --all -S packageManager -- tests/` returns exactly one commit: the fix.
+**There was never a guard.** Three independent-looking statements of the same
+claim made it feel established, and repetition is not verification - it is the
+same assertion counted three times.
+
+> **A claim repeated in several places is still one claim.** Prose describing a
+> mechanism is evidence that someone intended it, not that it exists. Only a
+> test that has been watched failing is evidence.
+
+### The audit that followed
+
+Every "guarded / enforced / asserted / fails the build" claim across
+`docs/REPOSITORY_MAP.md`, `README.md`, `CONTRIBUTING.md`, the ADRs and the
+workflow comments was checked against whether a test exists: 128 claim-bearing
+lines, 9 naming a specific test - **all 9 resolve to a real test** - and the
+remainder describing a mechanism without naming one.
+
+It found a second instance immediately. CONTRIBUTING states that adding a
+setting means three things "and a guard checks each". The third - *if it is a
+secret, a row in `REQUIRED_IN_PRODUCTION`* - had **no guard**. Four `SecretStr`
+fields had fallen outside the required set with nothing noticing, one of them
+added in the same session that wrote the claim.
+
+The reason it went unseen is worth naming on its own: the existing tests iterate
+**over** `REQUIRED_IN_PRODUCTION`, so they verify every entry present and say
+nothing about entries missing. **A guard over a list is not a guard that the
+list is complete.** Fixed by partitioning: every `SecretStr` must be classified
+required or optional-with-a-reason, and the partition is enforced.
+
+## A scanner that aborts reports fewer findings, 2026-08-19
+
+`connectors/kubernetes/Dockerfile` held four comment lines and no instructions.
+Trivy reported *"dockerfile parse error: file with no instructions"* and exited
+1 - which is indistinguishable, from the outside, from exiting 1 because it
+found something. Deleting the file let the scan run to completion, and it
+immediately reported **five HIGH misconfigurations the abort had been hiding**:
+MinIO and the backup CronJob running with writable root filesystems and no
+dropped capabilities, while every other workload already used the hardened
+context sitting in `values.yaml`.
+
+> **A scanner's exit reason matters as much as its exit code.** Zero findings
+> and zero scanning look identical in a green tick and nearly identical in a red
+> one. Check that the tool read what it was pointed at.
+
+Guarded at the cause rather than the symptom: every Dockerfile must contain an
+instruction, every deploy manifest must parse, and every `.trivyignore` entry
+must carry a comment - a bare rule id is the threshold lowered one line at a
+time.
+
+A related trap in the same fix: an inline `# trivy:ignore:KSV-0109` in a Helm
+template does nothing, because trivy scans the **rendered** chart and rendering
+strips template comments. Same shape as pnpm overrides sitting in the file pnpm
+stopped reading - a suppression that looks applied and changes nothing.
+
 ## How the audit was run
 
 For each guard: mutate the repository so the invariant is genuinely broken, run

@@ -229,6 +229,34 @@ relative volume. When you must throttle something, throttle it proportionally,
 derive the ratio from a fixed reference rather than the current value, and
 report the ratio — see `LogGenerator.sampling_ratio`.
 
+## Toolchain setup
+
+**Go 1.25.13.** `go.work`, all five `go.mod`, `Dockerfile.connector-go` and the
+workflows declare 1.25, and the pinned generators require it: `go-jsonschema`
+v0.24.1 and `golangci-lint` v2.12.2 both need >= 1.25.0.
+
+Set `GOTOOLCHAIN=local`:
+
+```bash
+go env -w GOTOOLCHAIN=local
+```
+
+This is load-bearing, not tidiness. With the default `auto`, a machine running
+an older Go silently downloads whatever a tool asks for and prints one line
+saying so. That line appeared on every local `make codegen` run for days while
+CI - which sets `GOTOOLCHAIN=local` - failed fifteen times on the mismatch.
+`local` turns it into an error you cannot read past.
+
+A working setup on this machine, for reference: the official archive extracted
+to `~/go-toolchains/go`, with `~/go-toolchains/go/bin` on the user PATH. Any
+install location works; what matters is that `go version` reports 1.25.x and
+`go env GOTOOLCHAIN` reports `local`.
+
+**Other tools.** `uv` owns Python. `pnpm` comes from `packageManager` in
+`dashboard/package.json`. `trivy` is worth installing at the version CI pins -
+0.70.0 - because its findings do not appear in the CI console log, only in the
+uploaded SARIF, so reproducing locally beats pushing to see.
+
 ## Local checks
 
 ```bash

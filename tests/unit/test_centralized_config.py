@@ -24,7 +24,7 @@ import pytest
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
-from core.config import REQUIRED_IN_PRODUCTION, Settings
+from core.config import OPTIONAL_IN_PRODUCTION, REQUIRED_IN_PRODUCTION, Settings
 from tests.mechanism import read_data, read_verbatim
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -379,3 +379,38 @@ def test_the_template_holds_nothing_shaped_like_a_credential() -> None:
         + ". .env.example is committed and excluded from gitleaks, so a secret "
         "here is a secret in the repository."
     )
+
+
+def test_every_secret_is_classified_for_production() -> None:
+    """The third step CONTRIBUTING promised a guard for, which had none.
+
+    Four SecretStr fields had fallen outside REQUIRED_IN_PRODUCTION with
+    nothing noticing - the existing tests iterate OVER that tuple, so they
+    verify the entries present and say nothing about the ones missing. A guard
+    that checks a list is not a guard that the list is complete.
+
+    Forcing the partition means adding a credential is a decision, and an
+    optional one has to say why.
+    """
+    declared = secret_variables(Settings, Settings.model_config.get("env_prefix", ""))
+    required = {variable for _group, _field, variable in REQUIRED_IN_PRODUCTION}
+    optional = set(OPTIONAL_IN_PRODUCTION)
+
+    unclassified = sorted(declared - required - optional)
+    assert not unclassified, (
+        f"SecretStr fields classified neither required nor optional in production: "
+        f"{unclassified}. Add a row to REQUIRED_IN_PRODUCTION, or an entry to "
+        "OPTIONAL_IN_PRODUCTION saying why absence is acceptable."
+    )
+
+    both = sorted(required & optional)
+    assert not both, f"classified as both required and optional: {both}"
+
+    stale = sorted((required | optional) - declared)
+    assert not stale, f"classified but no longer a SecretStr field: {stale}"
+
+
+def test_every_optional_secret_states_why() -> None:
+    """An entry with no reason is the classification skipped, not made."""
+    for variable, reason in OPTIONAL_IN_PRODUCTION.items():
+        assert len(reason.strip()) > 25, f"{variable} is optional with no real reason given"
