@@ -911,6 +911,57 @@ The Terraform tree is the largest gap: 28 files, no hook, no test, and
 pre-commit but it is not nothing, which is why this is reported rather than
 fixed - the shape of the hole matters more than plugging it today.
 
+## One missing question, asked four times, 2026-08-20
+
+Four defects stood between `flaky_test_storm` and firing. They are recorded
+together because they were not four independent misses: **each one produced the
+conditions that let the next pass.**
+
+**1. Nobody chose an aggregation.** `ci_failures.labels(pod.service, CLUSTER)`
+sat inside `for pod in PODS`, so three checkout pods wrote one series and the
+last in iteration order won. The other two samples were computed and discarded.
+The labels were right and the value was plausible, so nothing looked wrong -
+but the series was an artifact of list order rather than a decision.
+
+**2. The offline measurement took a `max` across pods.** Reasonable-looking,
+and it measured **a value the system never published**. It matched the live
+series closely by coincidence: the last pod in order happened to be the
+highest, so `last == max` and the numbers agreed for the wrong reason.
+
+**3. A threshold was derived from that max and shipped.** `0.12`, written into
+`rules.sim.yml` with its measurements beside it. Every number in that comment
+was real. All of them described a series that did not exist.
+
+**4. The headroom guard blessed a ratio it called a margin.**
+`BUDGET_FRACTION = 0.5` let a rule use half the visible fault, which for a 10s
+rule is exactly two evaluation intervals. `test_every_rule_can_fire_within_its
+_scenarios_fault_window` enforced that inequality and reported it as headroom.
+Both faces showed in one run: `noisy_neighbor` and `flaky_test_storm` had
+identical two-interval headroom, one fired and one did not.
+
+Four checks in sequence. Each passed. Each passed **because of the one before
+it**: the aggregation bug produced a series nobody had chosen, the measurement
+described that unchosen series, the threshold inherited the measurement, and
+the guard certified the speed at which none of it could hold.
+
+> **A defect chain is not four independent misses. It is one missing question
+> asked four times.** The question was *"what value does this actually
+> produce?"* - and nothing asked it until the live gate ran.
+
+That is the argument for the empirical gate in one line. Every offline artifact
+here was internally consistent: the code type-checked, the measurement
+reproduced exactly across runs, the threshold had its evidence written beside
+it, and the guard enforced a stated rule. Consistency propagated the error
+rather than catching it, because all four were reading the same wrong series.
+Only running the thing against a real Prometheus asked what came out the far
+end.
+
+The corresponding guards now ask that question at four points: the emission is
+structurally forbidden from depending on iteration order, the aggregation is
+asserted to be the mean, the headroom floor is derived from measured duty
+cycle, and the gate itself watches Alertmanager during the run rather than
+after. Each planted in both directions.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
