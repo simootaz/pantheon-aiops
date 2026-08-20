@@ -860,6 +860,57 @@ result, so nothing about it looks like an error. That is what made it costly
 here, and it is the same reason a guard that cannot fail looks like a guard
 that passes.
 
+## Five green hooks over a file that was not valid Markdown, 2026-08-20
+
+A merge commit went in with `README.md` and `ARCHITECTURE.md` unresolved. The
+README's status table held both the pre-rewrite layout and the front-door one,
+joined by `<<<<<<<` / `=======` / `>>>>>>>`, and the commit succeeded.
+
+Every hook passed:
+
+```
+ruff check ..... Passed      mypy (strict) ..... Passed
+ruff format .... Passed      gitleaks .......... Passed
+                             codegen drift ..... Passed
+```
+
+None of them reads Markdown. ruff and mypy are Python-only, gitleaks looks for
+credential shapes, and codegen-verify diffs generated output. The file was not
+valid Markdown - it was two documents spliced by conflict markers - and five
+checks reported success on it.
+
+> **A green hook run means the hooks that ran passed.** It says nothing about
+> the file types none of them inspect. Coverage is not the number of checks; it
+> is which inputs any check reads at all.
+
+Fixed with `check-merge-conflict` placed **first**, because every hook below it
+is meaningless on a file that still has markers in it. Planted both ways: a
+conflict block in `README.md` fails it, removing it passes.
+
+### What else nothing reads
+
+The obvious follow-up, since one hole of this shape implies others. Of 41
+tracked `.json`, `.toml`, `.sh` and `.tf` files, **34 are named by no test**,
+and no hook validates their syntax:
+
+| type | tracked | inspected by a hook | named by a test |
+|---|---|---|---|
+| `.py` | 224 | ruff, ruff-format, mypy | many |
+| `.tf` | 28 | none | **0 of 28** |
+| `.sh` | 7 | none | 3 (the codegen scripts) |
+| `.json` | 4 | none | 2 |
+| `.toml` | 2 | none | 2 |
+
+`.yaml`/`.yml` sit in between: no hook parses them, but tests do - workflows in
+`test_ci_workflows.py` and deploy manifests in `test_every_deploy_manifest_parses`.
+Helm templates are excluded there because they are Go templates rather than
+YAML until rendered, so they are covered only by `helm lint` in CI.
+
+The Terraform tree is the largest gap: 28 files, no hook, no test, and
+`terraform fmt`/`validate` run only in `ci-deploy`. That is later than
+pre-commit but it is not nothing, which is why this is reported rather than
+fixed - the shape of the hole matters more than plugging it today.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
