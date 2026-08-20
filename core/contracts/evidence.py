@@ -31,7 +31,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from core.contracts.base import ContractModel
 
@@ -81,24 +81,81 @@ class MetricSample(ContractModel):
     value: float
 
 
+class BaselineEstimator(StrEnum):
+    """How a baseline's centre and scale were computed.
+
+    A closed set rather than free text, and deliberately so: an estimator field
+    typed `str` is where `median_mad`, `MAD` and `robust` all appear within a
+    month, and nothing can compare two Findings after that. Every payload
+    carrying a baseline must name one - guarded by test.
+    """
+
+    #: median for centre, 1.4826 x MAD for scale. Robust to its own fault: MAD
+    #: has a 50% breakdown point, so a deviation occupying under half the window
+    #: leaves the estimate intact. Mean and standard deviation do not - a spike
+    #: inflates the scale and hides itself.
+    MEDIAN_MAD = "median_mad"
+
+    #: arithmetic mean and standard deviation. Present because it is what a
+    #: reader assumes unless told otherwise, and because a series known to carry
+    #: no contamination is cheaper to summarise this way. Not used for
+    #: detection.
+    MEAN_STDDEV = "mean_stddev"
+
+    #: no baseline was computed - the payload carries samples only. An explicit
+    #: member rather than a null: `Evidence | None` on an enum breaks Go
+    #: codegen with a duplicate UnmarshalJSON, which
+    #: `test_schema_contains_no_nullable_enum` forbids. It reads better too,
+    #: since "no baseline" is a state the producer chose rather than a field
+    #: someone forgot.
+    NOT_APPLICABLE = "not_applicable"
+
+
 class MetricWindowPayload(ContractModel):
     """A slice of a time series, with the baseline it is being judged against.
 
     `deviation_sigma` is carried rather than recomputed downstream so that the
     dashboard, the verdict and the audit trail all agree on how unusual this
     was - recomputing invites three different answers.
+
+    The baseline is `centre` and `scale` rather than `mean` and `stddev`, and
+    the estimator is named. Detection here is median/MAD, and writing a median
+    into a field called `baseline_mean` is a number that looks meaningful and is
+    not - the reader would compare it against a mean from somewhere else. The
+    previous fields were removed rather than kept alongside: two estimators side
+    by side invites exactly that comparison, and the one on display would be the
+    one that breaks under contamination.
     """
 
     kind: Literal["metric_window"] = "metric_window"
     metric: str = Field(description="Metric name, e.g. 'container_memory_working_set_bytes'.")
     unit: str = Field(default="", description="e.g. 'bytes', 'seconds', 'requests/s'.")
     samples: list[MetricSample] = Field(default_factory=list)
-    baseline_mean: float | None = None
-    baseline_stddev: float | None = Field(default=None, ge=0.0)
+    estimator: BaselineEstimator = Field(
+        default=BaselineEstimator.NOT_APPLICABLE,
+        description="How centre and scale were computed. Must be stated if either is set.",
+    )
+    baseline_centre: float | None = Field(
+        default=None, description="Middle of the baseline, by `estimator`."
+    )
+    baseline_scale: float | None = Field(
+        default=None, ge=0.0, description="Spread of the baseline, by `estimator`."
+    )
     deviation_sigma: float | None = Field(
-        default=None, description="How many standard deviations from baseline, signed."
+        default=None, description="Deviations from centre, in units of scale, signed."
     )
     window_seconds: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _a_baseline_names_its_estimator(self) -> MetricWindowPayload:
+        """Centre or scale without an estimator is an uninterpretable number."""
+        has_baseline = self.baseline_centre is not None or self.baseline_scale is not None
+        if has_baseline and self.estimator is BaselineEstimator.NOT_APPLICABLE:
+            raise ValueError(
+                "baseline_centre/baseline_scale set without an estimator: the numbers "
+                "cannot be compared against anything without knowing how they were computed"
+            )
+        return self
 
 
 class LogClusterPayload(ContractModel):

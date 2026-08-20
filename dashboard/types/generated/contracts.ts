@@ -398,12 +398,22 @@ export type Id6 = string;
 export type ObservedAt = string;
 export type Payload1 =
   MetricWindowPayload | LogClusterPayload | ManifestDiffPayload | K8SEventPayload | PipelineRunPayload;
-export type BaselineMean = number | null;
-export type BaselineStddev = number | null;
 /**
- * How many standard deviations from baseline, signed.
+ * Middle of the baseline, by `estimator`.
+ */
+export type BaselineCentre = number | null;
+/**
+ * Spread of the baseline, by `estimator`.
+ */
+export type BaselineScale = number | null;
+/**
+ * Deviations from centre, in units of scale, signed.
  */
 export type DeviationSigma = number | null;
+/**
+ * How centre and scale were computed. Must be stated if either is set.
+ */
+export type BaselineEstimator = "median_mad" | "mean_stddev" | "not_applicable";
 export type Kind1 = "metric_window";
 /**
  * Metric name, e.g. 'container_memory_working_set_bytes'.
@@ -1182,11 +1192,20 @@ export interface Evidence1 {
  * `deviation_sigma` is carried rather than recomputed downstream so that the
  * dashboard, the verdict and the audit trail all agree on how unusual this
  * was - recomputing invites three different answers.
+ *
+ * The baseline is `centre` and `scale` rather than `mean` and `stddev`, and
+ * the estimator is named. Detection here is median/MAD, and writing a median
+ * into a field called `baseline_mean` is a number that looks meaningful and is
+ * not - the reader would compare it against a mean from somewhere else. The
+ * previous fields were removed rather than kept alongside: two estimators side
+ * by side invites exactly that comparison, and the one on display would be the
+ * one that breaks under contamination.
  */
 export interface MetricWindowPayload {
-  baseline_mean?: BaselineMean;
-  baseline_stddev?: BaselineStddev;
+  baseline_centre?: BaselineCentre;
+  baseline_scale?: BaselineScale;
   deviation_sigma?: DeviationSigma;
+  estimator?: BaselineEstimator;
   kind?: Kind1;
   metric: Metric;
   samples?: Samples;

@@ -15,6 +15,7 @@ Phase: 1 - Contracts & First Agent Path
 from __future__ import annotations
 
 import typing
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, get_args
 
@@ -24,7 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from core.contracts import AgentManifest, EvidenceKind, RootCauseCategory
 from core.contracts.events import Event
-from core.contracts.evidence import EvidencePayload
+from core.contracts.evidence import BaselineEstimator, EvidencePayload, MetricWindowPayload
 from core.contracts.plan import PlanStep, StepStatus
 from tests.mechanism import read_data
 
@@ -464,3 +465,81 @@ def test_evidence_kind_is_derived_from_its_payload() -> None:
         payload=MetricWindowPayload(metric="container_memory_working_set_bytes"),
     )
     assert evidence.kind is EvidenceKind.METRIC_WINDOW
+
+
+# --- a baseline number is uninterpretable without its estimator --------------
+
+
+def test_a_baseline_without_an_estimator_is_rejected() -> None:
+    """Centre and scale mean nothing until you know how they were computed.
+
+    A median and a mean differ most exactly when it matters - under
+    contamination - so a bare number invites a comparison that is wrong in the
+    case anyone cares about. The field this replaced was called
+    `baseline_mean`, and detection here is median/MAD: writing one into the
+    other is the shape of claim this repository keeps finding.
+
+    `NOT_APPLICABLE` is a member rather than `None` because
+    `test_schema_contains_no_nullable_enum` forbids nullable enums - they emit
+    a duplicate `UnmarshalJSON` in Go. That guard caught this design on its
+    first run, and the explicit member is the better shape anyway: "no
+    baseline" becomes something the producer stated.
+    """
+    with pytest.raises(ValidationError, match="without an estimator"):
+        MetricWindowPayload(metric="pantheon_pod_cpu_cores", baseline_centre=1.0)
+    with pytest.raises(ValidationError, match="without an estimator"):
+        MetricWindowPayload(metric="pantheon_pod_cpu_cores", baseline_scale=0.5)
+    with pytest.raises(ValidationError, match="without an estimator"):
+        MetricWindowPayload(
+            metric="pantheon_pod_cpu_cores", baseline_centre=1.0, baseline_scale=0.5
+        )
+
+    named = MetricWindowPayload(
+        metric="pantheon_pod_cpu_cores",
+        estimator=BaselineEstimator.MEDIAN_MAD,
+        baseline_centre=1.0,
+        baseline_scale=0.5,
+    )
+    assert named.estimator is BaselineEstimator.MEDIAN_MAD
+
+    # A payload carrying no baseline says so, rather than leaving it null.
+    assert (
+        MetricWindowPayload(metric="pantheon_pod_cpu_cores").estimator
+        is BaselineEstimator.NOT_APPLICABLE
+    )
+
+
+def test_the_estimator_is_a_closed_set_in_every_language() -> None:
+    """Free text is where `median_mad`, `MAD` and `robust` all appear by month two.
+
+    Asserted in the generated artifacts rather than only in Python, because the
+    closed set is worth nothing if it arrives in Go or TypeScript as a bare
+    string - the dashboard would happily render a fourth spelling.
+    """
+    assert issubclass(BaselineEstimator, StrEnum)
+    members = {member.value for member in BaselineEstimator}
+    assert members == {"median_mad", "mean_stddev", "not_applicable"}, members
+
+    # The field must USE it. The first version of this guard asserted only that
+    # the enum existed, so widening the annotation to `str` passed it - the
+    # closed set sat beside a field that ignored it.
+    annotation = MetricWindowPayload.model_fields["estimator"].annotation
+    assert annotation is BaselineEstimator, (
+        f"MetricWindowPayload.estimator is annotated {annotation}, not the enum. "
+        "A closed set the field does not reference constrains nothing."
+    )
+
+    schema = read_data(REPO_ROOT / "core" / "contracts" / "export" / "pantheon.schema.json")
+    assert all(m in schema for m in ('"median_mad"', '"mean_stddev"', '"not_applicable"'))
+
+    typescript = read_data(REPO_ROOT / "dashboard" / "types" / "generated" / "contracts.ts")
+    assert "export type BaselineEstimator =" in typescript, (
+        "the TypeScript estimator is not a closed union"
+    )
+
+    go = read_data(REPO_ROOT / "pkg" / "contracts" / "contracts.gen.go")
+    assert "type BaselineEstimator string" in go
+    assert "enumValues_BaselineEstimator" in go, (
+        "Go carries the estimator without its enum validation, so an unknown "
+        "spelling would unmarshal silently"
+    )

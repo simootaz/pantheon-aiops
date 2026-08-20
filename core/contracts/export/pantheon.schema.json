@@ -836,6 +836,16 @@
       "title": "AuthMode",
       "type": "string"
     },
+    "BaselineEstimator": {
+      "description": "How a baseline's centre and scale were computed.\n\nA closed set rather than free text, and deliberately so: an estimator field\ntyped `str` is where `median_mad`, `MAD` and `robust` all appear within a\nmonth, and nothing can compare two Findings after that. Every payload\ncarrying a baseline must name one - guarded by test.",
+      "enum": [
+        "median_mad",
+        "mean_stddev",
+        "not_applicable"
+      ],
+      "title": "BaselineEstimator",
+      "type": "string"
+    },
     "BlastRadius": {
       "description": "How much can break if this Action is wrong.",
       "enum": [
@@ -2045,9 +2055,9 @@
     },
     "MetricWindowPayload": {
       "additionalProperties": false,
-      "description": "A slice of a time series, with the baseline it is being judged against.\n\n`deviation_sigma` is carried rather than recomputed downstream so that the\ndashboard, the verdict and the audit trail all agree on how unusual this\nwas - recomputing invites three different answers.",
+      "description": "A slice of a time series, with the baseline it is being judged against.\n\n`deviation_sigma` is carried rather than recomputed downstream so that the\ndashboard, the verdict and the audit trail all agree on how unusual this\nwas - recomputing invites three different answers.\n\nThe baseline is `centre` and `scale` rather than `mean` and `stddev`, and\nthe estimator is named. Detection here is median/MAD, and writing a median\ninto a field called `baseline_mean` is a number that looks meaningful and is\nnot - the reader would compare it against a mean from somewhere else. The\nprevious fields were removed rather than kept alongside: two estimators side\nby side invites exactly that comparison, and the one on display would be the\none that breaks under contamination.",
       "properties": {
-        "baseline_mean": {
+        "baseline_centre": {
           "anyOf": [
             {
               "type": "number"
@@ -2057,9 +2067,10 @@
             }
           ],
           "default": null,
-          "title": "Baseline Mean"
+          "description": "Middle of the baseline, by `estimator`.",
+          "title": "Baseline Centre"
         },
-        "baseline_stddev": {
+        "baseline_scale": {
           "anyOf": [
             {
               "minimum": 0.0,
@@ -2070,7 +2081,8 @@
             }
           ],
           "default": null,
-          "title": "Baseline Stddev"
+          "description": "Spread of the baseline, by `estimator`.",
+          "title": "Baseline Scale"
         },
         "deviation_sigma": {
           "anyOf": [
@@ -2082,8 +2094,13 @@
             }
           ],
           "default": null,
-          "description": "How many standard deviations from baseline, signed.",
+          "description": "Deviations from centre, in units of scale, signed.",
           "title": "Deviation Sigma"
+        },
+        "estimator": {
+          "$ref": "#/$defs/BaselineEstimator",
+          "default": "not_applicable",
+          "description": "How centre and scale were computed. Must be stated if either is set."
         },
         "kind": {
           "const": "metric_window",

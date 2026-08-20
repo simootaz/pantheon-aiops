@@ -209,6 +209,7 @@ def _an_observation(title: str = "something moved") -> Finding:
     from uuid import uuid4
 
     from core.contracts.evidence import (
+        BaselineEstimator,
         Evidence,
         EvidenceSource,
         MetricSample,
@@ -233,6 +234,9 @@ def _an_observation(title: str = "something moved") -> Finding:
                     metric="pantheon_pod_cpu_cores",
                     samples=[MetricSample(at=a_context().window_end, value=1.0)],
                     deviation_sigma=4.2,
+                    estimator=BaselineEstimator.MEDIAN_MAD,
+                    baseline_centre=1.0,
+                    baseline_scale=0.5,
                 ),
             )
         ],
