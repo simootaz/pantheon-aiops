@@ -962,6 +962,63 @@ asserted to be the mean, the headroom floor is derived from measured duty
 cycle, and the gate itself watches Alertmanager during the run rather than
 after. Each planted in both directions.
 
+## A constant read as a trend, 2026-08-20
+
+Distinct from measuring the wrong subject, and worth separating: **the number
+was real, and the pattern was imposed on it.**
+
+Loki's push endpoint started returning 500. Its log showed:
+
+```
+msg="checkpoint done" time=4m30.107457737s
+```
+
+Four and a half minutes for a WAL checkpoint reads as pathological, and the
+next step was going to be "checkpoints are growing and starving the
+heartbeat". Printing the column killed it:
+
+```
+11:05:36  4m30.014281535s      12:55:35  4m30.086528312s
+11:10:36  4m30.016202610s      13:00:35  4m30.090265305s
+11:15:36  4m30.021941609s      13:15:35  4m30.107457737s
+```
+
+Constant to three decimal places, across healthy periods and unhealthy ones
+alike. It is a **paced cycle**, not accumulating work, and it had been 4m30
+since before anything went wrong.
+
+> **Before reading a trend, check the column varies.** A fixed interval and
+> accumulating work look identical in the last few rows, and the last few rows
+> are what a `tail` shows you. One value repeated is not a slow rise.
+
+The real signal was in what the log did **not** contain: gaps. Nothing at all
+between 13:15:35 and 13:41:07, and an earlier silence from 11:26:20 to
+12:25:35. Loki was not slow, it was frozen - and the actual cause was that it
+had aged its **own** ring entry out (`unhealthy instances: 127.0.0.1:9095`, its
+own address) after its heartbeat stalled, leaving the distributor with zero
+healthy ingesters.
+
+Both hypotheses on the way there were wrong, and each was discarded by looking
+rather than by reasoning: "Loki stopped logging" (misread clock) and
+"checkpoints are growing" (constant column).
+
+## A test that exercised more than its subject, 2026-08-20
+
+The unit under test was the runner's *handling* of a rejected log push. The
+first version pointed it at a closed loopback port to provoke the rejection.
+
+It hung the suite past 600 seconds. Windows does not refuse a connection to a
+dead loopback port promptly, so three hundred ticks of connect-and-wait never
+finished. The test was measuring Windows' connection-refusal timing, which is
+not the subject and not a property this repository cares about.
+
+Rewritten to raise `httpx.HTTPStatusError` from a patched sink: 4.3 seconds,
+and it fails for exactly one reason.
+
+> **A test that exercises more than its subject fails for reasons unrelated to
+> its subject** - and passes for unrelated reasons too. Reach for a real socket
+> when the socket is what is being tested.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

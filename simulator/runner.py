@@ -82,6 +82,29 @@ class RunReport:
     achieved_speed: float = 0.0
     #: Fraction of log lines emitted. See LogGenerator.sampling_ratio.
     log_sampling_ratio: float = 1.0
+    #: Ticks whose log push was rejected, and what rejected them.
+    #:
+    #: A log sink that is down must not abort a metric measurement - Argus reads
+    #: metrics, and a run that dies at tick 3 because Loki returned 500 has
+    #: measured nothing. But a run that quietly proceeds with no logs is a run
+    #: whose conditions differ from the ones being characterised, and nothing in
+    #: the numbers would say so.
+    #:
+    #: Seen for real: the host suspended, Loki's ingester aged its own entry out
+    #: of the ring, and every push returned "at least 1 live replicas required,
+    #: could only find 0" for twenty-one minutes before it re-registered.
+    log_push_failures: int = 0
+    log_push_error: str | None = None
+
+    @property
+    def degraded(self) -> bool:
+        """Whether this run met the conditions it was meant to characterise.
+
+        Anything aggregated from several runs has to carry this per run. A
+        false-positive bound computed over ten runs of which three had no logs
+        is still usable; a bound that does not say which three is not.
+        """
+        return self.log_push_failures > 0
 
     @property
     def kept_up(self) -> bool:
@@ -154,7 +177,16 @@ class ScenarioRunner:
                                     simulated,
                                 )
                             )
-                report.log_lines += self.logs.push(lines, client)
+                try:
+                    report.log_lines += self.logs.push(lines, client)
+                except httpx.HTTPError as error:
+                    # Recorded, not swallowed. `degraded` is what downstream
+                    # reads; the first error is kept because the tenth is
+                    # usually the same one.
+                    report.log_push_failures += 1
+                    if report.log_push_error is None:
+                        report.log_push_error = f"{type(error).__name__}: {error}"
+                        self._say(f"log push failing, continuing without logs: {error}")
 
                 if send_pipelines:
                     report.pipelines_sent += self._maybe_send_pipeline(client, scenario, phases)

@@ -1,0 +1,130 @@
+"""Guards over Argus's calibration: a bound must say what it was computed over.
+
+Phase: 1 - Contracts & First Agent Path
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from agents.anomaly.calibration import (
+    MEASURED_COVERAGE,
+    SUSTAIN_SAMPLES,
+    WINDOW_SECONDS,
+    BaselineRun,
+    DegradationUnknownError,
+    DetectionCoverage,
+    RunStatus,
+    aggregate,
+    robust_z,
+)
+
+
+def _run(
+    index: int, degraded: bool | None, worst: float, status: RunStatus = RunStatus.COMPLETE
+) -> BaselineRun:
+    return BaselineRun(index=index, status=status, degraded=degraded, max_abs_z={"latency": worst})
+
+
+def test_an_aggregate_refuses_runs_whose_condition_is_unknown() -> None:
+    """The rule: no aggregate from run records without degradation status.
+
+    A false-positive bound over ten runs of which three had no logs is still
+    usable. A bound that does not say which three is not, because nobody
+    downstream can tell whether they are reading the system or an artefact of a
+    broken sink - and the number looks identical either way.
+
+    Same shape as `Verdict` requiring plan steps: a result that cannot be read
+    without knowing what actually ran should not be constructible.
+    """
+    with pytest.raises(DegradationUnknownError, match="no degradation status"):
+        aggregate([_run(1, False, 3.0), _run(2, None, 9.0)])
+
+    # Stated, and it aggregates - including when the answer is "yes, degraded".
+    bound = aggregate([_run(1, False, 3.0), _run(2, True, 9.0)])
+    assert bound.runs_total == 2
+    assert bound.runs_degraded == 1
+
+
+def test_an_aggregate_refuses_runs_that_did_not_finish() -> None:
+    """A partial run measured part of a baseline; its maximum is not comparable."""
+    with pytest.raises(DegradationUnknownError, match="not COMPLETE"):
+        aggregate([_run(1, False, 3.0), _run(2, False, 9.0, RunStatus.IN_PROGRESS)])
+    with pytest.raises(DegradationUnknownError, match="not COMPLETE"):
+        aggregate([_run(1, False, 3.0, RunStatus.FAILED)])
+
+
+def test_the_bound_is_reported_across_all_runs_and_the_clean_subset() -> None:
+    """Both numbers, because their difference is itself a finding.
+
+    If dropping the degraded runs moves the bound, that says how much a broken
+    log sink perturbs the metric baseline - worth knowing before Argus ships on
+    the number, and invisible if only one figure is reported.
+    """
+    bound = aggregate([_run(1, False, 3.0), _run(2, False, 3.4), _run(3, True, 11.0)])
+
+    assert bound.highest_abs_z_all == pytest.approx(11.0)
+    assert bound.highest_abs_z_clean == pytest.approx(3.4)
+    assert bound.materially_different, "an 11.0 against 3.4 is not a rounding difference"
+
+    tight = aggregate([_run(1, False, 4.0), _run(2, True, 4.1)])
+    assert not tight.materially_different
+
+
+def test_every_scenario_declares_what_this_method_sees_of_it() -> None:
+    """The onset-then-blind property is declared, not discovered at runtime.
+
+    A trailing-window estimator goes blind to a fault that outlasts its window -
+    the centre walks up to meet it. `disk_pressure` measured a peak z of 700
+    against a tail of 1.4. That is a property of the method, and no window
+    length hides it, so it is stated where the constants are.
+    """
+    from simulator.scenario import load_all
+
+    scenarios = {scenario.name for scenario in load_all()}
+    assert set(MEASURED_COVERAGE) == scenarios, (
+        "a scenario exists with no measured coverage. Run the sweep against the "
+        f"live stack and record it: {scenarios ^ set(MEASURED_COVERAGE)}"
+    )
+    assert DetectionCoverage.ONSET_ONLY in MEASURED_COVERAGE.values(), (
+        "no scenario is marked onset-only. Either the sweep was re-run and the "
+        "limitation genuinely went away, or this table was copied without measuring."
+    )
+
+
+def test_the_window_and_sustain_are_compatible() -> None:
+    """k must fit inside the shortest elevated stretch any scenario produces.
+
+    `noisy_neighbor` holds 14 samples above z=5. A sustain requirement near or
+    above that detects nothing there, however well it works elsewhere.
+    """
+    shortest_measured_stretch = 14
+    assert shortest_measured_stretch > SUSTAIN_SAMPLES, (
+        f"SUSTAIN_SAMPLES={SUSTAIN_SAMPLES} does not fit inside the "
+        f"{shortest_measured_stretch}-sample stretch noisy_neighbor produces"
+    )
+    assert shortest_measured_stretch < WINDOW_SECONDS, (
+        "the window is shorter than the fault it must judge against"
+    )
+
+
+def test_a_flat_series_does_not_divide_by_zero() -> None:
+    """`restarts` is exactly zero through a clean baseline, so MAD is zero."""
+    flat = [0.0] * 120
+    zs = robust_z(flat, window=90, scale_floor=1e-9)
+    assert all(z == 0.0 for z in zs), "a flat series produced a non-zero deviation"
+
+    spike = [0.0] * 120 + [1.0]
+    assert robust_z(spike, window=90, scale_floor=1e-9)[-1] > 0, (
+        "a departure from a flat baseline must still register"
+    )
+
+
+def test_the_window_looks_only_backwards() -> None:
+    """A centred window lets an anomaly pull the baseline it is judged against."""
+    values = [1.0] * 100 + [50.0] + [1.0] * 20
+    zs = robust_z(values, window=90, scale_floor=0.01)
+    assert zs[100] > 100, "the spike did not register against its own past"
+    assert zs[99] == pytest.approx(0.0, abs=1.0), (
+        "the sample before the spike moved, so the window is seeing the future"
+    )

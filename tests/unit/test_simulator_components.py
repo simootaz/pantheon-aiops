@@ -30,6 +30,7 @@ import pytest
 from typer.testing import CliRunner
 
 from core.contracts.root_cause import RootCauseCategory
+from simulator.alerting import GATE_TICK_SECONDS
 from simulator.cli import app
 from simulator.clock import FAST, REALTIME, SECONDS_PER_DAY, SimClock, describe
 from simulator.cluster import NODES, NODES_BY_NAME, PODS, PODS_BY_NAME, Pod
@@ -37,7 +38,7 @@ from simulator.log_generator import TEMPLATES, LogGenerator, LogLine
 from simulator.metrics_generator import NOISE as NOISE_TABLE
 from simulator.metrics_generator import MetricsGenerator, require_every_metric
 from simulator.pipeline_generator import PipelineGenerator
-from simulator.runner import ScenarioRunner
+from simulator.runner import RunReport, ScenarioRunner
 from simulator.scenario import (
     ActivePhase,
     Deviation,
@@ -984,3 +985,63 @@ def _emitted_ci_ratio(moment: float, active: list[ActivePhase], service: str) ->
         f"expected exactly one published series for {service}, found {len(matches)}: {matches}"
     )
     return float(matches[0].rsplit(" ", 1)[1])
+
+
+# --- a result that cannot be read without knowing what actually ran ----------
+
+
+def _run_with_log_sink(failing: bool) -> RunReport:
+    """Drive a run with metrics stubbed and the log sink either working or not.
+
+    Both sinks are stubbed rather than pointed at sockets. The unit under test
+    is the runner's *handling* of a rejected push, and an earlier version aimed
+    at a closed port instead - which hung, because Windows does not refuse a
+    connection to a dead loopback port promptly. Three hundred of those is a
+    test that never finishes.
+    """
+
+    def refuse(*_args: object, **_kwargs: object) -> int:
+        raise httpx.HTTPStatusError(
+            "at least 1 live replicas required, could only find 0",
+            request=httpx.Request("POST", "http://loki:3100/loki/api/v1/push"),
+            response=httpx.Response(500),
+        )
+
+    push = refuse if failing else (lambda *_a, **_k: 0)
+    with (
+        mock.patch.object(MetricsGenerator, "push", lambda *_a, **_k: None),
+        mock.patch.object(LogGenerator, "push", push),
+    ):
+        runner = ScenarioRunner(tick_seconds=GATE_TICK_SECONDS)
+        return runner.run(load("bad_deploy_5xx"), speed=120000.0, send_pipelines=False)
+
+
+def test_a_run_that_loses_its_log_sink_keeps_measuring_and_says_so() -> None:
+    """Argus reads metrics; a log sink being down must not abort a metric run.
+
+    A run that dies at tick 3 because the sink returned 500 has measured
+    nothing. But a run that quietly proceeds with no logs is a run whose
+    conditions differ from the ones being characterised, and no number in the
+    output would say so - so the tolerance has to be visible.
+
+    Seen for real: the host suspended, Loki's ingester aged its own entry out of
+    its own ring, and every push returned "at least 1 live replicas required,
+    could only find 0" for twenty-one minutes before it re-registered.
+    """
+    report = _run_with_log_sink(failing=True)
+
+    assert report.metrics_pushes > 0, "the metric measurement was abandoned when logs failed"
+    assert report.log_push_failures > 0, "the log failures were not recorded"
+    assert report.log_push_error is not None, "nothing says why the logs were lost"
+    assert "live replicas" in report.log_push_error
+    assert report.degraded, "a run that lost its logs does not report itself degraded"
+
+
+def test_a_clean_run_is_not_marked_degraded() -> None:
+    """The other direction: `degraded` has to mean something."""
+    report = _run_with_log_sink(failing=False)
+
+    assert report.metrics_pushes > 0
+    assert report.log_push_failures == 0
+    assert report.log_push_error is None
+    assert not report.degraded
