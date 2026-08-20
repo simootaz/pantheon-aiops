@@ -1157,6 +1157,50 @@ The cost is a few minutes per guard. The alternative is measured: four guards
 that read as complete, passed continuously, and were blind to the case that
 mattered.
 
+## A mechanism fitted to the points that suggested it, 2026-08-20
+
+**Both of us believed this one**, which is why it is filed as a rule rather
+than as an error. The maintainer endorsed the mechanism and directed a
+generator change on the strength of it; the agent produced the three-point fit
+that made it convincing. Neither pushed on it, because the arithmetic was real
+and the correlation was exact.
+
+`error_ratio`'s clean-baseline |z| measured 2.42, 18.18 and 4.71 at 228x, 630x
+and 2500x. The push tick against the 1s scrape gives 0.76, 2.10 and 8.33 ticks
+per scrape at those speeds. A beat between tick and scrape explains a
+non-monotonic noise floor peaking just past two ticks per scrape, and every
+number lined up.
+
+It was wrong. Holding the cadence fixed at 8 pushes per scrape - which removes
+the beat entirely - left the spike **higher**: 20.22 at 630x against 15.16
+unpaced, with 228x and 2500x unchanged.
+
+> **A mechanism fitted to the points that suggested it explains nothing until
+> it predicts a point it has not seen.** Three points and a plausible story
+> will always agree; that agreement is what the story was built from. The test
+> is a prediction that can come back no.
+
+### What a real test looked like
+
+The replacement hypothesis - that the window spans a fraction of the diurnal
+cycle, worst near two-thirds - was written down **with numbers, before the
+run**, in a committed file:
+
+| fraction | predicted | measured |
+|---|---|---|
+| 0.25 | 3 - 8 | **11.10** |
+| 0.50 | 10 - 18 | 18.43 |
+| 0.66 | 18 - 25 | 22.14 |
+| 1.00 | 3 - 8 | 6.57 |
+| 2.00 | 2 - 6 | 5.89 |
+
+Two further predictions were made specifically because they could fail
+independently of the first, and one of them did - see the entry below.
+
+The value of predicting first is not that it makes you right. It is that
+"11.10 where 3-8 was predicted" is a visible miss, where a number read after
+the fact would have been absorbed into the story without anyone noticing.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
