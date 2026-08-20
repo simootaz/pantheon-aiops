@@ -243,6 +243,96 @@ ten shapes were planted under undeclared names and all ten fire.
 > An exemption is a transfer of responsibility, not a removal of it. Write down
 > where the responsibility went, and test that it arrived.
 
+## Two kinds of guard, and a scanner rule
+
+### An absence assertion, deleted to add the feature
+
+`test_cross_attempt_dedup_is_not_claimed_to_exist` is a new shape here, and the
+opposite of everything else on this page. Every other guard protects the code
+from drifting away from its documentation. This one protects the **documentation
+from drifting ahead of the code**.
+
+It asserts what is true *today* - two retried attempts produce two Finding
+objects sharing one deterministic id, and nothing merges them, because no
+persistence layer exists to upsert into. Building that upsert **breaks the
+test**, which is the point: the failure is the reminder to retire the ROADMAP
+row and rewrite the `base_agent` RETRIES docstring in the same commit as the
+feature, rather than leaving a true-sounding claim about a component nobody
+built.
+
+> **An absence assertion must be deleted to add the feature.** When a docstring
+> describes a property the code does not yet have, assert the absence. The test
+> that fails when you finally build it is the one that makes the documentation
+> catch up.
+
+The overstatement it replaced was "an upsert-shaped consumer cannot duplicate
+it" - true of a consumer that did not exist. A design resting on a component
+nobody built reads exactly like a design resting on a component that works.
+
+### A scanner must enumerate every form of what it forbids
+
+Four guards in this repository have been too narrow, and each was found by
+running rather than by reading:
+
+| Guard | Form it missed |
+|---|---|
+| `.PHONY` completeness | a backslash continuation, so it never read the second line and reported six false positives |
+| the raw-file-read sweep | `.read_bytes()`, while `.read_text()` and `.open()` were covered |
+| the step-event guard | `from core.contracts.events import StepStartedEvent` — it walked `Name` and `Attribute` nodes only |
+| the alert look-back scanner | `offset 30s` — it enumerated `[range]` selectors only, so a rule needing 40s of history was measured at 10 and given a speed at which it could never fire |
+
+Each looked complete. Each was verified against one planted violation, and that
+violation happened to use the one form the scanner understood.
+
+> **A scanner must enumerate every syntactic form of the thing it forbids, and
+> planting one form verifies only that form.** Where something is expressible
+> several ways - an import versus a reference, `read_text` versus `read_bytes`,
+> a continued line versus a single one - plant each way. One green planting on a
+> multi-form rule is evidence about one form and silence about the rest.
+
+## The alert gate, and what running it found, 2026-08-18
+
+Two defects, neither visible from the YAML, both found by running the rules
+against real Prometheus rather than by reasoning about them.
+
+### A ramp measured against its own trailing average barely moves
+
+The memory rule compared working set against `avg_over_time(...[45s])`. That
+reads as a reasonable leak detector and is not one: the fault is a **ramp**, and
+a trailing average follows a ramp up, so the ratio sits near 1.2 however far the
+leak goes. Measured against Prometheus, it crossed the 1.5 threshold only
+momentarily - on the sawtooth of the OOM phase - and never held long enough to
+satisfy `for: 10s`.
+
+The same defect had already been diagnosed and fixed for the latency rule
+earlier in the branch. It was not carried across to memory. **Fixing one
+instance of a class and leaving another is its own failure mode**, and the only
+reason it surfaced is that the gate ran every rule rather than a representative
+one.
+
+`offset` compares two points instead of a point against a smear, so a sustained
+climb reads as sustained.
+
+### A gate that asserts after the run tests retained state
+
+The pushgateway holds the last values pushed. After a run whose fault is still
+active, those faulty numbers persist, Prometheus keeps scraping them, and an
+absolute-threshold rule keeps firing indefinitely. Three scenarios were passing
+partly on that - not on live data.
+
+A self-relative rule is what exposed it: once the run stops, the retained
+constant makes the series equal to its own past, the comparison collapses to 1,
+and the alert can never fire however long the test waits. The rule was correct
+and the gate was wrong.
+
+Both directions now watch **during** the run. The negative case too, and
+deliberately: a clean-baseline check that only looked at the end would miss a
+rule firing transiently in the middle, which would make it weaker than the
+positive checks it exists to qualify.
+
+> **Ask what the pass depends on.** A gate that reads state after the thing
+> under test has stopped may be reading an echo. If retained state can satisfy
+> the assertion, the assertion is about the store, not the system.
 ## A claim repeated is not a claim verified, 2026-08-19
 
 The hardest variant so far, because nothing fires and nothing looks wrong.
@@ -426,6 +516,83 @@ reported success while testing nothing.
 - **This is a snapshot.** A guard changed after this date is unverified until
   someone plants a violation against it again.
 
+## The two "delivery failures" that were not, 2026-08-19
+
+The alert gate sat at 5 of 8 with two failures reported as Alertmanager not
+receiving what Prometheus sent. The message read *"the alert fired in
+Prometheus but never reached Alertmanager"* - a sentence asserting the first
+half while testing neither.
+
+Sampling both endpoints together during a real run settled it in one pass:
+
+```
+t=326.1  prom=[CheckoutErrorRateHigh]  am=[CheckoutErrorRateHigh]   <- same 2s sample
+t=350.7  prom=[CheckoutErrorRateHigh]  am=[CheckoutErrorRateHigh]
+t=361.0  prom=[]                       am=[]                        <- ~5s after the run
+```
+
+**Delivery was never broken.** Alertmanager holds the alert in the same
+two-second sample Prometheus starts firing it. Both tests polled Alertmanager
+*after* the run returned, by which time the alert had resolved and been dropped.
+
+This is the defect already recorded on this page under *"a gate that asserts
+after the run tests retained state"* - fixed for the scenario tests on this
+same branch, and never carried across to these two. **Fixing one instance of a
+class and leaving another, twice on one branch.** The first pair was memory and
+latency; this pair is the two delivery gates.
+
+A second defect the same run exposed: the label test ran no scenario at all. It
+read Alertmanager directly and depended on the test above it having just left
+the alert there - so it would fail standalone even with delivery working, and
+passed for the wrong reason whenever ordering happened to suit it. It now runs
+its own scenario.
+
+> **A failure message that asserts half the chain hides which half broke.**
+> "Fired in Prometheus but never reached Alertmanager" named a culprit for a
+> run that had checked neither end. Assert each hop you name.
+
+## Two rules the claim audit produced, 2026-08-19
+
+### A sentence in the present tense about a test reads as a fact
+
+The audit found eight claims describing mechanisms that did not exist. The
+costliest said the repository map **"cannot go stale without a test failing"**
+- present tense, stated as fact, in the most-read file in the repository. Three
+files were committed without appearing in the map across three commits, every
+run green.
+
+Such a sentence is checkable in seconds and is among the least likely things in
+a repository to be checked, precisely because it does not read like a claim.
+"A guard asserts X" invites belief the way "we should assert X" does not.
+
+> **Any sentence asserting a mechanism must name the test that enforces it, or
+> be rewritten as intent rather than fact.** "`test_x` asserts X" is checkable
+> by one grep. "X is guarded" is a belief with no address.
+
+The nine claims in this repository that named a test all resolved to a real
+one. Every false claim was in the set that named none. That correlation is the
+whole argument: naming the test is not decoration, it is what makes the claim
+falsifiable.
+
+### Plant in the conditions the guard runs in
+
+The fourth too-narrow scanner, and the nastiest, because **the planting passed**.
+
+The map-currency guard read `git ls-tree HEAD`. Planting a new file the map
+omitted did not fail it: `ls-tree HEAD` reads the last commit, so a staged file
+is invisible until the commit *after* the one that added it. The guard looked
+verified while being blind to the exact moment it runs - pre-commit, before the
+commit exists. Switching to `git ls-files` made the same planting fail.
+
+The three earlier cases were scanners too narrow for a *syntactic* form. This
+one was narrow for a *temporal* one, which no amount of reading the regex would
+have shown.
+
+> **Plant in the conditions the guard runs in, not only the conditions
+> convenient to test.** A hook runs pre-commit, CI runs post-push, a scanner
+> runs against rendered output. If the planting does not reproduce that
+> context, a green planting is evidence about the test harness and silence
+> about the guard.
 ## A rejection is only evidence if the reason is the one you tested for, 2026-08-19
 
 Branch protection on `develop` was verified **behaviourally** rather than by
@@ -640,6 +807,161 @@ phase-window diagnostic that bypassed `phases_at` and invented a defect that
 did not exist, and the connector gate whose five-minute window could not see a
 fault lasting one. **The instrument is code too, and nothing checks it.**
 
+## Right for reasons you did not have, 2026-08-20
+
+Before the simulator's determinism was fixed, the prediction was *"expect more
+than flaky_test_storm to move"*. Then a measurement said the other four had
+margin, and it was retracted on that evidence. With the generator producing a
+stable series, **two** rules moved - the original prediction was right.
+
+It does not count. The retraction rested on measurements that flipped
+`noisy_neighbor` between 11.4s and 7.0s across two runs of the same script;
+the re-assertion rested on measurements that reproduce exactly. Same
+conclusion, different epistemic status.
+
+> **A prediction that turns out right for reasons you did not have is not a
+> correct prediction.** Grade the reasoning, not the outcome. Otherwise the
+> lesson recorded is "trust the hunch", when the actual lesson is "the
+> instrument was broken and every number it produced was noise".
+
+Same family as the two already on this page: a push rejected for
+non-fast-forward rather than the ruleset under test, and a scanner exiting 1
+because it crashed rather than because it found something. In all three the
+**result** is what was expected and the **reason** is not the one claimed, and
+only the reason makes it evidence.
+
+## Identical numbers where a change was expected, 2026-08-20
+
+Worth its own heuristic, because it is cheap and it fires early.
+
+Measuring `memory_leak` produced this, across five different look-back offsets:
+
+```
+offset  10s: baseline max 1.065  fault max 1.065
+offset  20s: baseline max 1.121  fault max 1.121
+offset  30s: baseline max 1.156  fault max 1.156
+offset  45s: baseline max 1.175  fault max 1.175
+offset  60s: baseline max 1.152  fault max 1.152
+```
+
+Baseline and fault agreeing **to three decimals, five times**, was read as
+"this rule cannot separate the fault from the daily cycle" and reported as a
+finding. It meant the measurement was sampling `checkout` while the scenario
+faults `search`: both columns were the same clean series.
+
+> **A fault that moves nothing has either no effect, or is not being observed -
+> and the second is far more likely.** Identical numbers where a change was
+> expected is a signal about the instrument. Check what it is pointed at before
+> believing what it says.
+
+The reason it is worth a rule of its own: a *wrong* number invites suspicion,
+but an *unchanged* number reads as a finding - "no effect" is a legitimate
+result, so nothing about it looks like an error. That is what made it costly
+here, and it is the same reason a guard that cannot fail looks like a guard
+that passes.
+
+## Five green hooks over a file that was not valid Markdown, 2026-08-20
+
+A merge commit went in with `README.md` and `ARCHITECTURE.md` unresolved. The
+README's status table held both the pre-rewrite layout and the front-door one,
+joined by `<<<<<<<` / `=======` / `>>>>>>>`, and the commit succeeded.
+
+Every hook passed:
+
+```
+ruff check ..... Passed      mypy (strict) ..... Passed
+ruff format .... Passed      gitleaks .......... Passed
+                             codegen drift ..... Passed
+```
+
+None of them reads Markdown. ruff and mypy are Python-only, gitleaks looks for
+credential shapes, and codegen-verify diffs generated output. The file was not
+valid Markdown - it was two documents spliced by conflict markers - and five
+checks reported success on it.
+
+> **A green hook run means the hooks that ran passed.** It says nothing about
+> the file types none of them inspect. Coverage is not the number of checks; it
+> is which inputs any check reads at all.
+
+Fixed with `check-merge-conflict` placed **first**, because every hook below it
+is meaningless on a file that still has markers in it. Planted both ways: a
+conflict block in `README.md` fails it, removing it passes.
+
+### What else nothing reads
+
+The obvious follow-up, since one hole of this shape implies others. Of 41
+tracked `.json`, `.toml`, `.sh` and `.tf` files, **34 are named by no test**,
+and no hook validates their syntax:
+
+| type | tracked | inspected by a hook | named by a test |
+|---|---|---|---|
+| `.py` | 224 | ruff, ruff-format, mypy | many |
+| `.tf` | 28 | none | **0 of 28** |
+| `.sh` | 7 | none | 3 (the codegen scripts) |
+| `.json` | 4 | none | 2 |
+| `.toml` | 2 | none | 2 |
+
+`.yaml`/`.yml` sit in between: no hook parses them, but tests do - workflows in
+`test_ci_workflows.py` and deploy manifests in `test_every_deploy_manifest_parses`.
+Helm templates are excluded there because they are Go templates rather than
+YAML until rendered, so they are covered only by `helm lint` in CI.
+
+The Terraform tree is the largest gap: 28 files, no hook, no test, and
+`terraform fmt`/`validate` run only in `ci-deploy`. That is later than
+pre-commit but it is not nothing, which is why this is reported rather than
+fixed - the shape of the hole matters more than plugging it today.
+
+## One missing question, asked four times, 2026-08-20
+
+Four defects stood between `flaky_test_storm` and firing. They are recorded
+together because they were not four independent misses: **each one produced the
+conditions that let the next pass.**
+
+**1. Nobody chose an aggregation.** `ci_failures.labels(pod.service, CLUSTER)`
+sat inside `for pod in PODS`, so three checkout pods wrote one series and the
+last in iteration order won. The other two samples were computed and discarded.
+The labels were right and the value was plausible, so nothing looked wrong -
+but the series was an artifact of list order rather than a decision.
+
+**2. The offline measurement took a `max` across pods.** Reasonable-looking,
+and it measured **a value the system never published**. It matched the live
+series closely by coincidence: the last pod in order happened to be the
+highest, so `last == max` and the numbers agreed for the wrong reason.
+
+**3. A threshold was derived from that max and shipped.** `0.12`, written into
+`rules.sim.yml` with its measurements beside it. Every number in that comment
+was real. All of them described a series that did not exist.
+
+**4. The headroom guard blessed a ratio it called a margin.**
+`BUDGET_FRACTION = 0.5` let a rule use half the visible fault, which for a 10s
+rule is exactly two evaluation intervals. `test_every_rule_can_fire_within_its
+_scenarios_fault_window` enforced that inequality and reported it as headroom.
+Both faces showed in one run: `noisy_neighbor` and `flaky_test_storm` had
+identical two-interval headroom, one fired and one did not.
+
+Four checks in sequence. Each passed. Each passed **because of the one before
+it**: the aggregation bug produced a series nobody had chosen, the measurement
+described that unchosen series, the threshold inherited the measurement, and
+the guard certified the speed at which none of it could hold.
+
+> **A defect chain is not four independent misses. It is one missing question
+> asked four times.** The question was *"what value does this actually
+> produce?"* - and nothing asked it until the live gate ran.
+
+That is the argument for the empirical gate in one line. Every offline artifact
+here was internally consistent: the code type-checked, the measurement
+reproduced exactly across runs, the threshold had its evidence written beside
+it, and the guard enforced a stated rule. Consistency propagated the error
+rather than catching it, because all four were reading the same wrong series.
+Only running the thing against a real Prometheus asked what came out the far
+end.
+
+The corresponding guards now ask that question at four points: the emission is
+structurally forbidden from depending on iteration order, the aggregation is
+asserted to be the mean, the headroom floor is derived from measured duty
+cycle, and the gate itself watches Alertmanager during the run rather than
+after. Each planted in both directions.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
@@ -647,5 +969,8 @@ fault lasting one. **The instrument is code too, and nothing checks it.**
 >
 > And when a guard fires, fix the code. Narrowing the guard to make it pass
 > converts a real finding into a permanent blind spot.
+>
+> Plant it in the conditions it will actually run in, and make every sentence
+> claiming it exists name it.
 
 _Phase: 0 - Scaffold & Tooling_

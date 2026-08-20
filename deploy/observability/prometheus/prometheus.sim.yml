@@ -35,6 +35,16 @@ global:
   external_labels:
     environment: simulation
 
+# Sim-only alerting rules. Same warning as the file itself: every `for:` here is
+# measured in seconds because time is compressed.
+rule_files:
+  - /etc/prometheus/rules.sim.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   - job_name: pushgateway
     # Essential: without it Prometheus overwrites the `job` and `instance`

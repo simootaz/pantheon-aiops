@@ -64,6 +64,18 @@ services:
   # Metrics arrive here because a pushgateway is the only push path Prometheus
   # offers without remote_write. It discards timestamps, which is why the scrape
   # is fast and a simulated day is compressed - see prometheus.sim.yml.
+  alertmanager:
+    # Sim-scoped config: seconds-scale grouping, one webhook receiver. The
+    # production-shaped config does not live here.
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ../observability/alertmanager/alertmanager.sim.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+
   pushgateway:
     image: prom/pushgateway:v1.11.1
     ports:
@@ -79,9 +91,11 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ../observability/prometheus/prometheus.sim.yml:/etc/prometheus/prometheus.sim.yml:ro
+      - ../observability/prometheus/rules.sim.yml:/etc/prometheus/rules.sim.yml:ro
       - prometheus-sim-data:/prometheus
     depends_on:
       - pushgateway
+      - alertmanager
 
   # Loki runs as uid 10001, and a fresh named volume is created root-owned, so
   # the container cannot create /loki/chunks and exits immediately. Compose

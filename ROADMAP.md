@@ -48,16 +48,19 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 The first end-to-end slice: an alert produces a Finding.
 
-**Two of six items are done.** The phase is not complete until an alert
-actually produces a Finding — contracts and a simulator do not, on their own,
-do that. A heading that reads as finished when four items are stubs is how a
-phase gets declared over.
+**Five of seven items are done.** The phase is not complete until an alert
+actually produces a Finding. The trigger half now runs end to end — a scenario
+fires a real alert, Alertmanager delivers it, and an Investigation opens — but
+nothing yet turns that into a Finding, which is the half that remains.
 
 - ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
-- `core/registry/` — manifest discovery, capability matching
-- `agents/_base/` — `BaseAgent`, tool binding, test fixtures
+- ✅ `core/registry/` — manifest discovery, capability matching
+- ✅ `agents/_base/` — `BaseAgent`, tool binding, test fixtures
 - **Argus** (anomaly detection) — the first real agent
-- Prometheus and Alertmanager connectors
+- ✅ Prometheus and Alertmanager connectors, read-only
+- ✅ **Alerting rules and the trigger path** — one rule per scenario, wired
+  through Alertmanager to `POST /webhooks/alertmanager`. Gated both directions
+  per rule: the scenario fires its alert, a clean baseline fires none.
 - `api/routers/` — investigations, agents, health
 - ✅ Simulator: metric, log and pipeline generation, five scenarios, `pantheon-sim`
 - ✅ **Coverage floor raised.** Set from what the code measures rather than an
@@ -127,6 +130,7 @@ changing it. Nothing here is forgotten; each row is a debt with a due date.
 | **Simulator compression ceiling** | ~`tick_seconds / 0.29` — a tick costs two HTTP round trips whatever it covers | batched or in-process ingestion if a scenario ever needs more | **When a scenario cannot be expressed within it.** Not a defect: `RunReport.achieved_speed` and `kept_up` report the shortfall instead of hiding it, and the gate asserts on the speed actually delivered. Raising `tick_seconds` buys compression linearly and costs phase-boundary resolution |
 | **`gen_ts_api.sh`** | does not exist | additive generator for endpoint-surface types (paths, params, status codes) from OpenAPI | **Phase 1**, alongside real routes. Separate from `gen_ts.sh`: domain types come from JSON Schema so they are not shaped by routing accidents |
 | **`AgentBudget.max_tokens`** | carried on every manifest, enforced nowhere | enforced against Delphi's token meter | **Phase 2, when Delphi lands.** Nothing consumes tokens yet, so there is no meter to enforce against, and an enforcement path that cannot be tested is the unfailable-guard class. `test_nothing_reads_the_token_budget_yet` asserts the field stays untouched, so connecting it is a deliberate act rather than a half-finished one |
+| **Alert-gate stability, measured** | one green 8/8 run | run the gate **N times** and record the pass rate | **Before the first release**, not now — one run takes 48 minutes and Argus is the priority. A single green run is not a stability claim, and this gate has form: `noisy_neighbor` passed once at two evaluation intervals of headroom, on alignment luck, and `flaky_test_storm` failed at the identical figure. `MIN_HEADROOM_INTERVALS = 6` should make that unrepeatable; nothing has *shown* it. A rule that passes on alignment reads as green rather than as flake, so the pass rate is the only thing that distinguishes them |
 | **`test_connector_path.py` in CI** | local only; no CI job starts the API | a CI job that brings up the API alongside Prometheus and runs `make test-connectors` | **Next CI branch.** The gate exists and passes locally but never executes on a runner, which is the shape this repository keeps finding. Deferred out of `fix/ci-green` deliberately: that branch's job was to make fifteen red runs green, and adding a job that has never run is how it would have stayed red |
 | **Cross-attempt finding dedup** | ids are deterministic; only same-run duplicates are collapsed | a persistence upsert keyed on the Finding id | **Phase 2, with the persistence layer.** The id makes an identical claim *identifiable* across retries, which is the hard half. Actually merging two attempts needs a store to upsert into, and there is none - so today two attempts yield two objects sharing one id. `test_cross_attempt_dedup_is_not_claimed_to_exist` asserts the current behaviour, so building the upsert breaks it and forces this row and the `base_agent` docstring to be retired together |
 | **Agent retry aggregate bound** | each attempt gets a fresh budget | `ScheduleToClose` plus a maximum attempt count on the activity | **Phase 2, with Temporal.** Seconds and tool calls are per-execution resources, so N retries × `max_tool_calls` is the real worst case. That ceiling belongs to the retry policy, which does not exist yet |
