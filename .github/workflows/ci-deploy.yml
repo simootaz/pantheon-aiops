@@ -113,9 +113,24 @@ jobs:
           set -euo pipefail
           # Ollama behind a profile is what lets the stack run with no API keys
           # while staying out of the default footprint.
-          if docker compose -f docker-compose.yml config --services | grep -qx ollama; then
+          #
+          # Captured into variables rather than piped into `grep -q`. Under
+          # `pipefail`, `grep -q` exits on its first match and closes the pipe,
+          # `docker compose` takes EPIPE mid-write and returns non-zero, and the
+          # pipeline inherits that - so the step failed with exit 255 and no
+          # output whenever docker had not finished writing first. A race, and
+          # it flaked: the same job on the same commit failed once and passed on
+          # re-run. A guard that fails by luck teaches people to press re-run,
+          # which is how a real failure gets waved through.
+          default_services=$(docker compose -f docker-compose.yml config --services)
+          local_services=$(docker compose -f docker-compose.yml --profile llm-local config --services)
+
+          if grep -qx ollama <<<"$default_services"; then
             echo "::error::ollama appears without its profile; it must stay opt-in" >&2
             exit 1
           fi
-          docker compose -f docker-compose.yml --profile llm-local config --services | grep -qx ollama
+          if ! grep -qx ollama <<<"$local_services"; then
+            echo "::error::ollama is missing from the llm-local profile; nothing serves local models" >&2
+            exit 1
+          fi
           echo "ollama is correctly gated behind the llm-local profile"

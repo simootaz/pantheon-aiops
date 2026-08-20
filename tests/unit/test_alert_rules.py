@@ -32,6 +32,7 @@ from simulator.alerting import (
     fault_seconds,
     gate_speed,
     max_speed_for,
+    wall_seconds,
 )
 from simulator.scenario import Scenario, load_all
 from tests.mechanism import read_data, read_verbatim
@@ -272,3 +273,40 @@ def test_every_rule_keeps_whole_evaluation_intervals_of_headroom(rule: dict[str,
         f"{MIN_HEADROOM_INTERVALS:.0f}. At two intervals this gate has been "
         "observed both firing and not firing on the same configuration."
     )
+
+
+def test_a_rule_needing_no_time_is_rejected_rather_than_dividing_by_zero() -> None:
+    """`max_speed_for` divides by the time a rule needs, so zero has to be refused.
+
+    The per-module coverage floor caught this one: `simulator/alerting.py` sat
+    at 89.7% because the newest logic on the branch - the headroom bound - had
+    its error path and one of its two branches untested. The aggregate was
+    97.18% and hid it, which is exactly why the floor is per-module.
+
+    A rule with no range selector and no `for:` is not a rule that fires
+    instantly; it is a rule whose YAML is malformed, and the ceiling it implies
+    is infinite. Refusing it beats returning `inf` and picking a speed from it.
+    """
+    scenario = scenarios()["bad_deploy_5xx"]
+
+    for needs_nothing in (0.0, -1.0, -30.0):
+        with pytest.raises(ValueError, match="no time at all"):
+            max_speed_for(scenario, needs_nothing)
+
+    # The other side of the branch: a positive requirement returns a real ceiling.
+    assert max_speed_for(scenario, 10.0) > 0.0
+
+
+def test_wall_seconds_reports_how_long_a_run_takes() -> None:
+    """The arithmetic the gate budgets against, asserted rather than assumed.
+
+    `wall_seconds` is what tells a caller a scenario at 285x takes minutes
+    rather than hours. It was the other uncovered line in the module.
+    """
+    scenario = scenarios()["bad_deploy_5xx"]
+
+    assert wall_seconds(scenario, 1.0) == pytest.approx(scenario.total_seconds)
+    assert wall_seconds(scenario, 100.0) == pytest.approx(scenario.total_seconds / 100.0)
+
+    # Faster compression, shorter run - the relationship the gate depends on.
+    assert wall_seconds(scenario, 500.0) < wall_seconds(scenario, 100.0)
