@@ -1073,6 +1073,90 @@ Two samples from an unmapped space are not a bound, so neither 2.63 nor 15.67
 is one. The candidates - compression speed, window duration, which services
 were covered - are being varied one at a time before any threshold is set.
 
+## The ground truth can have artifacts the real system does not, 2026-08-20
+
+The most dangerous instrument defect on this page, because the instrument is
+supposed to be authoritative.
+
+`error_ratio`'s clean-baseline |z| was isolated to a beat between the
+simulator's push tick and Prometheus's scrape interval: 0.76, 2.10 and 8.33
+ticks per scrape at 228x, 630x and 2500x, with the worst noise just past two.
+The analysis was right, and it leads somewhere other than a threshold.
+
+**That beat exists only because of compression.** The push tick scales with
+speed; the scrape does not. Nothing on a real cluster pushes at eight times the
+scrape rate. So a threshold calibrated against this noise floor would be
+calibrated against a phenomenon Argus will never meet in production - and it
+would look, in every artifact downstream, exactly like a property of the data.
+
+> **An artifact in the ground-truth generator propagates as truth.** Thresholds
+> are derived from it, Findings are judged against it, and agent scoring will
+> eventually be graded on it. Every one of those inherits the artifact wearing
+> the appearance of a measured property, because the generator is the thing
+> everything else is checked against.
+
+The earlier instrument defects on this page were *visible* once looked for: the
+wrong pods, a `max` over a series never published, a non-deterministic seed.
+This one produces correct, reproducible, internally consistent measurements of
+something that is not real.
+
+So the generator is fixed rather than the artifact characterised: the push
+cadence is decoupled from compression, ticking on a fixed wall schedule and
+advancing simulated time per tick instead. Characterising the artifact would
+have produced a defensible number, derived live, reproducible across runs, and
+wrong for production - the one failure mode none of the existing rules on this
+page would have caught.
+
+**Stated as a limitation regardless of how it resolves:** thresholds derived
+under compression may not transfer to an uncompressed cluster. That does not
+invalidate simulator-derived calibration, but a reader must not take these
+numbers as production-ready.
+
+## Procedure: enumerate the forms before writing the matcher
+
+Not an observation - a step to perform. This has now produced four defects, all
+the same shape, so it is written as something to do rather than something to
+remember.
+
+The four:
+
+| matcher | form it missed |
+|---|---|
+| `.PHONY` completeness | a backslash continuation, so it never read the second line |
+| the raw-read sweep | `.read_bytes()`, while `read_text()` and `open()` were covered |
+| the step-event guard | `from X import Y`, having walked `Name` and `Attribute` nodes only |
+| the counted-noun guard | `Decision Records` against a case-sensitive `decision records` |
+
+Each was written by looking at the example in front of it and describing that.
+Each then matched exactly the example in front of it. Calling this an attention
+lapse four times has not stopped it, because it is not one - **a matcher shaped
+by its first example is a design method, and it produces this result reliably.**
+
+### The step
+
+**Before writing the matcher, write down the forms it must catch, as test data.
+Then write the matcher against that list.** The enumeration is the design; the
+regex or AST walk is the implementation. Doing them in the other order lets the
+first example choose the shape.
+
+Prompts for the enumeration, from the four above:
+
+- **Case** - `MAD`, `mad`, `Mad`. Is the input source-controlled or prose?
+- **Import and reference** - `import x`, `from x import y`, `x.y`, an alias.
+- **Whitespace and continuation** - a line break, a backslash, a wrapped list.
+- **Plural and singular** - `test`/`tests`, `record`/`records`.
+- **Synonyms for the same call** - `read_text`, `read_bytes`, `open().read()`.
+- **Negation and absence** - does the guard need to fire when something is
+  *missing*, and can it see a missing thing at all?
+
+Then plant **each enumerated form**. One green planting on a multi-form rule is
+evidence about one form and silence about the rest - which is already on this
+page, and is what this procedure operationalises.
+
+The cost is a few minutes per guard. The alternative is measured: four guards
+that read as complete, passed continuously, and were blind to the case that
+mattered.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
