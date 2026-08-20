@@ -210,8 +210,17 @@ class ScenarioRunner:
                     self._say(f"phase started: {entering}")
                 for leaving in sorted(active - names):
                     self._say(f"phase ended: {leaving}")
-                    report.fault_ended_wall = time.monotonic() - started
                 active = names
+                if names:
+                    # The last moment a phase was ACTIVE, not the last exit
+                    # observed. Recording exits made the fault window depend on
+                    # tick alignment: a run whose final tick lands before the
+                    # last phase ends never sees that phase leave, so the window
+                    # kept whatever earlier exit it had seen. bad_deploy_5xx
+                    # reported a 3-second fault against an actual 50 - it had
+                    # recorded deploy_lands ending at offset 610 and never
+                    # observed errors_spike or pool_exhaustion end at all.
+                    report.fault_ended_wall = time.monotonic() - started
 
                 self.metrics.push(simulated, active_phases, tick, client)
                 report.metrics_pushes += 1

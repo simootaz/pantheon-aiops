@@ -16,6 +16,7 @@ from agents.anomaly.calibration import (
     DegradationUnknownError,
     DetectionCoverage,
     MetricNotCalibratedError,
+    NonFiniteSampleError,
     RunStatus,
     aggregate,
     robust_z,
@@ -172,3 +173,29 @@ def test_every_declared_threshold_carries_the_measurement_behind_it() -> None:
             "condition is not a bound over a wide one"
         )
         assert entry.margin > 1.0, metric
+
+
+def test_a_nan_reaching_a_z_computation_raises() -> None:
+    """NaN propagates through median and MAD without complaint.
+
+    `0/0` in PromQL yields NaN. `statistics.median` of a list containing one
+    returns NaN, the scale becomes NaN, and every comparison against it is
+    False - so nothing fires and nothing errors. In the first peer-relative run
+    every `error_ratio` baseline was NaN and it reached a results table looking
+    like ordinary output, with plausible fault numbers beside it.
+
+    A number that looks like a measurement and is not, which is the class this
+    whole document is about. It must be loud.
+    """
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        values = [1.0] * 100 + [bad] + [1.0] * 20
+        with pytest.raises(NonFiniteSampleError, match="non-finite"):
+            robust_z(values, window=90, scale_floor=0.01)
+
+    # The index is reported, because "somewhere in 121 samples" is not actionable.
+    values = [1.0] * 50 + [float("nan")] + [1.0] * 70
+    with pytest.raises(NonFiniteSampleError, match=r"index \[50\]"):
+        robust_z(values, window=90, scale_floor=0.01)
+
+    # Finite input still works.
+    assert robust_z([1.0] * 100 + [9.0], window=90, scale_floor=0.01)[-1] > 0

@@ -11,6 +11,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -73,6 +74,17 @@ class MetricThreshold:
     @property
     def margin(self) -> float:
         return self.threshold / self.observed_baseline_max if self.observed_baseline_max else 0.0
+
+
+class NonFiniteSampleError(ValueError):
+    """Raised when nan or inf reaches a z computation.
+
+    `0/0` in PromQL yields NaN, and `statistics.median` propagates it without
+    complaint. Every `error_ratio` row of the first peer-relative run was `nan`
+    for exactly this reason, and the nan reached a results table before anyone
+    noticed - the fault values printed as ordinary numbers while the scale they
+    were divided by was nan-contaminated.
+    """
 
 
 class MetricNotCalibratedError(LookupError):
@@ -300,6 +312,16 @@ def robust_z(values: list[float], window: int, scale_floor: float) -> list[float
     through a clean baseline, where MAD is 0 and every deviation divides by
     nothing.
     """
+    non_finite = [i for i, v in enumerate(values) if not math.isfinite(v)]
+    if non_finite:
+        raise NonFiniteSampleError(
+            f"{len(non_finite)} non-finite sample(s) at index {non_finite[:5]} reached a z "
+            "computation. NaN propagates silently through median and MAD, so a centre and "
+            "scale derived from it are nan and every comparison against them is False - a "
+            "number that looks like a measurement and is not. Drop or define the undefined "
+            "samples before calling this."
+        )
+
     out: list[float] = []
     for index, value in enumerate(values):
         if index < window:
@@ -324,6 +346,7 @@ __all__ = [
     "FalsePositiveBound",
     "MetricNotCalibratedError",
     "MetricThreshold",
+    "NonFiniteSampleError",
     "RunStatus",
     "aggregate",
     "robust_z",

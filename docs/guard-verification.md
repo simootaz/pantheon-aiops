@@ -1132,6 +1132,29 @@ Each then matched exactly the example in front of it. Calling this an attention
 lapse four times has not stopped it, because it is not one - **a matcher shaped
 by its first example is a design method, and it produces this result reliably.**
 
+### The same procedure, for scenarios
+
+Third instance of one mistake, now with a measurable consequence.
+
+| occasion | what was assumed | what the target said |
+|---|---|---|
+| measuring `memory_leak` | it targets `checkout` | it targets `search` - the measurement read pure baseline and reported "no usable threshold at any offset" |
+| classifying `disk_pressure` | cluster-wide disk fill | it targets `node-a` - predicted as the at-risk common-mode case, it was the strongest divergence signal |
+| classifying `noisy_neighbor` | one node diverging from its peers | `node-c` is **4 of 12 pods**, so at pod level it is partial common-mode - the failure mode was predicted correctly and assigned to the wrong scenario |
+
+Each time the scenario's *description* was read and its *target set* was not.
+The descriptions are accurate; they describe the fault in the operator's terms,
+and the peer comparison happens at a different granularity than the words.
+
+> **Before measuring a scenario, write down its phase targets as data** - which
+> pods, which services, what fraction of each peer group. `pods_for(phase.target)`
+> answers it in one line. The description tells you what the fault *means*; only
+> the target set tells you what the measurement will *see*.
+
+The same shape as enumerating a matcher's forms before writing it: the
+enumeration is the design step, and skipping it lets the first plausible reading
+choose the answer.
+
 ### The step
 
 **Before writing the matcher, write down the forms it must catch, as test data.
