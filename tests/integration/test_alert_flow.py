@@ -46,7 +46,7 @@ import httpx
 import pytest
 
 from core.config import get_settings, require_stack
-from simulator.alerting import gate_speed
+from simulator.alerting import GATE_TICK_SECONDS, gate_speed
 from simulator.runner import ScenarioRunner
 from simulator.scenario import load
 from tests.unit.test_alert_rules import rule_seconds
@@ -62,7 +62,7 @@ API = f"http://localhost:{SETTINGS.api.port}"
 #: Ticks are larger here than the simulator default, because a bigger tick
 #: raises the compression the runner can actually hold - see max_honest_speed -
 #: and these runs want to finish.
-TICK_SECONDS = 300.0
+TICK_SECONDS = GATE_TICK_SECONDS
 
 #: Wall time each rule needs before it can fire, read from the rules file so the
 #: gate and the rules cannot disagree. Per rule rather than one global maximum:

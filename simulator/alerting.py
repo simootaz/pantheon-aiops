@@ -37,6 +37,62 @@ from simulator.runner import DEFAULT_TICK_SECONDS, max_honest_speed
 from simulator.scenario import Scenario
 
 #: Fraction of a fault's visible window a rule may consume. See above.
+#: The tick the empirical alert gate runs at, and therefore the tick every
+#: statement about speeds and headroom must be made against.
+#:
+#: It lives here rather than in the gate because a guard that computed headroom
+#: at `DEFAULT_TICK_SECONDS` (60s) was measuring a configuration nothing runs:
+#: at that tick `max_honest_speed` caps every scenario at 500x, which hands
+#: each of them eight intervals of headroom and makes the guard unfailable. The
+#: gate runs at 300s, where the caps do not bind and the bounds actually decide.
+GATE_TICK_SECONDS = 300.0
+
+#: Prometheus evaluates the sim rules every 5s (`interval` in rules.sim.yml).
+#: Headroom has to be counted in these, not as a fraction: a rule needs the
+#: signal held past its `for:` across whole evaluations, and evaluations land
+#: on a fixed grid the fault does not align with.
+EVALUATION_INTERVAL_SECONDS = 5.0
+
+#: Evaluation intervals of headroom a rule must have beyond what it needs.
+#:
+#: Derived, in two steps, and the second is the one that is easy to miss.
+#:
+#: **What firing requires.** A `for: F` completes when an evaluation sees the
+#: condition continuously true for F. The first evaluation after the signal
+#: crosses can be up to one interval late, so the signal must stay above the
+#: threshold for `F + E` to guarantee it, and `F + 2E` leaves an interval of
+#: safety. That is a constraint on **time above threshold**, not on how long
+#: the fault is visible.
+#:
+#: **Why those are not the same number.** The signal is above its threshold for
+#: only part of the fault - it ramps in and out. Measured, that fraction runs
+#: from 25% (`disk_pressure`) to 95% (`bad_deploy_5xx`), so the visible window
+#: needed to buy `F + 2E` of sustain ranges from 2.3 to 14.2 intervals of
+#: headroom depending on the scenario. A single number on the visible window
+#: cannot express the requirement exactly; it can only be set high enough to
+#: cover the worst measured case.
+#:
+#: Six covers all five with margin: `noisy_neighbor` needs 4.8 and
+#: `flaky_test_storm` 5.0, and both then sustain ~23s against a 20s
+#: requirement. It replaces a first attempt at three, which was derived from
+#: alignment alone and silently assumed the signal is above threshold for the
+#: whole fault - true of none of them.
+#:
+#: The empirical gate remains the proof. This bound makes it hard to pass by
+#: luck; it does not make passing certain, and nothing here should be read as
+#: if it did.
+MIN_HEADROOM_INTERVALS = 6.0
+
+#: The older bound, kept as the second of two. It says a rule may use half the
+#: visible fault - which for a 10s rule *is* exactly two evaluation intervals
+#: of headroom, the coin-flip case, and that is what it got wrong. But it is
+#: stricter than the interval floor wherever `rule_seconds` is large, so both
+#: are applied and the tighter wins.
+#:
+#: The lesson is not that a ratio is wrong. It is that a ratio and a fixed-step
+#: margin constrain different things, and a rule evaluated on a grid needs
+#: both: at 40s visible the fraction grants four intervals, at 20s it grants
+#: two, and only one of those works.
 BUDGET_FRACTION = 0.5
 
 #: Never compress below this, whatever the arithmetic allows. A scenario whose
@@ -56,11 +112,20 @@ def max_speed_for(scenario: Scenario, rule_seconds: float) -> float:
     """The fastest compression at which a rule needing `rule_seconds` can fire.
 
     `rule_seconds` is the rule's longest range selector plus its `for:` hold -
-    everything that has to elapse in wall time before it can go firing.
+    everything that has to elapse in wall time before it can go firing - and the
+    fault must stay visible for that **plus `MIN_HEADROOM_INTERVALS` evaluation
+    intervals**, not merely longer than it.
     """
     if rule_seconds <= 0:
         raise ValueError("a rule that needs no time at all cannot be timed")
-    return fault_seconds(scenario) * BUDGET_FRACTION / rule_seconds
+    fault = fault_seconds(scenario)
+    # Two bounds, and the tighter wins. The interval floor is a MINIMUM, not a
+    # target: applied alone it made bad_deploy_5xx *faster* (285x to 326x) and
+    # cut its headroom from four intervals to three, loosening a rule that was
+    # comfortable in order to tighten one that was not.
+    by_intervals = fault / (rule_seconds + MIN_HEADROOM_INTERVALS * EVALUATION_INTERVAL_SECONDS)
+    by_fraction = fault * BUDGET_FRACTION / rule_seconds
+    return min(by_intervals, by_fraction)
 
 
 def can_fire_at(scenario: Scenario, rule_seconds: float, speed: float) -> bool:
@@ -90,6 +155,9 @@ def wall_seconds(scenario: Scenario, speed: float) -> float:
 __all__ = [
     "BUDGET_FRACTION",
     "DEFAULT_TICK_SECONDS",
+    "EVALUATION_INTERVAL_SECONDS",
+    "GATE_TICK_SECONDS",
+    "MIN_HEADROOM_INTERVALS",
     "MIN_SPEED",
     "can_fire_at",
     "fault_seconds",

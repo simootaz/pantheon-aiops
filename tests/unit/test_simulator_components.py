@@ -14,6 +14,7 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import ast
 import itertools
 import json
 import os
@@ -22,6 +23,7 @@ import sys
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import httpx
 import pytest
@@ -30,7 +32,7 @@ from typer.testing import CliRunner
 from core.contracts.root_cause import RootCauseCategory
 from simulator.cli import app
 from simulator.clock import FAST, REALTIME, SECONDS_PER_DAY, SimClock, describe
-from simulator.cluster import NODES, NODES_BY_NAME, PODS, PODS_BY_NAME
+from simulator.cluster import NODES, NODES_BY_NAME, PODS, PODS_BY_NAME, Pod
 from simulator.log_generator import TEMPLATES, LogGenerator, LogLine
 from simulator.metrics_generator import NOISE as NOISE_TABLE
 from simulator.metrics_generator import MetricsGenerator, require_every_metric
@@ -47,6 +49,7 @@ from simulator.scenario import (
     load,
     load_all,
 )
+from tests.mechanism import read_mechanism
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POD = PODS_BY_NAME["checkout-7d4f9b-a1"]
@@ -869,3 +872,115 @@ def test_the_generator_is_deterministic_across_processes() -> None:
         "the seeding path depends on the interpreter's hash seed - `hash()` on "
         f"a str is the usual cause. {first} != {second}"
     )
+
+
+def test_no_metric_is_written_once_per_pod_to_a_service_level_series() -> None:
+    """The emitted value must not depend on which pod happens to be last.
+
+    `ci_failures.labels(pod.service, CLUSTER).set(...)` sat inside `for pod in
+    PODS`, so all three checkout pods wrote the same series and the last one
+    won. The other two samples were computed and thrown away, and the value the
+    stack served depended on the order of a module-level list.
+
+    It read as correct because the labels are right and the value is plausible.
+    Nothing was obviously wrong; nobody had chosen anything.
+
+    Walks the AST rather than slicing the source. The first version sliced from
+    `for pod in PODS:` to the next `def `, which swept in the per-node loop
+    below it and reported the disk gauges - correctly per-node - as offenders.
+    A guard whose failures are mostly false reads as noise.
+    """
+    tree = ast.parse(read_mechanism(REPO_ROOT / "simulator" / "metrics_generator.py"))
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.For):
+            continue
+        target = ast.unparse(node.target)
+        if not (isinstance(node.iter, ast.Name) and node.iter.id == "PODS"):
+            continue
+        for call in ast.walk(node):
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)):
+                continue
+            if call.func.attr not in {"set", "inc"}:
+                continue
+            receiver = call.func.value
+            if not (
+                isinstance(receiver, ast.Call) and getattr(receiver.func, "attr", "") == "labels"
+            ):
+                continue
+            args = [ast.unparse(a) for a in receiver.args]
+            if not any(a == "*tags" or f"{target}.name" in a for a in args):
+                offenders.append(f"{ast.unparse(receiver.func)}({', '.join(args)})")
+
+    assert not offenders, (
+        "metric(s) emitted inside a per-pod loop without per-pod labels, so pods "
+        f"overwrite each other and iteration order decides the value: {offenders}. "
+        "Aggregate across the service's pods and set the series once, outside the loop."
+    )
+
+
+def test_the_service_ratio_is_the_mean_of_its_pods_not_the_max() -> None:
+    """The aggregation is a decision, so it is asserted rather than assumed.
+
+    Max would make a service's CI failure ratio depend on its replica count -
+    more pods, more samples, higher max - which has nothing to do with its
+    pipeline.
+
+    Values are injected rather than sampled. Comparing the published series
+    against an independently computed mean fails for an uninteresting reason:
+    `push` samples six other metrics per pod first, advancing that pod's RNG,
+    so a freshly built generator draws different noise. Injecting makes the
+    three candidate aggregations - mean 0.30, max 0.60, last 0.60 - separable.
+    """
+    injected = {"checkout-7d4f9b-a1": 0.10, "checkout-7d4f9b-b2": 0.20, "checkout-7d4f9b-c3": 0.60}
+    real = MetricsGenerator.sample
+
+    def fake(
+        self: MetricsGenerator,
+        pod: Pod,
+        metric: MetricName,
+        simulated_seconds: float,
+        active: list[ActivePhase],
+    ) -> float:
+        if metric is MetricName.CI_FAILURE_RATIO and pod.name in injected:
+            return injected[pod.name]
+        return float(real(self, pod, metric, simulated_seconds, active))
+
+    with mock.patch.object(MetricsGenerator, "sample", fake):
+        emitted = _emitted_ci_ratio(3600.0, [], "checkout")
+
+    assert emitted == pytest.approx(0.30, rel=1e-6), (
+        f"published {emitted:.4f} for a service whose pods are "
+        f"{sorted(injected.values())}: the mean is 0.30, the max is 0.60, and "
+        "the last pod in order is 0.60"
+    )
+
+
+def _emitted_ci_ratio(moment: float, active: list[ActivePhase], service: str) -> float:
+    """What the generator actually puts on the wire for that service.
+
+    Parsed out of the pushed exposition body rather than read off an internal,
+    because the wire is where the defect showed: three pods writing one series
+    is invisible in the sample() calls and obvious in what gets published.
+    """
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200)
+
+    generator = MetricsGenerator()
+    with _client(handler) as client:
+        generator.push(moment, active, 60.0, client)
+
+    body = seen[0].content.decode()
+    matches = [
+        line
+        for line in body.splitlines()
+        if line.startswith("pantheon_ci_pipeline_failure_ratio{") and f'service="{service}"' in line
+    ]
+    assert len(matches) == 1, (
+        f"expected exactly one published series for {service}, found {len(matches)}: {matches}"
+    )
+    return float(matches[0].rsplit(" ", 1)[1])

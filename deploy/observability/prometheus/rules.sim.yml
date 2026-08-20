@@ -13,7 +13,7 @@
 # ------------------------------------
 # The simulator advances simulated time faster than wall time, and Prometheus
 # scrapes in wall time. A counter therefore reads `speed` times faster than the
-# rate it represents: `rate(pantheon_http_requests_total[10s])` at 240x is 240x
+# rate it represents: `rate(pantheon_http_requests_total[10s])` at 200x is 200x
 # the simulated request rate. An absolute counter threshold would fire at one
 # compression factor and be unreachable at another.
 #
@@ -36,7 +36,7 @@
 #     range_window + for_duration  <  fault_simulated_duration / speed
 #
 # The tightest scenario is bad_deploy_5xx: 11400 simulated seconds of fault,
-# which at the 240x reference speed is 47.5 wall seconds. A `for: 5m` clause
+# which at the 200x reference speed is 57 wall seconds. A `for: 5m` clause
 # would never fire; a 10s window plus a 10s hold uses 20 of those 47 seconds and
 # leaves room for the scrape to catch up. That inequality is enforced by
 # `test_every_rule_can_fire_within_its_scenarios_fault_window`, so a rule cannot
@@ -161,7 +161,7 @@ groups:
       # cannot touch it.
       - alert: NodeLatencyElevated
         expr: |
-          max by (node) (pantheon_http_request_duration_seconds) > 0.32
+          max by (node) (pantheon_http_request_duration_seconds) > 0.30
         for: 10s
         labels:
           severity: warning
@@ -206,7 +206,7 @@ groups:
       # that fires.
       - alert: CiFailureRatioHigh
         expr: |
-          pantheon_ci_pipeline_failure_ratio > 0.12
+          pantheon_ci_pipeline_failure_ratio > 0.09
         for: 10s
         labels:
           severity: warning

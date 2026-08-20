@@ -9,6 +9,17 @@
 default_install_hook_types: [pre-commit]
 
 repos:
+  # First, because everything below it is meaningless on a file that still has
+  # conflict markers in it - and because one got committed. `git merge` left
+  # README.md and ARCHITECTURE.md unresolved, the merge was committed anyway,
+  # and the markers reached the branch. Nothing objected: ruff and mypy do not
+  # read Markdown, and no hook looked.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.3
     hooks:

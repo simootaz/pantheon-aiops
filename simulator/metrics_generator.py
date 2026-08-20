@@ -53,6 +53,7 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import dataclass, field
+from statistics import fmean
 
 import httpx
 import numpy as np
@@ -350,10 +351,27 @@ class MetricsGenerator:
             state.restarts_total += restart_rate * interval / SECONDS_PER_DAY
             restarts.labels(*tags).inc(state.restarts_total)
 
+        # One value per SERVICE, aggregated deliberately.
+        #
+        # This loop used to set the same (service, cluster) series once per pod,
+        # so whichever pod came last in PODS won and the others were discarded.
+        # Not a rounding difference: the emitted value depended on iteration
+        # order, and nobody had ever chosen what it should mean.
+        #
+        # The mean, not the max. A CI pipeline belongs to a service, not to a
+        # pod - pods do not run pipelines - so the per-pod spread here is
+        # sampling noise around one underlying rate, and averaging estimates
+        # that rate. Measured across the storm the pods sit at
+        # [0.310, 0.363, 0.436]: the max runs 1.16-1.22x the mean, and that
+        # bias grows with replica count. Taking the max would make a service's
+        # reported CI failure ratio depend on how many pods it happens to run,
+        # which has nothing to do with its pipeline.
+        by_service: dict[str, list[float]] = {}
         for pod in PODS:
-            ci_failures.labels(pod.service, CLUSTER).set(
-                min(self.sample(pod, MetricName.CI_FAILURE_RATIO, simulated_seconds, active), 1.0)
-            )
+            value = self.sample(pod, MetricName.CI_FAILURE_RATIO, simulated_seconds, active)
+            by_service.setdefault(pod.service, []).append(value)
+        for service, values in by_service.items():
+            ci_failures.labels(service, CLUSTER).set(min(fmean(values), 1.0))
 
         for node in NODES:
             disk_total.labels(node.name, CLUSTER).set(float(node.disk_bytes))

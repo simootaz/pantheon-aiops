@@ -23,7 +23,16 @@ from typing import Any
 import pytest
 import yaml
 
-from simulator.alerting import BUDGET_FRACTION, can_fire_at, fault_seconds, max_speed_for
+from simulator.alerting import (
+    BUDGET_FRACTION,
+    EVALUATION_INTERVAL_SECONDS,
+    GATE_TICK_SECONDS,
+    MIN_HEADROOM_INTERVALS,
+    can_fire_at,
+    fault_seconds,
+    gate_speed,
+    max_speed_for,
+)
 from simulator.scenario import Scenario, load_all
 from tests.mechanism import read_data, read_verbatim
 
@@ -34,7 +43,11 @@ ALERTMANAGER = REPO_ROOT / "deploy" / "observability" / "alertmanager" / "alertm
 #: The compression the rule windows are sized against. The gate runs here, and
 #: `test_every_rule_can_fire_within_its_scenarios_fault_window` checks the
 #: inequality at this speed.
-REFERENCE_SPEED = 240.0
+#: A documentation anchor, not a speed anything runs at - the gate derives its
+#: own per scenario. Lowered from 240x when the headroom floor moved: at 240x
+#: bad_deploy_5xx's ceiling became 228x, so the number the rules file cited was
+#: one no rule could actually use.
+REFERENCE_SPEED = 200.0
 
 DURATION = re.compile(r"^(\d+)(ms|s|m|h)$")
 UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
@@ -225,3 +238,37 @@ def test_the_alertmanager_receiver_points_at_the_real_endpoint() -> None:
             f"{url} is not the endpoint the API serves. A simulator-specific "
             "route would mean the path here is not the production one."
         )
+
+
+@pytest.mark.parametrize("rule", rules(), ids=lambda r: str(r["alert"]))
+def test_every_rule_keeps_whole_evaluation_intervals_of_headroom(rule: dict[str, Any]) -> None:
+    """The inequality is not a margin, and calling it one is the defect.
+
+    `can_fire_at` asks whether the fault outlasts the rule. It does not ask by
+    how much, and "outlasts" is not the property that matters: Prometheus
+    evaluates on a fixed grid the fault does not align with, so a rule needs the
+    signal held past its `for:` across whole **evaluations**.
+
+    Both faces of that were observed in one gate run. `noisy_neighbor` and
+    `flaky_test_storm` each had 20s of visible fault against a 10s rule - two
+    evaluation intervals of headroom, the old `BUDGET_FRACTION` bound exactly
+    satisfied. `noisy_neighbor` fired. `flaky_test_storm` never did. The one
+    that passed did so on alignment luck, and a gate that can pass on luck is
+    not a gate.
+
+    Same shape as a threshold that clears a fault's peak but not its median:
+    technically satisfied, practically a coin flip.
+    """
+    scenario = scenarios()[rule["labels"]["scenario"]]
+    needed = rule_seconds(rule)
+    speed = gate_speed(scenario, needed, GATE_TICK_SECONDS)
+    visible = fault_seconds(scenario) / speed
+    headroom = (visible - needed) / EVALUATION_INTERVAL_SECONDS
+
+    assert headroom >= MIN_HEADROOM_INTERVALS, (
+        f"{rule['alert']} runs at {speed:.0f}x, where {scenario.name}'s fault is "
+        f"visible for {visible:.1f}s. The rule needs {needed:.0f}s, leaving "
+        f"{headroom:.1f} evaluation intervals of headroom against a required "
+        f"{MIN_HEADROOM_INTERVALS:.0f}. At two intervals this gate has been "
+        "observed both firing and not firing on the same configuration."
+    )
