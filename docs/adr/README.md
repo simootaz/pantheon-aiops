@@ -3,7 +3,7 @@
 Decisions that shaped Pantheon, with the reasoning that produced them. Each ADR
 states what was decided, why, what it costs, and what was rejected.
 
-Read the one you need; you should not have to open all six to find a decision.
+Read the one you need; you should not have to open all seven to find a decision.
 
 | # | Decision | In one line |
 |---|---|---|
@@ -13,6 +13,7 @@ Read the one you need; you should not have to open all six to find a decision.
 | [0004](0004-llm-provider-abstraction.md) | **Delphi — the LLM gateway** | Agents declare `ModelRequirements` and never name a model. Capabilities are **probed**, never tabulated, because a model table is stale within weeks. |
 | [0005](0005-credential-brokering.md) | **Cerberus — credential brokering** | Agents never receive plaintext. A secret in an agent's context enters a prompt, which is an unauditable, unrevocable exfiltration path. Credentials are brokered by lease. |
 | [0006](0006-agentic-ui-protocols.md) | **AG-UI transport, A2UI payload** | AG-UI is the pipes; A2UI is what travels through them when an agent wants to render something. Agent-generated UI is untrusted **data**, never code. |
+| [0007](0007-deferred-actions.md) | **Chronos — deferred actions** *(Proposed)* | Waiting is not work. An agent that starts a 40-minute pipeline completes its run immediately and is resumed with the result; wall-clock waiting never counts against `max_seconds`, or every budget becomes a bet on someone else's CI speed. |
 
 ## Reading order
 

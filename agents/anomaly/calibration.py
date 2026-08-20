@@ -30,7 +30,7 @@ from enum import StrEnum
 #: that detects least.
 WINDOW_SECONDS = 90
 
-#: Consecutive samples above `Z_THRESHOLD` before a point is called anomalous.
+#: Consecutive samples above the metric's threshold before a point is anomalous.
 #:
 #: Bound from above by the shortest contiguous elevated stretch any scenario
 #: produces, which is `noisy_neighbor`: 14s at z>5, collapsing to 4s at z>8.
@@ -39,12 +39,105 @@ WINDOW_SECONDS = 90
 #: inside it with margin for the alignment slop a fixed sample grid imposes.
 SUSTAIN_SAMPLES = 5
 
-#: Deviations from the window's centre, in units of its scale, before a sample
-#: counts. Derived from N baseline-only runs - see `FalsePositiveBound`.
+#: PLACEHOLDER. Not a derived value and not to be detected against.
 #:
-#: Set from `calibrate()` rather than written here, because a threshold typed
-#: into a constant is a threshold nobody re-derives when the data moves.
-Z_THRESHOLD = 5.0
+#: A single global threshold cannot serve these metrics: their clean-baseline
+#: |z| spans **0.01 to 15.67**, three orders of magnitude. Any value clearing
+#: `error_ratio` destroys detection everywhere else - `noisy_neighbor` holds
+#: only 12 samples above z=6 and 4 above z=8. Thresholds are per metric, in
+#: `THRESHOLDS` below, and this constant exists only so nothing silently reads
+#: a global one.
+Z_THRESHOLD_PLACEHOLDER = 5.0
+
+
+@dataclass(frozen=True)
+class MetricThreshold:
+    """A per-metric threshold, and the measurement that justifies it.
+
+    The measurement is carried, not just the number. A threshold whose basis is
+    not attached is a number nobody can re-derive when the data moves - and the
+    first thing anyone asks of a threshold that misfired is what it was set
+    from.
+    """
+
+    #: Highest |z| this metric produced on a clean baseline, measured live.
+    observed_baseline_max: float
+    #: The threshold itself. Clears `observed_baseline_max` by `margin`.
+    threshold: float
+    #: Runs the observation is drawn from. A bound from one run is one sample.
+    runs: int
+    #: Conditions covered. A tight distribution over a narrow condition is not
+    #: a bound over a wide one - see docs/guard-verification.md, 2026-08-20.
+    conditions: str
+
+    @property
+    def margin(self) -> float:
+        return self.threshold / self.observed_baseline_max if self.observed_baseline_max else 0.0
+
+
+class MetricNotCalibratedError(LookupError):
+    """Raised when a metric with no measured bound is scanned."""
+
+
+#: Per-metric thresholds. **A missing entry is a refusal, not a default.**
+#:
+#: `threshold_for` raises rather than falling back to a global value, so a
+#: metric added tomorrow cannot inherit a number nobody measured for it. Same
+#: shape as `BaselineRun.degraded` being `bool | None` with no default: the
+#: absent case must be loud.
+#:
+#: `error_ratio` is deliberately ABSENT, and the reason is a property worth
+#: knowing before any ratio-of-rates is added here.
+#:
+#: Its clean-baseline |z| was isolated one variable at a time:
+#:
+#:     A  speed=228  dur=150s   62 samples    |z| =  2.42
+#:     B  speed=228  dur=480s  391 samples    |z| =  9.42   (duration only)
+#:     C  speed=630  dur=150s   61 samples    |z| = 18.18   (speed only)
+#:     D  speed=2500 dur=150s   61 samples    |z| =  4.71   (speed only, further)
+#:
+#: **Duration moves it** - 2.42 to 9.42 on the same clock, from six times the
+#: samples. That is an ordinary tail effect and it means any bound must state
+#: the duration it was drawn over.
+#:
+#: **Speed moves it much harder, and NOT monotonically** - 18.18 at 630x but
+#: 4.71 at 2500x, both on 61 samples. A monotonic noise floor would have been
+#: easy to correct for; this is aliasing. The push tick against the 1s scrape
+#: gives 0.76, 2.10 and 8.33 ticks per scrape at those speeds, and the worst
+#: case sits where the ratio is just past 2. The 500-status counter increments
+#: rarely at baseline, so `rate()` over a 10s range sees a handful of coarse
+#: jumps; when tick and scrape beat against each other the numerator alternates
+#: between zero and a full step while the denominator does not.
+#:
+#: The gauges are untouched by all of this - `latency` stays in 2.85-4.35 and
+#: `ci_ratio` in 3.17-4.72 across the same four conditions.
+#:
+#: > A ratio-of-rates has a **compression-dependent, non-monotonic noise
+#: > floor**. Its threshold is valid only at the speed and duration it was
+#: > measured at, which makes a single number for it meaningless across a gate
+#: > that runs each scenario at a different compression.
+#:
+#: This is why counters are excluded outright and why a rate ratio is not a
+#: safe substitute: the compression factor cancels in the *value* of a ratio,
+#: but not in its *noise*.
+THRESHOLDS: dict[str, MetricThreshold] = {}
+
+
+def threshold_for(metric: str) -> MetricThreshold:
+    """The threshold for `metric`, or a refusal.
+
+    Never a fallback. A metric with no measured bound is a metric Argus must
+    not scan - emitting a Finding against an unmeasured threshold is exactly
+    the uncalibrated number this design refuses to produce.
+    """
+    try:
+        return THRESHOLDS[metric]
+    except KeyError:
+        raise MetricNotCalibratedError(
+            f"{metric!r} has no measured baseline bound, so it cannot be scanned. "
+            "Measure it against the live stack and add it to THRESHOLDS - do not "
+            "reuse another metric's threshold, and do not fall back to a global one."
+        ) from None
 
 
 class DetectionCoverage(StrEnum):
@@ -222,13 +315,17 @@ def robust_z(values: list[float], window: int, scale_floor: float) -> list[float
 __all__ = [
     "MEASURED_COVERAGE",
     "SUSTAIN_SAMPLES",
+    "THRESHOLDS",
     "WINDOW_SECONDS",
-    "Z_THRESHOLD",
+    "Z_THRESHOLD_PLACEHOLDER",
     "BaselineRun",
     "DegradationUnknownError",
     "DetectionCoverage",
     "FalsePositiveBound",
+    "MetricNotCalibratedError",
+    "MetricThreshold",
     "RunStatus",
     "aggregate",
     "robust_z",
+    "threshold_for",
 ]

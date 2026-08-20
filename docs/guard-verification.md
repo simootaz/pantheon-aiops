@@ -1019,6 +1019,60 @@ and it fails for exactly one reason.
 > its subject** - and passes for unrelated reasons too. Reach for a real socket
 > when the socket is what is being tested.
 
+## Reproducibility is not coverage, 2026-08-20
+
+Ten baseline-only runs against the live stack, to bound the false-positive rate
+for Argus. Every run completed, none degraded, and the numbers were tight:
+
+```
+error_ratio   max 2.63   median 2.53   across runs: 2.6 2.6 2.5 2.3 2.6 2.5 2.5 2.3 2.3 2.5
+latency       max 4.35   median 4.07
+ci_ratio      max 4.53   median 4.24
+highest |z| on any clean baseline: 4.53
+```
+
+A threshold of 6 clears that comfortably. It would have been wrong.
+
+The *pre-fault* windows of the scenario sweep are also clean baseline, and on
+the same metric they reach **15.67** - six times the bound ten reproducible
+runs had just produced. A `Z_THRESHOLD` of 6 would have false-positived on
+`error_ratio` immediately.
+
+> **Reproducibility is not coverage.** A tight distribution measures the
+> conditions you sampled and says nothing about the ones you did not. Ten runs
+> agreeing to two decimal places is evidence that the measurement is stable,
+> not that the space is mapped - and the tightness is what makes it look
+> authoritative.
+
+This is a different failure from the instrument defects already on this page.
+There the instrument was broken - the wrong pods, a `max` across a series that
+was never published, a generator producing different data every run. Here **the
+instrument was correct**. Every number was real, the method was sound, and the
+sampling was too narrow. Nothing about the output could have revealed that.
+
+### The tell, and why it was worth chasing
+
+The obvious explanation was warm-up: `rate()` over a counter freshly reset by
+the pushgateway is unstable, so an early excursion would be an artefact rather
+than a property. Locating the excursions killed it:
+
+```
+noisy_neighbor    pre-fault 480s   worst |z| = 15.67  at t=220s
+bad_deploy_5xx    pre-fault 379s   worst |z| =  6.76  at t=331s
+flaky_test_storm  pre-fault 137s   worst |z| = 14.80  at t=137s
+```
+
+Mid-window, not at the start.
+
+> **A discrepancy that survives the obvious explanation is a difference in
+> condition, not noise.** The cheap explanation is worth testing precisely
+> because rejecting it promotes the discrepancy from "probably nothing" to
+> "something varies that I have not identified".
+
+Two samples from an unmapped space are not a bound, so neither 2.63 nor 15.67
+is one. The candidates - compression speed, window duration, which services
+were covered - are being varied one at a time before any threshold is set.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

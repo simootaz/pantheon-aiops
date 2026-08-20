@@ -537,6 +537,7 @@ def _documented_counts() -> list[tuple[str, str, str]]:
         ("ROADMAP.md", r"Simulator:.*?(\w+) scenarios", "scenarios"),
         ("docs/REPOSITORY_MAP.md", r"Go workspace over the (\w+) Go modules", "go_modules"),
         ("docs/REPOSITORY_MAP.md", r"(\w+) YAML scenarios", "scenarios"),
+        ("docs/REPOSITORY_MAP.md", r"\|\s*(\w+) Architecture Decision Records", "adrs"),
         (
             "docs/REPOSITORY_MAP.md",
             r"\|\s*\*\*agents/\*\*\s*\|[^|]*?(\w+) domain agents",
@@ -759,7 +760,11 @@ def test_every_counted_noun_in_the_docs_is_derived() -> None:
             if line.lstrip().startswith("| 2026-")
         }
         for noun in COUNTED_NOUNS:
-            for found in re.finditer(rf"\b(\d{{1,4}}|[A-Za-z]+)\s+{re.escape(noun)}\b", body):
+            pattern = rf"(\d{{1,4}}|[A-Za-z]+)\s+{re.escape(noun)}"
+            # Case-insensitive. The case-sensitive version let
+            # "Seven Architecture Decision Records" past "decision records",
+            # in the same session that added this guard.
+            for found in re.finditer(pattern, body, re.IGNORECASE):
                 raw = found.group(1)
                 if not raw.isdigit() and raw.lower() not in _NUMBER_WORDS:
                     continue  # "every workflow", "these tests" - prose, not a count

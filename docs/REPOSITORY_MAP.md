@@ -270,7 +270,7 @@ pantheon-aiops/
 | `.github/workflows/` | `ci.yml` is the **single required check**; every other workflow is reusable (`workflow_call` only) and is called from it. | 7 |
 | **docs/** | `architecture/`, `agents/`, `deployment/`, `adr/`, `diagrams/`. | 7 |
 | `docs/REPOSITORY_MAP.md` | ★ **This file.** The canonical map of the repository. | 0 |
-| `docs/adr/` | Six Architecture Decision Records, indexed in `docs/adr/README.md`. | 0 |
+| `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
 | `docs/guard-verification.md` | How every guard was verified against a planted violation — including three that turned out not to work. | 0 |
 
 ---
@@ -393,6 +393,31 @@ an agent needs a human to see or decide something.
 `RunStarted`, `StateDelta` (RFC 6902) thereafter. Naming it prevents a second
 state object being invented later, and makes replay a property of the design —
 snapshot plus ordered patches reconstructs any run.
+
+
+### Waiting is not work
+
+[ADR 0007](adr/0007-deferred-actions.md) · **Proposed** · Phase 3 at the earliest
+
+**An agent that starts an operation outlasting its budget completes its run
+immediately and is resumed with the result.** `AgentBudget.max_seconds` is 120;
+a CI bisect takes 5-40 minutes and a chaos experiment up to 90. Today such an
+agent either blocks past its budget and dies, or fires and forgets and never
+learns the outcome.
+
+Wall-clock waiting must **not** count against `max_seconds` - only active work
+does, or the same agent passes or fails depending on how busy an unrelated build
+queue was that afternoon. A resumed agent gets the **remainder** of its original
+budget rather than a fresh one: a retry repeats work, a resumption continues it,
+and a fresh budget per deferral makes the total unbounded.
+
+**Chronos** owns this, as infrastructure beside Delphi and Cerberus - consulted,
+never dispatched to, no roster entry and no manifest. Completion is webhook
+first, then polling where each poll is a tool call counting against budget, and
+a **mandatory deadline** behind both. On expiry the agent produces a DEGRADED
+Finding saying what it started and that the outcome was never learned: an
+investigation that waits forever is worse than one that fails, because a failure
+is read and a wait is assumed to be progress.
 
 **AG-UI's event types are never redefined here.** They come from `ag_ui.core`.
 

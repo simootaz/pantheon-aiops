@@ -10,13 +10,16 @@ import pytest
 from agents.anomaly.calibration import (
     MEASURED_COVERAGE,
     SUSTAIN_SAMPLES,
+    THRESHOLDS,
     WINDOW_SECONDS,
     BaselineRun,
     DegradationUnknownError,
     DetectionCoverage,
+    MetricNotCalibratedError,
     RunStatus,
     aggregate,
     robust_z,
+    threshold_for,
 )
 
 
@@ -128,3 +131,44 @@ def test_the_window_looks_only_backwards() -> None:
     assert zs[99] == pytest.approx(0.0, abs=1.0), (
         "the sample before the spike moved, so the window is seeing the future"
     )
+
+
+def test_a_metric_with_no_measured_bound_cannot_be_scanned() -> None:
+    """A missing threshold is a refusal, never a fallback.
+
+    A global default would let a metric added tomorrow inherit a number nobody
+    measured for it - and the number would look exactly as authoritative as a
+    measured one. Same shape as `BaselineRun.degraded` being `bool | None` with
+    no default: the absent case has to be loud.
+
+    `error_ratio` is the live example. Ten dedicated runs bounded it at 2.63;
+    the sweep's clean pre-fault windows reached 15.67 on the same metric. Two
+    samples from an unmapped space are not a bound, so it has no entry and
+    Argus must refuse to scan it.
+    """
+    with pytest.raises(MetricNotCalibratedError, match="no measured baseline bound"):
+        threshold_for("error_ratio")
+    with pytest.raises(MetricNotCalibratedError, match="no measured baseline bound"):
+        threshold_for("a_metric_invented_this_afternoon")
+
+
+def test_every_declared_threshold_carries_the_measurement_behind_it() -> None:
+    """A threshold whose basis is not attached cannot be re-derived.
+
+    The first question asked of a threshold that misfired is what it was set
+    from, and "someone chose 6" is not an answer this repository accepts.
+    """
+    for metric, entry in THRESHOLDS.items():
+        assert entry.observed_baseline_max >= 0.0, metric
+        assert entry.threshold > entry.observed_baseline_max, (
+            f"{metric}: threshold {entry.threshold} does not clear its observed "
+            f"baseline maximum {entry.observed_baseline_max}"
+        )
+        assert entry.runs >= 2, (
+            f"{metric}: a bound from {entry.runs} run(s) is a sample, not a bound"
+        )
+        assert entry.conditions.strip(), (
+            f"{metric}: no conditions recorded. A tight distribution over a narrow "
+            "condition is not a bound over a wide one"
+        )
+        assert entry.margin > 1.0, metric
