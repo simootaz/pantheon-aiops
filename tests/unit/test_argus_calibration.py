@@ -15,10 +15,13 @@ from agents.anomaly.calibration import (
     BaselineRun,
     DegradationUnknownError,
     DetectionCoverage,
+    InsufficientPeersError,
     MetricNotCalibratedError,
     NonFiniteSampleError,
+    PartialPeerCoverageError,
     RunStatus,
     aggregate,
+    peer_z,
     robust_z,
     threshold_for,
 )
@@ -199,3 +202,106 @@ def test_a_nan_reaching_a_z_computation_raises() -> None:
 
     # Finite input still works.
     assert robust_z([1.0] * 100 + [9.0], window=90, scale_floor=0.01)[-1] > 0
+
+
+# --- peer-relative preconditions --------------------------------------------
+
+_TWELVE = [f"pod-{i}" for i in range(12)]
+
+
+def _flat(peers: list[str], **overrides: float) -> dict[str, float]:
+    samples = dict.fromkeys(peers, 1.0)
+    samples.update(overrides)
+    return samples
+
+
+def test_a_peer_group_below_the_minimum_is_refused() -> None:
+    """Small groups do not give a worse estimate - they give a degenerate one.
+
+    With three peers MAD is the median of three deviations and is exactly zero
+    whenever two agree, so the scale falls to its floor and z becomes a property
+    of the floor. Measured on clean live data, 100% of sampled three-peer
+    subsets exceeded |z| = 8, worst case 9444 - while the *best* subset came in
+    at 24.92, which is why sampling one group proves nothing about the size.
+
+    `disk_ratio` at three nodes produced 1599.63 on a clean baseline in one
+    scenario and 1585.74 as a "signal" in another: the same degeneracy wearing
+    opposite labels, and in production the first is a silent false positive.
+    """
+    for size in (2, 3, 5, 8, 11):
+        peers = _TWELVE[:size]
+        with pytest.raises(InsufficientPeersError, match="below the measured minimum"):
+            peer_z(peers, _flat(peers))
+
+    result = peer_z(_TWELVE, _flat(_TWELVE, **{"pod-0": 9.0}))
+    assert result["pod-0"] > 0, "a full group must still produce a comparison"
+
+
+def test_a_timestamp_missing_any_peer_is_refused() -> None:
+    """Comparing whoever arrived is a different, smaller comparison.
+
+    Not a filter someone may relax: dropping absent peers silently reduces the
+    group, which lands in the degenerate regime above, and nothing in the output
+    would say so. The numbers look ordinary.
+    """
+    samples = _flat(_TWELVE)
+    del samples["pod-7"]
+    with pytest.raises(PartialPeerCoverageError, match="did not report"):
+        peer_z(_TWELVE, samples)
+
+    samples = _flat(_TWELVE)
+    for gone in ("pod-1", "pod-2", "pod-3"):
+        del samples[gone]
+    with pytest.raises(PartialPeerCoverageError, match="3 of 12"):
+        peer_z(_TWELVE, samples)
+
+
+def test_a_non_finite_peer_sample_is_refused() -> None:
+    """Same rule as the temporal path: nan must be loud, not propagated."""
+    with pytest.raises(NonFiniteSampleError):
+        peer_z(_TWELVE, _flat(_TWELVE, **{"pod-4": float("nan")}))
+
+
+def test_peer_z_cancels_a_common_mode_shift() -> None:
+    """The property the whole approach rests on, asserted rather than assumed.
+
+    Seasonality moves every peer together. If a uniform shift changed the
+    result, peer-relative would not remove the need for a period estimate - it
+    would only hide it.
+
+    Cancellation holds while the estimator is non-degenerate. It does NOT hold
+    when MAD collapses to zero, because the scale then falls back to a floor
+    proportional to the values' own magnitude - see the test below, which found
+    this rather than assumed it.
+    """
+    spread = {peer: 1.0 + index * 0.1 for index, peer in enumerate(_TWELVE)}
+    spread["pod-0"] = 9.0
+    shifted = {peer: value + 100.0 for peer, value in spread.items()}
+
+    assert peer_z(_TWELVE, shifted)["pod-0"] == pytest.approx(peer_z(_TWELVE, spread)["pod-0"]), (
+        "a uniform shift across every peer changed the comparison"
+    )
+
+
+def test_the_scale_floor_breaks_cancellation_when_mad_collapses() -> None:
+    """Stated because it is a real limit of the floor, not a bug to hide.
+
+    With identical peers MAD is exactly zero, so the scale falls to
+    `min(|value|) * 1e-3` - which scales with the absolute level. A uniform
+    shift then changes z, and common-mode cancellation fails precisely where
+    the estimator was already degenerate.
+
+    This is a second, independent argument for `MIN_PEERS`: a large group makes
+    an exactly-zero MAD vanishingly unlikely, so the floor stops being reachable
+    in practice. It also means the floor must never be read as "a small number
+    that does not matter" - when it engages, it decides the answer.
+    """
+    identical = _flat(_TWELVE, **{"pod-0": 5.0})
+    shifted = {peer: value + 100.0 for peer, value in identical.items()}
+
+    assert peer_z(_TWELVE, identical)["pod-0"] != pytest.approx(
+        peer_z(_TWELVE, shifted)["pod-0"]
+    ), (
+        "the floor is no longer level-dependent - if that was fixed deliberately, "
+        "this test should be replaced by one asserting cancellation everywhere"
+    )

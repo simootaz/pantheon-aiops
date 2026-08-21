@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -150,6 +151,95 @@ def threshold_for(metric: str) -> MetricThreshold:
             "Measure it against the live stack and add it to THRESHOLDS - do not "
             "reuse another metric's threshold, and do not fall back to a global one."
         ) from None
+
+
+#: Peers a group must contain before a peer-relative comparison is attempted.
+#:
+#: PROVISIONAL: this is the only size measured cleanly, not a measured floor.
+#: A seeded sweep (seed 20260821, 40 random subsets per size, 304 fully-covered
+#: timestamps of live baseline) gives the fraction of subsets whose clean
+#: baseline |z| exceeds 8:
+#:
+#:      3 peers  100%   median  365.01   worst 9444.81
+#:      4 peers   70%   median   10.97   worst  719.88
+#:      5 peers   78%   median   15.27   worst  359.87
+#:      6 peers   52%   median    8.25   worst  216.40
+#:      8 peers   42%   median    6.57   worst   30.70
+#:     10 peers    8%   median    5.72   worst   11.97
+#:     12 peers    0%   median    5.35   worst    5.35
+#:
+#: **The tail decides, not the median.** Three peers has a *best* subset of
+#: 24.92 - so a particular small group can look perfectly well behaved while
+#: every neighbouring choice is catastrophic. Sampling one group tells you
+#: nothing about whether the size is safe.
+#:
+#: Twelve is where the exceedance reaches zero. Ten is close, and only 12 has
+#: been measured as a whole population rather than sampled, so the number stays
+#: provisional until the sweep is repeated across scenarios and metrics.
+MIN_PEERS = 12
+
+
+class InsufficientPeersError(ValueError):
+    """Raised when a peer group is too small to support the estimator."""
+
+
+class PartialPeerCoverageError(ValueError):
+    """Raised when some expected peer did not report at this instant."""
+
+
+def peer_z(peers: Sequence[str], samples: Mapping[str, float]) -> dict[str, float]:
+    """Peer-relative deviation at ONE instant. No window, no history, no period.
+
+    Seasonality is common-mode across peers, so comparing a series against its
+    peers cancels the diurnal component without knowing the period - which is
+    what makes this attractive where a trailing window needs a period estimate
+    that production does not supply.
+
+    Two preconditions, both hard. Neither is a filter to relax:
+
+    **Group size.** Below `MIN_PEERS` the estimator degenerates. With three
+    peers MAD is the median of three deviations and hits exactly zero whenever
+    two agree, dropping the scale to its floor and sending z wherever the floor
+    implies. Measured on clean data, three peers exceeded |z| = 8 in 100% of
+    sampled subsets, worst case 9444 - and `disk_ratio` at three nodes duly
+    produced 1599.63 on a clean baseline in one scenario and 1585.74 as a
+    "signal" in another. The same degeneracy with opposite labels.
+
+    **Complete coverage.** Every expected peer must have reported. Comparing
+    whichever peers happened to arrive is not a smaller comparison of the same
+    thing - it silently becomes a different, smaller group, with the size
+    behaviour above. That is a precondition rather than a filter because the
+    failure is invisible in the output: the numbers look ordinary.
+    """
+    if len(peers) < MIN_PEERS:
+        raise InsufficientPeersError(
+            f"{len(peers)} peers, below the measured minimum of {MIN_PEERS}. A group this "
+            "small produces a degenerate scale, and the resulting z is a property of the "
+            "floor rather than of the data. Widen the peer set or use a temporal comparison."
+        )
+
+    missing = [peer for peer in peers if peer not in samples]
+    if missing:
+        raise PartialPeerCoverageError(
+            f"{len(missing)} of {len(peers)} peers did not report: {sorted(missing)[:5]}. "
+            "Comparing the peers that did arrive is a comparison of a different, smaller "
+            "group - and nothing in the result would say so."
+        )
+
+    values = [samples[peer] for peer in peers]
+    non_finite = [
+        peer for peer, value in zip(peers, values, strict=True) if not math.isfinite(value)
+    ]
+    if non_finite:
+        raise NonFiniteSampleError(
+            f"non-finite sample(s) from {sorted(non_finite)[:5]}. See NonFiniteSampleError."
+        )
+
+    centre = statistics.median(values)
+    mad = statistics.median([abs(value - centre) for value in values])
+    magnitudes = [abs(value) for value in values if value]
+    scale = max(1.4826 * mad, (min(magnitudes) * 1e-3) if magnitudes else 1e-9)
+    return {peer: (samples[peer] - centre) / scale for peer in peers}
 
 
 class DetectionCoverage(StrEnum):
@@ -336,6 +426,7 @@ def robust_z(values: list[float], window: int, scale_floor: float) -> list[float
 
 __all__ = [
     "MEASURED_COVERAGE",
+    "MIN_PEERS",
     "SUSTAIN_SAMPLES",
     "THRESHOLDS",
     "WINDOW_SECONDS",
@@ -344,11 +435,14 @@ __all__ = [
     "DegradationUnknownError",
     "DetectionCoverage",
     "FalsePositiveBound",
+    "InsufficientPeersError",
     "MetricNotCalibratedError",
     "MetricThreshold",
     "NonFiniteSampleError",
+    "PartialPeerCoverageError",
     "RunStatus",
     "aggregate",
+    "peer_z",
     "robust_z",
     "threshold_for",
 ]
