@@ -102,6 +102,16 @@ class LogLine:
     line: str
 
 
+#: The `job` label on every stream pushed to Loki, and the only place it is
+#: written. Distinct from `PUSHGATEWAY_JOB` by intent even though they currently
+#: share a value: one identifies a pushgateway group, the other a Loki stream,
+#: and they belong to different systems that could diverge.
+#:
+#: Named because the spelling of an identity used in two directions is where
+#: this repository lost a week - see PUSHGATEWAY_JOB.
+LOKI_JOB_LABEL = "pantheon-sim"
+
+
 class LogGenerator:
     """Renders lines for pods and ships them to Loki."""
 
@@ -242,7 +252,7 @@ class LogGenerator:
             payload["streams"].append(
                 {
                     "stream": {
-                        "job": "pantheon-sim",
+                        "job": LOKI_JOB_LABEL,
                         "pod": pod_name,
                         "node": pod.node,
                         "service": pod.service,

@@ -50,6 +50,8 @@ import pytest
 
 from core.config import get_settings
 from simulator.cluster import PODS_BY_NAME
+from simulator.log_generator import LOKI_JOB_LABEL
+from simulator.metrics_generator import MetricsGenerator
 from simulator.runner import KEEP_UP_THRESHOLD as KEEP_UP_FRACTION
 from simulator.runner import RunReport, ScenarioRunner
 from simulator.scenario import load
@@ -126,7 +128,7 @@ def reset_pushgateway() -> None:
     counter reset and `rate()` reports a phantom spike exactly at the boundary —
     which is where a fault-onset test is looking.
     """
-    httpx.delete(f"http://{PUSHGATEWAY}/metrics/job/pantheon_sim", timeout=10.0)
+    MetricsGenerator(gateway=PUSHGATEWAY).reset()
 
 
 def query_range(query: str, *, start: float, end: float, step: str = "1s") -> Series:
@@ -524,7 +526,7 @@ def test_logs_reach_loki_for_the_pods_the_metrics_describe(scenario_run: Run) ->
     response = httpx.get(
         f"{LOKI}/loki/api/v1/query_range",
         params={
-            "query": '{job="pantheon-sim", service="checkout"}',
+            "query": f'{{job="{LOKI_JOB_LABEL}", service="checkout"}}',
             "limit": "500",
             "start": f"{int(scenario_run.started * 1e9)}",
             "end": f"{int(scenario_run.ended * 1e9)}",

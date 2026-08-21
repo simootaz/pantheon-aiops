@@ -1269,6 +1269,69 @@ move with the data, so cancellation now holds in both regimes - and the test is
 kept, inverted, because a future floor derived from the samples would fail it
 again.
 
+## A status code is not evidence of an effect, 2026-08-21
+
+The most transferable entry on this page, and the one that hid the longest.
+
+Every reset in this repository deleted the pushgateway group `pantheon_sim`.
+The generator pushes to `pantheon-sim`. **A pushgateway returns 202 Accepted for
+a group that does not exist**, so every reset succeeded loudly and cleared
+nothing - for a week, in every calibration harness, and in the integration gate
+that was merged as 8/8 green.
+
+Measured directly:
+
+```
+DELETE /metrics/job/pantheon_sim  -> 202   series still served: 119
+DELETE /metrics/job/pantheon-sim  -> 202   series still served: 0
+```
+
+Same status code. Opposite effects.
+
+> **A status code is evidence that a request was accepted, never that anything
+> happened.** Assert the postcondition. A delete that returns 200, a config
+> reload that returns OK, a cache flush that reports success, a webhook that
+> answers 202 - none of them is evidence the thing occurred, and the ones that
+> answer success unconditionally are the ones that hide longest.
+
+`MetricsGenerator.reset()` now deletes and then **queries**, raising
+`PushgatewayNotClearedError` if any series is still served. That converts a
+silent no-op into a loud failure, and it is what would have caught this on the
+first day rather than the seventh.
+
+### Fix the cause, not the instances
+
+The job name was a literal repeated across four callers while
+`metrics_generator` used `self.job`. Correcting the three known callers would
+have left the fourth to be written next week, so it is now one exported constant
+with `tests/unit/test_no_job_name_literals.py` failing the build on any module
+that spells it out - **both spellings**, since a guard forbidding only the
+correct one would have passed throughout the defect.
+
+The guard immediately found three more occurrences nobody had listed, and
+distinguishing them was the useful part: the Loki stream label (now
+`LOKI_JOB_LABEL`, named separately because it belongs to a different system and
+could legitimately diverge) and the CLI command name (a different concept
+sharing a spelling, allowed with the reason recorded).
+
+### A constant used in two directions needs asserting in both
+
+`test_simulator_components.py` asserted the **push** path spelled it
+`pantheon-sim`. The **delete** path had no test at all. So the half that was
+wrong was the half nobody checked - the same shape as the `satisfies` guard that
+caught component removals but not additions, and the tests that iterate *over*
+`REQUIRED_IN_PRODUCTION` rather than checking the set is complete.
+
+Two of this entry's own guards were too narrow on the first attempt, both
+caught by planting:
+
+- the literal guard reported line numbers computed against comment-stripped
+  source, so its locations did not exist in the files;
+- the postcondition guard asserted the substring `PushgatewayNotClearedError`
+  appeared in the module - which the **class definition** satisfies, so deleting
+  the raise from `reset()` left it green. It now walks the AST of `reset` and
+  asserts the raise is inside it.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
