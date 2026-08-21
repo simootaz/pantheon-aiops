@@ -423,6 +423,10 @@ export type At2 = string;
 export type Value = number;
 export type Samples = MetricSample[];
 /**
+ * The scale collapsed and a floor was substituted, so `deviation_sigma` is determined by the floor rather than by the data's own spread.
+ */
+export type ScaleFloorEngaged = boolean;
+/**
  * e.g. 'bytes', 'seconds', 'requests/s'.
  */
 export type Unit = string;
@@ -1193,6 +1197,14 @@ export interface Evidence1 {
  * dashboard, the verdict and the audit trail all agree on how unusual this
  * was - recomputing invites three different answers.
  *
+ * `scale_floor_engaged` says whether the number can be read as a measurement
+ * at all. When every sample in a window agrees, MAD is exactly zero and the
+ * scale falls back to a floor - after which `deviation_sigma` is a property of
+ * the floor, not of the distribution. `disk_ratio` over three nodes produced
+ * 1599.63 on a *clean* baseline and 1585.74 as a *signal*: both were the floor
+ * speaking. A number whose provenance is the floor must not be
+ * indistinguishable from one whose provenance is the data.
+ *
  * The baseline is `centre` and `scale` rather than `mean` and `stddev`, and
  * the estimator is named. Detection here is median/MAD, and writing a median
  * into a field called `baseline_mean` is a number that looks meaningful and is
@@ -1209,6 +1221,7 @@ export interface MetricWindowPayload {
   kind?: Kind1;
   metric: Metric;
   samples?: Samples;
+  scale_floor_engaged?: ScaleFloorEngaged;
   unit?: Unit;
   window_seconds?: WindowSeconds;
 }

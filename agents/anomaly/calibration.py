@@ -179,6 +179,61 @@ def threshold_for(metric: str) -> MetricThreshold:
 MIN_PEERS = 12
 
 
+#: Per-metric scale floors. **A missing entry is a refusal, not a default.**
+#:
+#: The floor is the third parameter of this method, alongside the window and the
+#: threshold, and it was the one nobody derived. It sat inside the estimator as
+#: `min(|value|) * 1e-3` - a heuristic, never measured, and invisible in every
+#: result it produced.
+#:
+#: It is not a small correction. When the scale collapses the floor decides the
+#: answer outright: `disk_ratio` over three nodes gave **1599.63 on a clean
+#: baseline** and **1585.74 as a signal**, and both numbers were the floor
+#: speaking rather than the data. A parameter that can determine the output must
+#: be derived and stated like any other.
+#:
+#: Empty because nothing has been measured yet. `floor_for` refuses rather than
+#: substituting a plausible constant, for the same reason `THRESHOLDS` does.
+SCALE_FLOORS: dict[str, float] = {}
+
+
+class ScaleFloorNotMeasuredError(LookupError):
+    """Raised when a metric's scale floor has never been measured."""
+
+
+def floor_for(metric: str) -> float:
+    """The measured scale floor for `metric`, or a refusal.
+
+    Never a heuristic. A floor guessed from the data's own magnitude makes the
+    result depend on the absolute level - which is exactly how common-mode
+    cancellation breaks, and it breaks precisely when the estimator is already
+    degenerate.
+    """
+    try:
+        return SCALE_FLOORS[metric]
+    except KeyError:
+        raise ScaleFloorNotMeasuredError(
+            f"{metric!r} has no measured scale floor. The floor decides the answer whenever "
+            "the scale collapses, so it cannot be guessed - measure it against the live "
+            "stack and add it to SCALE_FLOORS."
+        ) from None
+
+
+@dataclass(frozen=True)
+class PeerComparison:
+    """A peer-relative reading, and whether it can be read as a measurement.
+
+    `floor_engaged` is carried rather than inferred. A z produced under a
+    collapsed scale is determined by the floor, and downstream has no way to
+    tell that from the number alone.
+    """
+
+    z: dict[str, float]
+    centre: float
+    scale: float
+    floor_engaged: bool
+
+
 class InsufficientPeersError(ValueError):
     """Raised when a peer group is too small to support the estimator."""
 
@@ -187,7 +242,9 @@ class PartialPeerCoverageError(ValueError):
     """Raised when some expected peer did not report at this instant."""
 
 
-def peer_z(peers: Sequence[str], samples: Mapping[str, float]) -> dict[str, float]:
+def peer_z(
+    peers: Sequence[str], samples: Mapping[str, float], *, scale_floor: float
+) -> PeerComparison:
     """Peer-relative deviation at ONE instant. No window, no history, no period.
 
     Seasonality is common-mode across peers, so comparing a series against its
@@ -237,9 +294,15 @@ def peer_z(peers: Sequence[str], samples: Mapping[str, float]) -> dict[str, floa
 
     centre = statistics.median(values)
     mad = statistics.median([abs(value - centre) for value in values])
-    magnitudes = [abs(value) for value in values if value]
-    scale = max(1.4826 * mad, (min(magnitudes) * 1e-3) if magnitudes else 1e-9)
-    return {peer: (samples[peer] - centre) / scale for peer in peers}
+    spread = 1.4826 * mad
+    floor_engaged = spread < scale_floor
+    scale = max(spread, scale_floor)
+    return PeerComparison(
+        z={peer: (samples[peer] - centre) / scale for peer in peers},
+        centre=centre,
+        scale=scale,
+        floor_engaged=floor_engaged,
+    )
 
 
 class DetectionCoverage(StrEnum):
@@ -427,6 +490,7 @@ def robust_z(values: list[float], window: int, scale_floor: float) -> list[float
 __all__ = [
     "MEASURED_COVERAGE",
     "MIN_PEERS",
+    "SCALE_FLOORS",
     "SUSTAIN_SAMPLES",
     "THRESHOLDS",
     "WINDOW_SECONDS",
@@ -440,8 +504,11 @@ __all__ = [
     "MetricThreshold",
     "NonFiniteSampleError",
     "PartialPeerCoverageError",
+    "PeerComparison",
     "RunStatus",
+    "ScaleFloorNotMeasuredError",
     "aggregate",
+    "floor_for",
     "peer_z",
     "robust_z",
     "threshold_for",

@@ -2729,6 +2729,14 @@ func (j *MetricSample) UnmarshalJSON(value []byte) error {
 // dashboard, the verdict and the audit trail all agree on how unusual this
 // was - recomputing invites three different answers.
 //
+// `scale_floor_engaged` says whether the number can be read as a measurement
+// at all. When every sample in a window agrees, MAD is exactly zero and the
+// scale falls back to a floor - after which `deviation_sigma` is a property of
+// the floor, not of the distribution. `disk_ratio` over three nodes produced
+// 1599.63 on a *clean* baseline and 1585.74 as a *signal*: both were the floor
+// speaking. A number whose provenance is the floor must not be
+// indistinguishable from one whose provenance is the data.
+//
 // The baseline is `centre` and `scale` rather than `mean` and `stddev`, and
 // the estimator is named. Detection here is median/MAD, and writing a median
 // into a field called `baseline_mean` is a number that looks meaningful and is
@@ -2757,6 +2765,10 @@ type MetricWindowPayload struct {
 
 	// Samples corresponds to the JSON schema field "samples".
 	Samples []MetricSample `json:"samples,omitempty,omitzero" yaml:"samples,omitempty" mapstructure:"samples,omitempty"`
+
+	// The scale collapsed and a floor was substituted, so `deviation_sigma` is
+	// determined by the floor rather than by the data's own spread.
+	ScaleFloorEngaged bool `json:"scale_floor_engaged,omitempty,omitzero" yaml:"scale_floor_engaged,omitempty" mapstructure:"scale_floor_engaged,omitempty"`
 
 	// e.g. 'bytes', 'seconds', 'requests/s'.
 	Unit string `json:"unit,omitempty,omitzero" yaml:"unit,omitempty" mapstructure:"unit,omitempty"`
@@ -2793,6 +2805,9 @@ func (j *MetricWindowPayload) UnmarshalJSON(value []byte) error {
 	}
 	if plain.Kind != "metric_window" {
 		return fmt.Errorf("field %s: must be equal to %s", "kind", "metric_window")
+	}
+	if v, ok := raw["scale_floor_engaged"]; !ok || v == nil {
+		plain.ScaleFloorEngaged = false
 	}
 	if v, ok := raw["unit"]; !ok || v == nil {
 		plain.Unit = ""

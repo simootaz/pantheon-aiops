@@ -2055,7 +2055,7 @@
     },
     "MetricWindowPayload": {
       "additionalProperties": false,
-      "description": "A slice of a time series, with the baseline it is being judged against.\n\n`deviation_sigma` is carried rather than recomputed downstream so that the\ndashboard, the verdict and the audit trail all agree on how unusual this\nwas - recomputing invites three different answers.\n\nThe baseline is `centre` and `scale` rather than `mean` and `stddev`, and\nthe estimator is named. Detection here is median/MAD, and writing a median\ninto a field called `baseline_mean` is a number that looks meaningful and is\nnot - the reader would compare it against a mean from somewhere else. The\nprevious fields were removed rather than kept alongside: two estimators side\nby side invites exactly that comparison, and the one on display would be the\none that breaks under contamination.",
+      "description": "A slice of a time series, with the baseline it is being judged against.\n\n`deviation_sigma` is carried rather than recomputed downstream so that the\ndashboard, the verdict and the audit trail all agree on how unusual this\nwas - recomputing invites three different answers.\n\n`scale_floor_engaged` says whether the number can be read as a measurement\nat all. When every sample in a window agrees, MAD is exactly zero and the\nscale falls back to a floor - after which `deviation_sigma` is a property of\nthe floor, not of the distribution. `disk_ratio` over three nodes produced\n1599.63 on a *clean* baseline and 1585.74 as a *signal*: both were the floor\nspeaking. A number whose provenance is the floor must not be\nindistinguishable from one whose provenance is the data.\n\nThe baseline is `centre` and `scale` rather than `mean` and `stddev`, and\nthe estimator is named. Detection here is median/MAD, and writing a median\ninto a field called `baseline_mean` is a number that looks meaningful and is\nnot - the reader would compare it against a mean from somewhere else. The\nprevious fields were removed rather than kept alongside: two estimators side\nby side invites exactly that comparison, and the one on display would be the\none that breaks under contamination.",
       "properties": {
         "baseline_centre": {
           "anyOf": [
@@ -2119,6 +2119,12 @@
           },
           "title": "Samples",
           "type": "array"
+        },
+        "scale_floor_engaged": {
+          "default": false,
+          "description": "The scale collapsed and a floor was substituted, so `deviation_sigma` is determined by the floor rather than by the data's own spread.",
+          "title": "Scale Floor Engaged",
+          "type": "boolean"
         },
         "unit": {
           "default": "",

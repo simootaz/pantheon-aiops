@@ -20,7 +20,9 @@ from agents.anomaly.calibration import (
     NonFiniteSampleError,
     PartialPeerCoverageError,
     RunStatus,
+    ScaleFloorNotMeasuredError,
     aggregate,
+    floor_for,
     peer_z,
     robust_z,
     threshold_for,
@@ -207,6 +209,9 @@ def test_a_nan_reaching_a_z_computation_raises() -> None:
 # --- peer-relative preconditions --------------------------------------------
 
 _TWELVE = [f"pod-{i}" for i in range(12)]
+#: A floor for the fixtures only. Real callers get one from `floor_for`,
+#: which refuses when the metric has never been measured.
+_FLOOR = 0.001
 
 
 def _flat(peers: list[str], **overrides: float) -> dict[str, float]:
@@ -231,9 +236,9 @@ def test_a_peer_group_below_the_minimum_is_refused() -> None:
     for size in (2, 3, 5, 8, 11):
         peers = _TWELVE[:size]
         with pytest.raises(InsufficientPeersError, match="below the measured minimum"):
-            peer_z(peers, _flat(peers))
+            peer_z(peers, _flat(peers), scale_floor=_FLOOR)
 
-    result = peer_z(_TWELVE, _flat(_TWELVE, **{"pod-0": 9.0}))
+    result = peer_z(_TWELVE, _flat(_TWELVE, **{"pod-0": 9.0}), scale_floor=_FLOOR).z
     assert result["pod-0"] > 0, "a full group must still produce a comparison"
 
 
@@ -247,19 +252,19 @@ def test_a_timestamp_missing_any_peer_is_refused() -> None:
     samples = _flat(_TWELVE)
     del samples["pod-7"]
     with pytest.raises(PartialPeerCoverageError, match="did not report"):
-        peer_z(_TWELVE, samples)
+        peer_z(_TWELVE, samples, scale_floor=_FLOOR)
 
     samples = _flat(_TWELVE)
     for gone in ("pod-1", "pod-2", "pod-3"):
         del samples[gone]
     with pytest.raises(PartialPeerCoverageError, match="3 of 12"):
-        peer_z(_TWELVE, samples)
+        peer_z(_TWELVE, samples, scale_floor=_FLOOR)
 
 
 def test_a_non_finite_peer_sample_is_refused() -> None:
     """Same rule as the temporal path: nan must be loud, not propagated."""
     with pytest.raises(NonFiniteSampleError):
-        peer_z(_TWELVE, _flat(_TWELVE, **{"pod-4": float("nan")}))
+        peer_z(_TWELVE, _flat(_TWELVE, **{"pod-4": float("nan")}), scale_floor=_FLOOR)
 
 
 def test_peer_z_cancels_a_common_mode_shift() -> None:
@@ -278,30 +283,73 @@ def test_peer_z_cancels_a_common_mode_shift() -> None:
     spread["pod-0"] = 9.0
     shifted = {peer: value + 100.0 for peer, value in spread.items()}
 
-    assert peer_z(_TWELVE, shifted)["pod-0"] == pytest.approx(peer_z(_TWELVE, spread)["pod-0"]), (
+    after = peer_z(_TWELVE, shifted, scale_floor=_FLOOR).z["pod-0"]
+    before = peer_z(_TWELVE, spread, scale_floor=_FLOOR).z["pod-0"]
+    assert after == pytest.approx(before), (
         "a uniform shift across every peer changed the comparison"
     )
 
 
-def test_the_scale_floor_breaks_cancellation_when_mad_collapses() -> None:
-    """Stated because it is a real limit of the floor, not a bug to hide.
+def test_a_declared_floor_keeps_cancellation_even_when_mad_collapses() -> None:
+    """The floor was level-dependent, and declaring it is what fixed that.
 
-    With identical peers MAD is exactly zero, so the scale falls to
-    `min(|value|) * 1e-3` - which scales with the absolute level. A uniform
-    shift then changes z, and common-mode cancellation fails precisely where
-    the estimator was already degenerate.
+    This test was originally written to CONFIRM that peer-relative comparison
+    cancels a uniform shift. It failed - and it was right to. The floor was then
+    `min(|value|) * 1e-3`, derived from the data's own magnitude, so when MAD
+    collapsed to zero the scale scaled with the absolute level and a common-mode
+    shift changed z. Cancellation broke exactly where the estimator was already
+    degenerate.
 
-    This is a second, independent argument for `MIN_PEERS`: a large group makes
-    an exactly-zero MAD vanishingly unlikely, so the floor stops being reachable
-    in practice. It also means the floor must never be read as "a small number
-    that does not matter" - when it engages, it decides the answer.
+    Promoting the floor to a declared, measured constant removed that: a
+    constant does not move with the data, so cancellation now holds in both
+    regimes. The test is kept, inverted, because the property is worth pinning -
+    and because a future floor derived from the samples would fail it again.
+
+    First time in this branch that a test rather than a measurement corrected a
+    design belief.
     """
     identical = _flat(_TWELVE, **{"pod-0": 5.0})
     shifted = {peer: value + 100.0 for peer, value in identical.items()}
 
-    assert peer_z(_TWELVE, identical)["pod-0"] != pytest.approx(
-        peer_z(_TWELVE, shifted)["pod-0"]
-    ), (
-        "the floor is no longer level-dependent - if that was fixed deliberately, "
-        "this test should be replaced by one asserting cancellation everywhere"
+    quiet = peer_z(_TWELVE, identical, scale_floor=0.5)
+    moved = peer_z(_TWELVE, shifted, scale_floor=0.5)
+
+    assert quiet.floor_engaged and moved.floor_engaged, "this test needs the floor to engage"
+    assert moved.z["pod-0"] == pytest.approx(quiet.z["pod-0"]), (
+        "a uniform shift changed a floor-determined reading, so the floor is "
+        "level-dependent again - check it is not being derived from the samples"
     )
+
+
+def test_a_metric_with_no_measured_scale_floor_is_refused() -> None:
+    """The floor is the third parameter, and it was the one nobody derived.
+
+    It lived inside the estimator as `min(|value|) * 1e-3` - a heuristic, never
+    measured, invisible in every result it produced. It is not a small
+    correction: when the scale collapses it decides the answer outright.
+    """
+    for metric in ("disk_ratio", "latency", "anything_at_all"):
+        with pytest.raises(ScaleFloorNotMeasuredError, match="no measured scale floor"):
+            floor_for(metric)
+
+
+def test_a_reading_says_whether_the_floor_decided_it() -> None:
+    """A floor-determined number must not look like a data-determined one.
+
+    `disk_ratio` over three nodes gave 1599.63 on a clean baseline and 1585.74
+    as a signal. Both were the floor speaking, and nothing in either number said
+    so - which is how one of them got reported as the strongest detection in the
+    branch.
+    """
+    # Peers genuinely spread: the scale comes from the data.
+    spread = {peer: 1.0 + index * 0.5 for index, peer in enumerate(_TWELVE)}
+    measured = peer_z(_TWELVE, spread, scale_floor=1e-6)
+    assert not measured.floor_engaged
+    assert measured.scale > 1e-6
+
+    # Peers identical: MAD is exactly zero and the floor takes over.
+    identical = _flat(_TWELVE, **{"pod-0": 5.0})
+    floored = peer_z(_TWELVE, identical, scale_floor=0.5)
+    assert floored.floor_engaged, "the floor decided this reading and did not say so"
+    assert floored.scale == pytest.approx(0.5)
+    assert floored.z["pod-0"] == pytest.approx((5.0 - 1.0) / 0.5)

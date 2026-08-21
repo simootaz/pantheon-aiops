@@ -1224,6 +1224,51 @@ The value of predicting first is not that it makes you right. It is that
 "11.10 where 3-8 was predicted" is a visible miss, where a number read after
 the fact would have been absorbed into the story without anyone noticing.
 
+## A test written to confirm a property failed, and was right, 2026-08-21
+
+The first time in this branch that a **test** rather than a measurement
+corrected a design belief, and it found a parameter nobody had noticed existed.
+
+`test_peer_z_cancels_a_common_mode_shift` was written to pin the property the
+whole peer-relative approach rests on: seasonality moves every peer together,
+so a uniform shift must not change the comparison. It was expected to pass on
+the first run. It failed.
+
+The scale floor was `min(|value|) * 1e-3` - derived from the data's own
+magnitude. When MAD collapses to zero the floor becomes the scale, and a floor
+proportional to the level makes z level-dependent. **Common-mode cancellation
+broke precisely where the estimator was already degenerate**, which is the worst
+place for it to break and the least likely place to look.
+
+### The floor was a third parameter, undeclared
+
+`WINDOW_SECONDS` and the threshold were both derived, argued for, and stated.
+The floor sat inside the estimator as a heuristic, was never measured, and was
+invisible in every result it produced - while being capable of deciding the
+answer outright.
+
+It already had: `disk_ratio` over three nodes produced **1599.63 on a clean
+baseline** in one scenario and **1585.74 as a signal** in another. Both were the
+floor speaking. One of them was reported as the strongest detection in the
+branch before the degeneracy was understood.
+
+> **A parameter that can determine the output is a parameter, whatever it is
+> called.** "Floor", "epsilon", "guard value", "small constant" - if the result
+> changes when it changes, it needs deriving, stating and refusing like any
+> other. A number small enough to look harmless is the easiest kind to leave
+> underived.
+
+Now: `SCALE_FLOORS` is per metric and empty, `floor_for` refuses rather than
+substituting, and `PeerComparison.floor_engaged` travels with every reading, as
+does `MetricWindowPayload.scale_floor_engaged` through codegen. **A number whose
+provenance is the floor must not be indistinguishable from one whose provenance
+is the distribution.**
+
+Declaring it also fixed the defect that exposed it. A constant floor does not
+move with the data, so cancellation now holds in both regimes - and the test is
+kept, inverted, because a future floor derived from the samples would fail it
+again.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
