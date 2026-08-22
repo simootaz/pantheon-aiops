@@ -962,6 +962,376 @@ asserted to be the mean, the headroom floor is derived from measured duty
 cycle, and the gate itself watches Alertmanager during the run rather than
 after. Each planted in both directions.
 
+## A constant read as a trend, 2026-08-20
+
+Distinct from measuring the wrong subject, and worth separating: **the number
+was real, and the pattern was imposed on it.**
+
+Loki's push endpoint started returning 500. Its log showed:
+
+```
+msg="checkpoint done" time=4m30.107457737s
+```
+
+Four and a half minutes for a WAL checkpoint reads as pathological, and the
+next step was going to be "checkpoints are growing and starving the
+heartbeat". Printing the column killed it:
+
+```
+11:05:36  4m30.014281535s      12:55:35  4m30.086528312s
+11:10:36  4m30.016202610s      13:00:35  4m30.090265305s
+11:15:36  4m30.021941609s      13:15:35  4m30.107457737s
+```
+
+Constant to three decimal places, across healthy periods and unhealthy ones
+alike. It is a **paced cycle**, not accumulating work, and it had been 4m30
+since before anything went wrong.
+
+> **Before reading a trend, check the column varies.** A fixed interval and
+> accumulating work look identical in the last few rows, and the last few rows
+> are what a `tail` shows you. One value repeated is not a slow rise.
+
+The real signal was in what the log did **not** contain: gaps. Nothing at all
+between 13:15:35 and 13:41:07, and an earlier silence from 11:26:20 to
+12:25:35. Loki was not slow, it was frozen - and the actual cause was that it
+had aged its **own** ring entry out (`unhealthy instances: 127.0.0.1:9095`, its
+own address) after its heartbeat stalled, leaving the distributor with zero
+healthy ingesters.
+
+Both hypotheses on the way there were wrong, and each was discarded by looking
+rather than by reasoning: "Loki stopped logging" (misread clock) and
+"checkpoints are growing" (constant column).
+
+## A test that exercised more than its subject, 2026-08-20
+
+The unit under test was the runner's *handling* of a rejected log push. The
+first version pointed it at a closed loopback port to provoke the rejection.
+
+It hung the suite past 600 seconds. Windows does not refuse a connection to a
+dead loopback port promptly, so three hundred ticks of connect-and-wait never
+finished. The test was measuring Windows' connection-refusal timing, which is
+not the subject and not a property this repository cares about.
+
+Rewritten to raise `httpx.HTTPStatusError` from a patched sink: 4.3 seconds,
+and it fails for exactly one reason.
+
+> **A test that exercises more than its subject fails for reasons unrelated to
+> its subject** - and passes for unrelated reasons too. Reach for a real socket
+> when the socket is what is being tested.
+
+## Reproducibility is not coverage, 2026-08-20
+
+Ten baseline-only runs against the live stack, to bound the false-positive rate
+for Argus. Every run completed, none degraded, and the numbers were tight:
+
+```
+error_ratio   max 2.63   median 2.53   across runs: 2.6 2.6 2.5 2.3 2.6 2.5 2.5 2.3 2.3 2.5
+latency       max 4.35   median 4.07
+ci_ratio      max 4.53   median 4.24
+highest |z| on any clean baseline: 4.53
+```
+
+A threshold of 6 clears that comfortably. It would have been wrong.
+
+The *pre-fault* windows of the scenario sweep are also clean baseline, and on
+the same metric they reach **15.67** - six times the bound ten reproducible
+runs had just produced. A `Z_THRESHOLD` of 6 would have false-positived on
+`error_ratio` immediately.
+
+> **Reproducibility is not coverage.** A tight distribution measures the
+> conditions you sampled and says nothing about the ones you did not. Ten runs
+> agreeing to two decimal places is evidence that the measurement is stable,
+> not that the space is mapped - and the tightness is what makes it look
+> authoritative.
+
+This is a different failure from the instrument defects already on this page.
+There the instrument was broken - the wrong pods, a `max` across a series that
+was never published, a generator producing different data every run. Here **the
+instrument was correct**. Every number was real, the method was sound, and the
+sampling was too narrow. Nothing about the output could have revealed that.
+
+### The tell, and why it was worth chasing
+
+The obvious explanation was warm-up: `rate()` over a counter freshly reset by
+the pushgateway is unstable, so an early excursion would be an artefact rather
+than a property. Locating the excursions killed it:
+
+```
+noisy_neighbor    pre-fault 480s   worst |z| = 15.67  at t=220s
+bad_deploy_5xx    pre-fault 379s   worst |z| =  6.76  at t=331s
+flaky_test_storm  pre-fault 137s   worst |z| = 14.80  at t=137s
+```
+
+Mid-window, not at the start.
+
+> **A discrepancy that survives the obvious explanation is a difference in
+> condition, not noise.** The cheap explanation is worth testing precisely
+> because rejecting it promotes the discrepancy from "probably nothing" to
+> "something varies that I have not identified".
+
+Two samples from an unmapped space are not a bound, so neither 2.63 nor 15.67
+is one. The candidates - compression speed, window duration, which services
+were covered - are being varied one at a time before any threshold is set.
+
+## The ground truth can have artifacts the real system does not, 2026-08-20
+
+The most dangerous instrument defect on this page, because the instrument is
+supposed to be authoritative.
+
+`error_ratio`'s clean-baseline |z| was isolated to a beat between the
+simulator's push tick and Prometheus's scrape interval: 0.76, 2.10 and 8.33
+ticks per scrape at 228x, 630x and 2500x, with the worst noise just past two.
+The analysis was right, and it leads somewhere other than a threshold.
+
+**That beat exists only because of compression.** The push tick scales with
+speed; the scrape does not. Nothing on a real cluster pushes at eight times the
+scrape rate. So a threshold calibrated against this noise floor would be
+calibrated against a phenomenon Argus will never meet in production - and it
+would look, in every artifact downstream, exactly like a property of the data.
+
+> **An artifact in the ground-truth generator propagates as truth.** Thresholds
+> are derived from it, Findings are judged against it, and agent scoring will
+> eventually be graded on it. Every one of those inherits the artifact wearing
+> the appearance of a measured property, because the generator is the thing
+> everything else is checked against.
+
+The earlier instrument defects on this page were *visible* once looked for: the
+wrong pods, a `max` over a series never published, a non-deterministic seed.
+This one produces correct, reproducible, internally consistent measurements of
+something that is not real.
+
+So the generator is fixed rather than the artifact characterised: the push
+cadence is decoupled from compression, ticking on a fixed wall schedule and
+advancing simulated time per tick instead. Characterising the artifact would
+have produced a defensible number, derived live, reproducible across runs, and
+wrong for production - the one failure mode none of the existing rules on this
+page would have caught.
+
+**Stated as a limitation regardless of how it resolves:** thresholds derived
+under compression may not transfer to an uncompressed cluster. That does not
+invalidate simulator-derived calibration, but a reader must not take these
+numbers as production-ready.
+
+## Procedure: enumerate the forms before writing the matcher
+
+Not an observation - a step to perform. This has now produced four defects, all
+the same shape, so it is written as something to do rather than something to
+remember.
+
+The four:
+
+| matcher | form it missed |
+|---|---|
+| `.PHONY` completeness | a backslash continuation, so it never read the second line |
+| the raw-read sweep | `.read_bytes()`, while `read_text()` and `open()` were covered |
+| the step-event guard | `from X import Y`, having walked `Name` and `Attribute` nodes only |
+| the counted-noun guard | `Decision Records` against a case-sensitive `decision records` |
+
+Each was written by looking at the example in front of it and describing that.
+Each then matched exactly the example in front of it. Calling this an attention
+lapse four times has not stopped it, because it is not one - **a matcher shaped
+by its first example is a design method, and it produces this result reliably.**
+
+### The same procedure, for scenarios
+
+Third instance of one mistake, now with a measurable consequence.
+
+| occasion | what was assumed | what the target said |
+|---|---|---|
+| measuring `memory_leak` | it targets `checkout` | it targets `search` - the measurement read pure baseline and reported "no usable threshold at any offset" |
+| classifying `disk_pressure` | cluster-wide disk fill | it targets `node-a` - predicted as the at-risk common-mode case, it was the strongest divergence signal |
+| classifying `noisy_neighbor` | one node diverging from its peers | `node-c` is **4 of 12 pods**, so at pod level it is partial common-mode - the failure mode was predicted correctly and assigned to the wrong scenario |
+
+Each time the scenario's *description* was read and its *target set* was not.
+The descriptions are accurate; they describe the fault in the operator's terms,
+and the peer comparison happens at a different granularity than the words.
+
+> **Before measuring a scenario, write down its phase targets as data** - which
+> pods, which services, what fraction of each peer group. `pods_for(phase.target)`
+> answers it in one line. The description tells you what the fault *means*; only
+> the target set tells you what the measurement will *see*.
+
+The same shape as enumerating a matcher's forms before writing it: the
+enumeration is the design step, and skipping it lets the first plausible reading
+choose the answer.
+
+### The step
+
+**Before writing the matcher, write down the forms it must catch, as test data.
+Then write the matcher against that list.** The enumeration is the design; the
+regex or AST walk is the implementation. Doing them in the other order lets the
+first example choose the shape.
+
+Prompts for the enumeration, from the four above:
+
+- **Case** - `MAD`, `mad`, `Mad`. Is the input source-controlled or prose?
+- **Import and reference** - `import x`, `from x import y`, `x.y`, an alias.
+- **Whitespace and continuation** - a line break, a backslash, a wrapped list.
+- **Plural and singular** - `test`/`tests`, `record`/`records`.
+- **Synonyms for the same call** - `read_text`, `read_bytes`, `open().read()`.
+- **Negation and absence** - does the guard need to fire when something is
+  *missing*, and can it see a missing thing at all?
+
+Then plant **each enumerated form**. One green planting on a multi-form rule is
+evidence about one form and silence about the rest - which is already on this
+page, and is what this procedure operationalises.
+
+The cost is a few minutes per guard. The alternative is measured: four guards
+that read as complete, passed continuously, and were blind to the case that
+mattered.
+
+## A mechanism fitted to the points that suggested it, 2026-08-20
+
+**Both of us believed this one**, which is why it is filed as a rule rather
+than as an error. The maintainer endorsed the mechanism and directed a
+generator change on the strength of it; the agent produced the three-point fit
+that made it convincing. Neither pushed on it, because the arithmetic was real
+and the correlation was exact.
+
+`error_ratio`'s clean-baseline |z| measured 2.42, 18.18 and 4.71 at 228x, 630x
+and 2500x. The push tick against the 1s scrape gives 0.76, 2.10 and 8.33 ticks
+per scrape at those speeds. A beat between tick and scrape explains a
+non-monotonic noise floor peaking just past two ticks per scrape, and every
+number lined up.
+
+It was wrong. Holding the cadence fixed at 8 pushes per scrape - which removes
+the beat entirely - left the spike **higher**: 20.22 at 630x against 15.16
+unpaced, with 228x and 2500x unchanged.
+
+> **A mechanism fitted to the points that suggested it explains nothing until
+> it predicts a point it has not seen.** Three points and a plausible story
+> will always agree; that agreement is what the story was built from. The test
+> is a prediction that can come back no.
+
+### What a real test looked like
+
+The replacement hypothesis - that the window spans a fraction of the diurnal
+cycle, worst near two-thirds - was written down **with numbers, before the
+run**, in a committed file:
+
+| fraction | predicted | measured |
+|---|---|---|
+| 0.25 | 3 - 8 | **11.10** |
+| 0.50 | 10 - 18 | 18.43 |
+| 0.66 | 18 - 25 | 22.14 |
+| 1.00 | 3 - 8 | 6.57 |
+| 2.00 | 2 - 6 | 5.89 |
+
+Two further predictions were made specifically because they could fail
+independently of the first, and one of them did - see the entry below.
+
+The value of predicting first is not that it makes you right. It is that
+"11.10 where 3-8 was predicted" is a visible miss, where a number read after
+the fact would have been absorbed into the story without anyone noticing.
+
+## A test written to confirm a property failed, and was right, 2026-08-21
+
+The first time in this branch that a **test** rather than a measurement
+corrected a design belief, and it found a parameter nobody had noticed existed.
+
+`test_peer_z_cancels_a_common_mode_shift` was written to pin the property the
+whole peer-relative approach rests on: seasonality moves every peer together,
+so a uniform shift must not change the comparison. It was expected to pass on
+the first run. It failed.
+
+The scale floor was `min(|value|) * 1e-3` - derived from the data's own
+magnitude. When MAD collapses to zero the floor becomes the scale, and a floor
+proportional to the level makes z level-dependent. **Common-mode cancellation
+broke precisely where the estimator was already degenerate**, which is the worst
+place for it to break and the least likely place to look.
+
+### The floor was a third parameter, undeclared
+
+`WINDOW_SECONDS` and the threshold were both derived, argued for, and stated.
+The floor sat inside the estimator as a heuristic, was never measured, and was
+invisible in every result it produced - while being capable of deciding the
+answer outright.
+
+It already had: `disk_ratio` over three nodes produced **1599.63 on a clean
+baseline** in one scenario and **1585.74 as a signal** in another. Both were the
+floor speaking. One of them was reported as the strongest detection in the
+branch before the degeneracy was understood.
+
+> **A parameter that can determine the output is a parameter, whatever it is
+> called.** "Floor", "epsilon", "guard value", "small constant" - if the result
+> changes when it changes, it needs deriving, stating and refusing like any
+> other. A number small enough to look harmless is the easiest kind to leave
+> underived.
+
+Now: `SCALE_FLOORS` is per metric and empty, `floor_for` refuses rather than
+substituting, and `PeerComparison.floor_engaged` travels with every reading, as
+does `MetricWindowPayload.scale_floor_engaged` through codegen. **A number whose
+provenance is the floor must not be indistinguishable from one whose provenance
+is the distribution.**
+
+Declaring it also fixed the defect that exposed it. A constant floor does not
+move with the data, so cancellation now holds in both regimes - and the test is
+kept, inverted, because a future floor derived from the samples would fail it
+again.
+
+## A status code is not evidence of an effect, 2026-08-21
+
+The most transferable entry on this page, and the one that hid the longest.
+
+Every reset in this repository deleted the pushgateway group `pantheon_sim`.
+The generator pushes to `pantheon-sim`. **A pushgateway returns 202 Accepted for
+a group that does not exist**, so every reset succeeded loudly and cleared
+nothing - for a week, in every calibration harness, and in the integration gate
+that was merged as 8/8 green.
+
+Measured directly:
+
+```
+DELETE /metrics/job/pantheon_sim  -> 202   series still served: 119
+DELETE /metrics/job/pantheon-sim  -> 202   series still served: 0
+```
+
+Same status code. Opposite effects.
+
+> **A status code is evidence that a request was accepted, never that anything
+> happened.** Assert the postcondition. A delete that returns 200, a config
+> reload that returns OK, a cache flush that reports success, a webhook that
+> answers 202 - none of them is evidence the thing occurred, and the ones that
+> answer success unconditionally are the ones that hide longest.
+
+`MetricsGenerator.reset()` now deletes and then **queries**, raising
+`PushgatewayNotClearedError` if any series is still served. That converts a
+silent no-op into a loud failure, and it is what would have caught this on the
+first day rather than the seventh.
+
+### Fix the cause, not the instances
+
+The job name was a literal repeated across four callers while
+`metrics_generator` used `self.job`. Correcting the three known callers would
+have left the fourth to be written next week, so it is now one exported constant
+with `tests/unit/test_no_job_name_literals.py` failing the build on any module
+that spells it out - **both spellings**, since a guard forbidding only the
+correct one would have passed throughout the defect.
+
+The guard immediately found three more occurrences nobody had listed, and
+distinguishing them was the useful part: the Loki stream label (now
+`LOKI_JOB_LABEL`, named separately because it belongs to a different system and
+could legitimately diverge) and the CLI command name (a different concept
+sharing a spelling, allowed with the reason recorded).
+
+### A constant used in two directions needs asserting in both
+
+`test_simulator_components.py` asserted the **push** path spelled it
+`pantheon-sim`. The **delete** path had no test at all. So the half that was
+wrong was the half nobody checked - the same shape as the `satisfies` guard that
+caught component removals but not additions, and the tests that iterate *over*
+`REQUIRED_IN_PRODUCTION` rather than checking the set is complete.
+
+Two of this entry's own guards were too narrow on the first attempt, both
+caught by planting:
+
+- the literal guard reported line numbers computed against comment-stripped
+  source, so its locations did not exist in the files;
+- the postcondition guard asserted the substring `PushgatewayNotClearedError`
+  appeared in the module - which the **class definition** satisfies, so deleting
+  the raise from `reset()` left it green. It now walks the AST of `reset` and
+  asserts the raise is inside it.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

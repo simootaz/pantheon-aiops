@@ -47,6 +47,7 @@ import pytest
 
 from core.config import get_settings, require_stack
 from simulator.alerting import GATE_TICK_SECONDS, gate_speed
+from simulator.metrics_generator import MetricsGenerator
 from simulator.runner import ScenarioRunner
 from simulator.scenario import load
 from tests.unit.test_alert_rules import rule_seconds
@@ -147,11 +148,23 @@ def prometheus_alerts() -> set[str]:
 
 
 def reset_pushgateway() -> None:
-    httpx.delete(f"http://{SETTINGS.pushgateway.host_port}/metrics/job/pantheon_sim", timeout=10.0)
+    MetricsGenerator().reset()
 
 
 def settle(seconds_to_wait: float = 25.0) -> None:
     """Let the previous run's series go stale before the next one starts.
+
+    HISTORY, kept deliberately: this gate passed 8/8 on 2026-08-20 with a reset
+    that **never cleared anything**. It deleted the pushgateway group
+    `pantheon_sim`; the generator pushes to `pantheon-sim`, and a pushgateway
+    answers 202 Accepted for a group that does not exist. So every settle here
+    waited twenty-five seconds while the previous run's final values continued
+    to be served and scraped.
+
+    What that run proved is therefore narrower than it appeared: the rules fire
+    and deliver under conditions nobody designed, with a stale group present
+    until the next run's first push overwrites it. The thresholds in
+    `rules.sim.yml` were measured under those conditions too.
 
     Without this a scenario's alert can still be firing when the baseline run
     begins, and the negative test would fail on the previous test's fault.

@@ -176,10 +176,29 @@ class PodState:
     rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(0))
 
 
+class PushgatewayNotClearedError(RuntimeError):
+    """Raised when a reset returned success and the series are still being served."""
+
+
+#: The pushgateway group every simulator series is pushed to, and the only place
+#: this string exists.
+#:
+#: It was a literal repeated across callers. `metrics_generator` pushed to
+#: `pantheon-sim`; every reset in the repository deleted `pantheon_sim`. The
+#: pushgateway answers **202 Accepted** for a group that does not exist, so for a
+#: week every reset succeeded loudly and cleared nothing - in the integration
+#: gates and in every calibration harness.
+#:
+#: `tests/unit/test_no_job_name_literals.py` fails the build on a module that
+#: spells it out again, because correcting the three known callers leaves the
+#: fourth to be written next week.
+PUSHGATEWAY_JOB = "pantheon-sim"
+
+
 class MetricsGenerator:
     """Produces one snapshot of every series, and pushes it to a pushgateway."""
 
-    def __init__(self, gateway: str | None = None, job: str = "pantheon-sim") -> None:
+    def __init__(self, gateway: str | None = None, job: str = PUSHGATEWAY_JOB) -> None:
         gateway = gateway or get_settings().pushgateway.host_port
         self.gateway = gateway
         self._gateway_url = gateway if "://" in gateway else f"http://{gateway}"
@@ -388,6 +407,34 @@ class MetricsGenerator:
             headers={"Content-Type": CONTENT_TYPE_LATEST},
         )
         response.raise_for_status()
+
+    def reset(self, client: httpx.Client | None = None) -> None:
+        """Delete this job's group, and CONFIRM it is gone.
+
+        The confirmation is the point. A pushgateway DELETE returns **202
+        Accepted** whether or not the group existed, so a misspelled job name
+        produces a successful-looking reset that clears nothing - which is
+        exactly what happened here, undetected, across every gate and harness.
+
+        > A status code is not evidence of an effect. Assert the postcondition.
+        """
+        owned = httpx.delete if client is None else client.delete
+        owned(f"{self._gateway_url}/metrics/job/{self.job}", timeout=10.0)
+
+        get = httpx.get if client is None else client.get
+        body = get(f"{self._gateway_url}/metrics", timeout=10.0).text
+        survivors = [
+            line.split("{")[0]
+            for line in body.splitlines()
+            if line.startswith("pantheon_") and f'job="{self.job}"' in line
+        ]
+        if survivors:
+            raise PushgatewayNotClearedError(
+                f"{len(survivors)} series still served for job {self.job!r} after DELETE "
+                f"returned successfully, e.g. {sorted(set(survivors))[:3]}. The gateway "
+                "answers 202 for a group that does not exist, so a successful response is "
+                "not evidence the group was removed."
+            )
 
     def _node_disk(self, node: Node, simulated_seconds: float, active: list[ActivePhase]) -> float:
         """Node disk, driven by whichever of its pods a phase is filling.

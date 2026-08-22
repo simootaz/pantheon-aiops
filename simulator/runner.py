@@ -48,6 +48,51 @@ KEEP_UP_THRESHOLD = 0.8
 #: rather than trusting this - it is here so callers can pick a sane default.
 NOMINAL_TICK_COST_SECONDS = 0.12
 
+#: Prometheus scrapes the simulator stack every 1s (prometheus.sim.yml).
+SCRAPE_INTERVAL_SECONDS = 1.0
+
+#: Pushes per scrape when the runner ticks on a fixed WALL schedule.
+#:
+#: Tying the tick to simulated time makes the push cadence scale with
+#: compression while the scrape does not, and the beat between them is an
+#: artifact of the simulator that no real cluster has. Measured on `error_ratio`
+#: it put the clean-baseline |z| at 2.42, 18.18 and 4.71 for 0.76, 2.10 and 8.33
+#: ticks per scrape - a noise floor that is non-monotonic in speed and entirely
+#: fictional.
+#:
+#: Ten was the target, so `rate()` over a 10s range sees smooth increments.
+#: Eight is what the push path delivers with margin: a metrics push measured
+#: 53.9ms on this stack and a tick costs two round trips, so ten per second sits
+#: at the ceiling with none to spare. Stated rather than rounded up, because a
+#: cadence the runner cannot hold reports `kept_up=False` on every run and turns
+#: an honest warning into noise.
+#:
+#: REMOVING THE ARTIFACT IS THE SMALLER HALF OF WHY THIS EXISTS.
+#:
+#: The bigger one is that it makes measurements at different speeds
+#: **comparable**. With the cadence tied to simulated time, 228x and 2500x are
+#: different sampling regimes, not the same system observed faster: the number
+#: of pushes falling inside a `rate()` range changes with compression, so a
+#: bound measured at one speed describes a noise process that does not exist at
+#: another. A per-metric threshold table would then need five entries per metric
+#: - one per speed the gate uses - and each would be a separate characterisation
+#: rather than a property of the metric.
+#:
+#: With a fixed cadence, speed becomes a pure time-scaling factor. The same
+#: number of samples lands in every window whatever the compression, so a single
+#: threshold per metric means something. Without this, per-metric thresholds do
+#: not work at all - not as an inconvenience, but because the quantity being
+#: bounded changes underneath them.
+#:
+#: Note where the cost falls: pushes per second rise 10.5x at 228x, 3.8x at
+#: 630x, and not at all at 2500x. The expensive half of this change buys the
+#: least artifact removal - low compression is where the beat was mildest - and
+#: buys all of the comparability.
+PUSHES_PER_SCRAPE = 8
+
+#: Wall seconds between pushes when ticking on a fixed schedule.
+WALL_TICK_SECONDS = SCRAPE_INTERVAL_SECONDS / PUSHES_PER_SCRAPE
+
 
 def max_honest_speed(tick_seconds: float = DEFAULT_TICK_SECONDS) -> float:
     """The fastest compression a given tick size can actually deliver.
@@ -82,6 +127,29 @@ class RunReport:
     achieved_speed: float = 0.0
     #: Fraction of log lines emitted. See LogGenerator.sampling_ratio.
     log_sampling_ratio: float = 1.0
+    #: Ticks whose log push was rejected, and what rejected them.
+    #:
+    #: A log sink that is down must not abort a metric measurement - Argus reads
+    #: metrics, and a run that dies at tick 3 because Loki returned 500 has
+    #: measured nothing. But a run that quietly proceeds with no logs is a run
+    #: whose conditions differ from the ones being characterised, and nothing in
+    #: the numbers would say so.
+    #:
+    #: Seen for real: the host suspended, Loki's ingester aged its own entry out
+    #: of the ring, and every push returned "at least 1 live replicas required,
+    #: could only find 0" for twenty-one minutes before it re-registered.
+    log_push_failures: int = 0
+    log_push_error: str | None = None
+
+    @property
+    def degraded(self) -> bool:
+        """Whether this run met the conditions it was meant to characterise.
+
+        Anything aggregated from several runs has to carry this per run. A
+        false-positive bound computed over ten runs of which three had no logs
+        is still usable; a bound that does not say which three is not.
+        """
+        return self.log_push_failures > 0
 
     @property
     def kept_up(self) -> bool:
@@ -99,6 +167,7 @@ class ScenarioRunner:
         loki_url: str | None = None,
         webhook_url: str | None = None,
         tick_seconds: float = DEFAULT_TICK_SECONDS,
+        wall_paced: bool = False,
         on_event: Callable[[str], None] | None = None,
     ) -> None:
         settings = get_settings()
@@ -106,6 +175,11 @@ class ScenarioRunner:
         self.logs = LogGenerator(loki_url=loki_url or settings.loki.base)
         self.pipelines = PipelineGenerator(webhook_url=webhook_url or settings.simulator.webhook)
         self.tick_seconds = tick_seconds
+        #: Tick on a fixed WALL schedule, advancing simulated time per tick,
+        #: rather than a fixed simulated step whose wall cadence scales with
+        #: compression. Opt-in while the two are compared: the fixed-simulated
+        #: mode is what every existing gate was measured against.
+        self.wall_paced = wall_paced
         self._on_event = on_event or (lambda _message: None)
 
     def _say(self, message: str) -> None:
@@ -114,6 +188,10 @@ class ScenarioRunner:
     def run(self, scenario: Scenario, *, speed: float, send_pipelines: bool = True) -> RunReport:
         """Run baseline then phases, and report what was produced."""
         clock = SimClock(speed=speed)
+        # Wall-paced: the push cadence is fixed and the simulated step scales
+        # with compression. Otherwise the reverse, which is what produces the
+        # tick-versus-scrape beat.
+        tick = speed * WALL_TICK_SECONDS if self.wall_paced else self.tick_seconds
         report = RunReport(scenario=scenario.name, speed=speed)
         started = time.monotonic()
         active: set[str] = set()
@@ -132,15 +210,24 @@ class ScenarioRunner:
                     self._say(f"phase started: {entering}")
                 for leaving in sorted(active - names):
                     self._say(f"phase ended: {leaving}")
-                    report.fault_ended_wall = time.monotonic() - started
                 active = names
+                if names:
+                    # The last moment a phase was ACTIVE, not the last exit
+                    # observed. Recording exits made the fault window depend on
+                    # tick alignment: a run whose final tick lands before the
+                    # last phase ends never sees that phase leave, so the window
+                    # kept whatever earlier exit it had seen. bad_deploy_5xx
+                    # reported a 3-second fault against an actual 50 - it had
+                    # recorded deploy_lands ending at offset 610 and never
+                    # observed errors_spike or pool_exhaustion end at all.
+                    report.fault_ended_wall = time.monotonic() - started
 
-                self.metrics.push(simulated, active_phases, self.tick_seconds, client)
+                self.metrics.push(simulated, active_phases, tick, client)
                 report.metrics_pushes += 1
 
                 lines: list[LogLine] = []
                 for pod in PODS:
-                    lines.extend(self.logs.baseline_lines(pod, simulated, self.tick_seconds))
+                    lines.extend(self.logs.baseline_lines(pod, simulated, tick))
                 for phase in phases:
                     for pattern in phase.logs:
                         for pod in pods_for(phase.target):
@@ -150,24 +237,33 @@ class ScenarioRunner:
                                     pattern.template,
                                     pattern.per_minute,
                                     pattern.level,
-                                    self.tick_seconds,
+                                    tick,
                                     simulated,
                                 )
                             )
-                report.log_lines += self.logs.push(lines, client)
+                try:
+                    report.log_lines += self.logs.push(lines, client)
+                except httpx.HTTPError as error:
+                    # Recorded, not swallowed. `degraded` is what downstream
+                    # reads; the first error is kept because the tenth is
+                    # usually the same one.
+                    report.log_push_failures += 1
+                    if report.log_push_error is None:
+                        report.log_push_error = f"{type(error).__name__}: {error}"
+                        self._say(f"log push failing, continuing without logs: {error}")
 
                 if send_pipelines:
                     report.pipelines_sent += self._maybe_send_pipeline(client, scenario, phases)
 
                 report.ticks += 1
-                simulated += self.tick_seconds
+                simulated += tick
                 # Pace against an absolute schedule, not tick by tick. See
                 # _sleep_until: per-tick sleeps accumulate every overshoot.
                 self._sleep_until(started + clock.wall_for(simulated))
 
         report.wall_seconds = time.monotonic() - started
         report.simulated_seconds = simulated
-        report.log_sampling_ratio = self.logs.sampling_ratio(self.tick_seconds)
+        report.log_sampling_ratio = self.logs.sampling_ratio(tick)
         report.achieved_speed = simulated / report.wall_seconds if report.wall_seconds > 0 else 0.0
         if not report.kept_up:
             self._say(

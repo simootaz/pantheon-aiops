@@ -31,10 +31,10 @@ Here is the honest split.
 | **Connectors** | Prometheus and Alertmanager speak MCP, read-only, with the tool allowlist enforced at bind **and** at call. |
 | **Agent runtime** | `agents/_base/` gives a subclass one required coroutine; the manifest registry loads and validates all ten. Finding ids are deterministic, so a retry cannot duplicate a claim. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
-| **306 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
+| **329 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
 | **Deploy skeleton** | Helm lints and templates, Terraform validates, Compose brings the stack up. |
-| **Six ADRs** | The decisions, and what was rejected. |
+| **Seven ADRs** | The decisions, and what was rejected. |
 
 ### Does not exist yet
 
@@ -309,7 +309,7 @@ make test-sim                    # assert on data a live stack returned
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layers, the three flows, the contract pipeline |
 | [ROADMAP.md](ROADMAP.md) | Phases 0–7 and every deferred decision |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Git Flow, codegen rules, guard philosophy |
-| [docs/adr/](docs/adr/README.md) | Six decision records |
+| [docs/adr/](docs/adr/README.md) | Seven decision records |
 | [docs/guard-verification.md](docs/guard-verification.md) | How every guard was verified, and the ones that failed |
 
 ## Licence
