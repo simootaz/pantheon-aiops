@@ -31,4 +31,5 @@ experiments.
 | [01](01-window-cycle.md) | window as a fraction of the diurnal cycle | shape confirmed, 0.25 magnitude missed |
 | [02](02-two-effects-and-peers.md) | drift vs estimator noise; peer-relative per scenario | both numeric predictions falsified |
 | [03](03-grouping-and-group-size.md) | baseline anomaly, group size, grouping axis | P1 falsified, P2 falsified, P3 confirmed |
-| [04](04-pushgateway-staleness.md) | DELETE semantics and Prometheus staleness | pending |
+| [04](04-pushgateway-staleness.md) | DELETE semantics and Prometheus staleness | Q1 falsified — the delete never worked; Q2 and Q3 confirmed |
+| [05](05-run-ordering.md) | does run order affect a baseline once the reset works | pending |
