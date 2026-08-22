@@ -270,7 +270,8 @@ pantheon-aiops/
 | `.github/workflows/` | `ci.yml` is the **single required check**; every other workflow is reusable (`workflow_call` only) and is called from it. | 7 |
 | **docs/** | `architecture/`, `agents/`, `deployment/`, `adr/`, `diagrams/`. | 7 |
 | `docs/REPOSITORY_MAP.md` | ★ **This file.** The canonical map of the repository. | 0 |
-| `docs/argus-predictions/` | What each Argus calibration measurement was expected to produce, written **before** it ran, with falsification conditions. Two were falsified outright. | 1 |
+| `docs/argus-predictions/` | What each Argus calibration measurement was expected to produce, written **before** it ran, with falsification conditions - and its **scoring** beside it. A prediction without its committed scoring is half a record. | 1 |
+| `docs/argus-predictions/data/` | The raw measurements the scorings cite, committed because they otherwise live only in a session scratchpad. | 1 |
 | `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
 | `docs/guard-verification.md` | How every guard was verified against a planted violation — including three that turned out not to work. | 0 |
 

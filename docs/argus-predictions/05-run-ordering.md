@@ -84,3 +84,36 @@ Isolation built in, not delegated to a settle that has already failed once:
   contamination is checkable after the fact rather than assumed absent.
 - The first samples of each window checked against the previous scenario's final
   values, so overlap is measured rather than argued.
+
+---
+
+# Result — measured 2026-08-22
+
+| condition | predicted | measured | |
+|---|---|---|---|
+| **S** standalone | 4 - 7 | **7.06** | miss, just above the range |
+| **A** after a fault, reset works | 4 - 8 | **6.50** | hit |
+| **N** after a fault, no reset | 15 - 30 | **22.76** | hit |
+
+**Order does not matter once the reset works.** S and A differ by 0.56, well
+inside noise, exactly as the calibration note anticipated - "S and A will be
+closer together than I have written".
+
+**N reproduced 22.76 to two decimal places** - the identical figure both earlier
+peer runs produced. A control that reproduces the historical number on demand is
+not a story that fits the data; it is the defect, recreated deliberately.
+
+## What resolved it
+
+Not a better hypothesis. Three had already failed - signal aliasing, partial
+common-mode, coverage gaps - and each shared a flaw: it explained an anomaly
+using data collected under conditions that no longer existed.
+
+The fourth attempt **recreated the suspected broken condition alongside a working
+one, in the same run.** That is the transferable part.
+
+## Cost, as predicted
+
+The likely-and-expensive outcome: four of five baselines in the previous
+Experiment B were measured under contamination that no longer exists. Experiment
+B re-ran - see `06-experiment-b-rerun.md`.
