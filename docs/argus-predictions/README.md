@@ -6,8 +6,13 @@ that a miss stays visible: `11.10 measured where 3-8 was predicted` is a
 recorded failure, where a number read afterwards would have been absorbed into
 whatever story was already forming.
 
-Two of these predictions were falsified outright, and one was falsified in its
-specifics while its most important claim held. That is the intended yield.
+Several of these predictions were falsified outright, and others were falsified
+in their specifics while their most important claim held. That is the intended
+yield.
+
+Each file carries its **result** below the predictions, so a prediction and its
+scoring live together. A prediction without its committed scoring is half a
+record.
 
 ## A correction about these files
 
@@ -31,4 +36,6 @@ experiments.
 | [01](01-window-cycle.md) | window as a fraction of the diurnal cycle | shape confirmed, 0.25 magnitude missed |
 | [02](02-two-effects-and-peers.md) | drift vs estimator noise; peer-relative per scenario | both numeric predictions falsified |
 | [03](03-grouping-and-group-size.md) | baseline anomaly, group size, grouping axis | P1 falsified, P2 falsified, P3 confirmed |
-| [04](04-pushgateway-staleness.md) | DELETE semantics and Prometheus staleness | pending |
+| [04](04-pushgateway-staleness.md) | DELETE semantics and Prometheus staleness | Q1 falsified — the delete never worked; Q2 and Q3 confirmed |
+| [05](05-run-ordering.md) | does run order affect a baseline once the reset works | S/A confirmed, N reproduced 22.76 exactly |
+| [06](06-experiment-b-rerun.md) | Experiment B re-run under asserted isolation | peer-relative detects 4 of 5; `carried=0` throughout |

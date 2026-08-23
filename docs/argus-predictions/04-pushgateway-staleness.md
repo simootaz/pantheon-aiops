@@ -65,3 +65,41 @@ container, or run windows offset past the lookback delta.
 than adequate, retained-series contamination is ruled out as the mechanism, and
 the 22.76 anomaly still has no supported explanation. It stays open; a fourth
 guess is not offered.
+
+---
+
+# Result — measured 2026-08-21
+
+## Q1 — FALSIFIED
+
+Predicted: the DELETE stops the pushgateway serving those series, immediately.
+
+```
+before                            119 pantheon_ lines
+DELETE /metrics/job/pantheon_sim  -> 202   still serving 119
+DELETE /metrics/job/pantheon-sim  -> 202   still serving 0
+```
+
+The group is `pantheon-sim`. Every reset in the repository deleted
+`pantheon_sim`. A pushgateway answers **202 Accepted** for a group that does not
+exist, so every reset succeeded loudly and cleared nothing - introduced
+2026-08-17 in the same commit as the push path, fixed 2026-08-21, live in every
+calibration harness and inside a gate passing 8/8 throughout.
+
+The prediction was falsified in a way I had not considered: I predicted the
+DELETE would work and asked what Prometheus did afterwards. The DELETE was the
+defect.
+
+## Q2 — CONFIRMED, once it was testable at all
+
+Predicted: values stop within 1-3 seconds via staleness, not the 5-minute
+lookback. Measured after a **real** delete: **0 series at t+2s.**
+
+There is no carry-forward. The contamination hypothesis that motivated this
+whole test was wrong about its mechanism while being right that contamination
+existed.
+
+## Q3 — CONFIRMED
+
+The frozen-data refusal fired on its first live case: 12 series, 1 distinct
+value, refused. It caught exactly what it was written for.

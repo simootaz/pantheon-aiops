@@ -1,0 +1,32 @@
+[
+ {
+  "condition": "S standalone",
+  "name": "noisy_neighbor",
+  "speed": 360.0,
+  "degraded": false,
+  "baseline_max_z": 7.062051271970183,
+  "baseline_samples": 482,
+  "window_start": 1787370326.1675687,
+  "fault_from": 1787370808.9175687
+ },
+ {
+  "condition": "A after fault, reset",
+  "name": "noisy_neighbor",
+  "speed": 360.0,
+  "degraded": false,
+  "baseline_max_z": 6.500592719776731,
+  "baseline_samples": 479,
+  "window_start": 1787371325.8371754,
+  "fault_from": 1787371805.8371754
+ },
+ {
+  "condition": "N after fault, no reset",
+  "name": "noisy_neighbor",
+  "speed": 360.0,
+  "degraded": false,
+  "baseline_max_z": 22.763608947102103,
+  "baseline_samples": 483,
+  "window_start": 1787372315.1266983,
+  "fault_from": 1787372797.9236982
+ }
+]
