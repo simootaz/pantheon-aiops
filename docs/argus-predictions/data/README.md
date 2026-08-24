@@ -13,6 +13,7 @@ only defensible peer-relative measurements taken so far.
 | `scale-stability.json` | one baseline run, 2x2 of size against normalisation, seed 20260824 | [08](../08-peer-scale-stability.md) |
 | `scale-quantiles.json` | 154 groups re-queried from the same recorded window | [08](../08-peer-scale-stability.md) |
 | `threshold-validation.json` | fresh run, seed 20260825, out-of-sample test of the fitted threshold | [09](../09-threshold-validation.md) |
+| `peer-bound.json` | six baseline runs, per-run maxima and exceedance counts at a threshold ladder | [10](../10-peer-bound-over-runs.md) |
 
 Each row carries `window_start` and `fault_from` where applicable, so a window
 can be reconstructed rather than inferred. Not storing those cost two re-runs

@@ -130,7 +130,145 @@ the scoring.
 
 ---
 
-# Result — PENDING
+# Result — measured 2026-08-24
 
-The measurement has not been run. Predictions committed first; this section is
-a placeholder so that "not yet scored" is a state the repository states.
+Six baseline runs at 630x for 480s, isolation asserted per run, none degraded.
+08 and 09 were the same shape and join the max-curve, giving eight points there.
+Raw data in `data/peer-bound.json`.
+
+**Two hits and four misses, and the hit is the one that decides the question.**
+
+## The third possibility was wrong
+
+These predictions expected the failure to be about the *statistic* - that a
+maximum cannot converge because it is non-decreasing in the number of instants
+observed. P1 tested that directly and it is false.
+
+| group | n | min | max | median | max / median |
+|---|---|---|---|---|---|
+| `memory` | 12 | 3.91 | 4.03 | 3.96 | **1.02** |
+| `cpu` | 12 | 2.98 | 4.18 | 3.28 | 1.28 |
+| `latency` | 12 | 5.47 | 9.76 | 7.96 | 1.23 |
+| `error_ratio` | 5 | 20.95 | 63.03 | 30.36 | 2.08 |
+| `ci_ratio` | 5 | 32.34 | 77.45 | 58.99 | 1.31 |
+
+Eight runs each. `memory`'s peer maximum lands between 3.91 and 4.03 every
+single time - a spread of 3%. The maximum plateaus because a peer z is bounded
+by the *structural* spread of the group, which is a property of the topology
+rather than a tail draw. That is the same finding 08 and 09 arrived at from the
+other direction: heterogeneity bounds z.
+
+**So the answer is the second of the two readings, not a third one.** One run
+was not enough. It is the fourth sample-size artifact this branch has produced.
+
+---
+
+## P1 — FALSIFIED
+
+Predicted the running maximum would reach at least 1.4x the median single-run
+maximum for the raw 12-pod groups. Measured **1.02, 1.28, 1.23**. The falsifier
+was written at the edge and fired.
+
+Per the outcome table committed before the run: *"the maximum plateaus, so a
+max-based bound over N runs is legitimate and simpler."*
+
+## P2 — FALSIFIED, and the evaluation point was badly chosen
+
+Predicted the T = 6 exceedance rate would have a run-to-run relative standard
+deviation below 0.50. `latency` came back at **0.610**.
+
+Worse, `memory` and `cpu` never exceed 6 in any of the six runs, so their rate is
+exactly zero and the relative standard deviation is undefined. **T = 6 sits
+outside the informative range for two of the three groups I chose it to
+measure** - a design fault in the prediction, not a property of the data. The
+statistic was fine; the point at which I sampled it was not.
+
+## P3 — FALSIFIED on both sides at once
+
+Predicted convergence within 25% by N = 4 and not by N = 2.
+
+| group | k=2 vs k=6 | k=4 vs k=6 |
+|---|---|---|
+| `ci_ratio` | 0.03 | 0.04 |
+| `error_ratio` | 0.08 | 0.04 |
+| `latency` | 0.17 | 0.03 |
+| `latency:8` | 0.75 | 0.07 |
+| `cpu:8` | 1.00 | **1.00** |
+
+The three full groups are already inside 25% at N = 2, and `cpu:8` is still
+outside it at N = 4 and at N = 6. Both halves of the falsifier fired.
+
+**N is a property of the group, not of the method.** Full 12-member groups
+converge in two runs; 8-member subsets had not converged in six, because runs 5
+and 6 produced exceedances that runs 1 to 4 had none of.
+
+## P4 — HIT, and it settles the question
+
+Smallest T reaching a pooled exceedance rate of 1e-3:
+
+| group | pooled T | per-run T | spread |
+|---|---|---|---|
+| `memory` | **4.0** | 4, 4, 4, 4, 4, 4 | **0.0** |
+| `cpu` | **4.0** | 4, 4, 4, 4, 4, 5 | 1.0 |
+| `latency` | **10.0** | 8, 10, 6, 10, 10, 8 | 4.0 |
+
+T = **10** holds all three raw 12-pod groups at or below 1e-3, inside the
+predicted 8 – 14, and every per-run spread is within the predicted 4.
+
+**Peer comparison is calibratable for pod-level metrics.** 09's closing sentence
+- "peer comparison is not yet calibratable for any group" - is wrong, and was
+wrong because it generalised from a single run's maximum against a cutoff I had
+declared rather than derived.
+
+## P5 — FALSIFIED
+
+Predicted both service groups would need T above 60. `ci_ratio` needs **80.0**;
+`error_ratio` needs **50.0**, which is below the bound, so the falsifier fired.
+
+The number that matters more is not the pooled one. `error_ratio`'s per-run T is
+**30, 30, 30, 80, 50, 50** - a spread of 50. A threshold derived from any single
+run would be wrong by up to a factor of 2.7 for the next one. The pooled value
+is stable; the per-run value is not, which is exactly the distinction P4
+establishes for pod metrics and which the service groups fail.
+
+## P6 — HIT
+
+Predicted, before the thresholds were known, which scenario the resulting
+threshold would fail to clear comfortably. Against 06's peer fault figures:
+
+| scenario | metric | fault z | its T | margin |
+|---|---|---|---|---|
+| `bad_deploy_5xx` | error_ratio | 3331.63 | 50 | 66.6x |
+| `flaky_test_storm` | ci_ratio | 950.86 | 80 | 11.9x |
+| `memory_leak` | memory | 30.35 | 4 | 7.6x |
+| `noisy_neighbor` | latency | 14.21 | 10 | **1.42x** |
+
+`noisy_neighbor` clears its threshold and does not clear 1.5x it, as predicted.
+It is the scenario with no margin.
+
+---
+
+## What this changes
+
+**06's "peer-relative detects 2 of 5" was a sample-size artifact.** With
+thresholds derived over six runs rather than one, all four non-degenerate
+scenarios clear their metric's threshold. `disk_pressure` remains degenerate for
+the reason 07 established, which is a simulator defect and not a detection
+result.
+
+**The pod-level path is ready to calibrate.** `memory` at T = 4 with a per-run
+spread of zero across six runs is the most stable number this branch has
+produced.
+
+**The service-level path is not, and the reason is now specific.** Not "too few
+peers" and not "no bound exists" - the pooled bound exists and is 50 and 80. The
+problem is that a *single run* estimates it anywhere between 30 and 80, so
+nothing derived from one run is trustworthy, and the matrix has to say how many
+runs a threshold requires before it can be written.
+
+**And it re-opens `MIN_PEERS` in the direction 09 did not expect.** At their
+pooled thresholds both service groups separate their faults by 12x and 67x. The
+12-peer rule refuses them. That is now a decision for the matrix with numbers
+behind it rather than a rule inherited from a sweep - and it needs its own
+prediction before anything is changed, because this is one experiment and the
+per-run spread is the reason for the rule in the first place.

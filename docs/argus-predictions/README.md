@@ -42,4 +42,4 @@ experiments.
 | [07](07-aggregation-level.md) | Is the split per aggregation level, or per peer availability? | peer **availability**, not metric character; 4 hits, 3 misses |
 | [08](08-peer-scale-stability.md) | Is MIN_PEERS a count, or a scale-stability property? | a **property** - scale stability beats size, -0.932 against -0.476 |
 | [09](09-threshold-validation.md) | Does the fitted 0.259 threshold survive a fresh run? | no - **MIN_PEERS = 12 stays**; the property replicates, no safe threshold |
-| [10](10-peer-bound-over-runs.md) | Is the peer bound uncalibratable, or was the wrong summary bounded? | pending - predictions committed, measurement not yet run |
+| [10](10-peer-bound-over-runs.md) | Is the peer bound uncalibratable, or was the wrong summary bounded? | **under-sampled** - one run was not enough; T=10 holds pod metrics at 1e-3 |
