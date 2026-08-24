@@ -1370,6 +1370,133 @@ luck rather than process. Commit first, then plant: the restore step of a
 planting is destructive by design and cannot distinguish your plant from your
 work.
 
+## A falsification condition that cannot fail for its stated reason
+
+An unfailable guard, one level up.
+
+Prediction 7's P2 said `disk_ratio` would be degenerate under the temporal path,
+and gave two ways to be wrong: the scale floor engaging on under 50% of windows,
+or baseline MAD exceeding 1e-6. Both clauses were written to operationalise one
+worry - *I have misread the generator*.
+
+MAD came back at **1.405e-05**, fourteen times the bound, and the generator had
+been read correctly. `_node_disk()` adds a drift of `0.00004 * disk_bytes` per
+simulated day, which over a one-cycle window produces a MAD of order 1e-5 in a
+series carrying no noise whatsoever. The line was quoted verbatim in the same
+document, two paragraphs above the bound it broke.
+
+So the clause fired for a reason that had nothing to do with the case it
+targeted. Had it stayed silent, it would have confirmed nothing either - a
+deterministic series can sit on either side of 1e-6 depending only on how fast
+it drifts, which is not what "misread the generator" means.
+
+**The falsifier needs the same scrutiny as the prediction.** Before committing
+one, write down what it would take for the clause to be satisfied by something
+other than the case it targets. If that is easy to construct, the clause is
+measuring the wrong quantity.
+
+Prediction 7 got this wrong twice, in opposite directions. P4's `latency` bound
+was the mirror image: a point prediction of "at least 5x" with a falsification
+condition of "below 2.42x". The measured 4.77x misses the prediction and does
+not trigger the falsifier, so whether it counts as a failure is a judgement
+call - which is the thing writing numbers down first exists to remove.
+
+_Related: the unfailable-guard catalogue below. A guard that cannot go red and a
+falsifier that cannot fire are the same defect at different levels._
+
+## A guard over an instance is not a guard over the quantifier
+
+`simulator/metrics_generator.py` states that **every** series carries a diurnal
+cycle, a weekly component and gaussian noise, and cites
+`tests/integration/test_simulator_data.py` as asserting it.
+
+That file contains two assertions, and both are good ones.
+`test_baseline_variance_is_non_zero` checks the coefficient of variation of
+`checkout` cpu. `test_baseline_seasonality_is_statistically_detectable` checks
+autocorrelation at one simulated day against the half-day trough, so a drift
+cannot pass as a cycle. Neither is weak, narrow in its matcher, or capable of
+passing on a broken series.
+
+They check **two series** of the eight exported families. `disk_ratio` was never
+in scope, and `_node_disk()` bypasses `_baseline()` entirely - so
+`NOISE[DISK_USED] = 0.004` and `SEASONAL_AMPLITUDE[DISK_USED] = 0.01` are
+declared and unreachable, and the exported node disk gauge is a deterministic
+line. The claim is quantified over every series; the evidence is one series per
+property.
+
+What makes this its own variant is the second guard sitting beside the first.
+`require_every_metric("SEASONAL_AMPLITUDE", SEASONAL_AMPLITUDE)` asserts the
+tables have an entry for every metric, and passes. Read together, a
+completeness check on the table and a statistical check on a sample look like
+coverage of both axes. They are not: the table check proves an entry exists and
+says nothing about whether anything reads it, and the sample check proves one
+series behaves and says nothing about the rest. **Two guards covering one
+series between them.**
+
+> A claim quantified over "every X" needs a guard that iterates X. A guard over
+> one X is evidence about that X. Whether the sample generalises is the thing
+> being asserted, so it cannot also be the thing assumed.
+
+## Read the verdict before acting on it, including your own
+
+`01bb003` was committed while `test_every_typed_count_in_the_docs_is_true` was
+red. The suite had reported `2 failed, 843 passed`; one failure resolved itself
+in the commit, the other was a genuine stale count, and both were passed over
+because the commit was already in flight. It was fixed in `4f8b3cb` - by the
+guard, which is what the guard is for.
+
+The rule applied everywhere else in this repository is that a check's verdict
+gets read before anything is done on top of it. That rule does not have an
+exception for checks whose failure you expect to be harmless, and "one of these
+two is fine" is a prediction about a failure that has not been read yet.
+
+## A point prediction and its falsifier must agree about what failure is
+
+Three occurrences in three documents, and the third is what made it a pattern
+rather than three slips.
+
+| where | point prediction | falsification condition | measured | verdict |
+|---|---|---|---|---|
+| 07 P4 | at least 5x | below 2.42x | 4.77x | misses the prediction, does not trigger the falsifier |
+| 08 P4 | p05 separates outcomes | 5-member and 12-member overlap | no overlap, no separation | **passes the falsifier while being wrong** |
+| 09 P1 | 1 – 6 blow-ups | zero blow-ups | 7 | misses the prediction, does not trigger the falsifier |
+
+Each falsifier was written to be conservative - to avoid crying failure over a
+near miss. The effect was the opposite of the intent: the gap between the number
+predicted and the number that would count as refutation is a region where the
+result is neither, and something has to decide. That something is the author,
+after seeing the data, which is the state writing predictions down exists to
+leave.
+
+08's P4 is the worst form. Its falsifier asked whether the proposed statistic
+orders the group sizes - which was never in question, and which **group size
+itself satisfies trivially**. So the clause could be satisfied by the very
+quantity the prediction was trying to displace, and it was: the statistic
+ordered by n and failed to separate outcomes, and the falsifier reported
+success.
+
+> A falsification condition is not a safety margin. Write it at the edge of the
+> prediction, so that missing the prediction and triggering the falsifier are
+> the same event.
+>
+> Then ask two things of the clause. What could satisfy it other than the case
+> it targets? And can it be satisfied by the thing the prediction is trying to
+> displace?
+
+## Deriving the metric and then declaring the cutoff
+
+`BLOWUP = 8.0` divides "fine" from "blew up" through the whole of 09, and
+nothing derived it. Three of the run's verdicts sit within 20% of it - 8.42,
+8.96, 9.42 - so the accept and reject counts move if the number does.
+
+The conclusion was carried by rank correlations, which have no cutoff, and the
+counts were reported beside them rather than instead of them. That is the
+mitigation, not a defence: the repository's rule is that every number in the
+docs is derived, and an analysis boundary is a number in the docs.
+
+Same class as `Z_THRESHOLD_PLACEHOLDER` in `calibration.py`, which is at least
+named for what it is.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

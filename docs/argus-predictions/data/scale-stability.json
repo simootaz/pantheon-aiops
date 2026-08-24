@@ -1,0 +1,244 @@
+{
+ "speed": 630.0,
+ "seed": 20260824,
+ "window_start": 1787537838.1060328,
+ "window_end": 1787538318.2388525,
+ "full_groups": {
+  "memory:raw": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 3.9464725086214782,
+   "median_scale": 462447001.43620884,
+   "scale_at_max_over_median": 0.8739755257593359,
+   "p05_scale_over_median": 0.8716896457303709,
+   "floor_engaged_fraction": 0.0
+  },
+  "memory:normalised": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 13.279545834491051,
+   "median_scale": 0.014123696356769145,
+   "scale_at_max_over_median": 0.1838331809311975,
+   "p05_scale_over_median": 0.49013183862445564,
+   "floor_engaged_fraction": 0.0
+  },
+  "cpu:raw": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 3.5584832568118814,
+   "median_scale": 0.37092293661511755,
+   "scale_at_max_over_median": 0.3224894218832861,
+   "p05_scale_over_median": 0.4523569609959537,
+   "floor_engaged_fraction": 0.0
+  },
+  "cpu:normalised": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 8.067660557553802,
+   "median_scale": 0.05230995222793918,
+   "scale_at_max_over_median": 0.4660361825777414,
+   "p05_scale_over_median": 0.5039310035483683,
+   "floor_engaged_fraction": 0.0
+  },
+  "latency:raw": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 5.556887690487121,
+   "median_scale": 0.06879150651144057,
+   "scale_at_max_over_median": 0.4304008522892254,
+   "p05_scale_over_median": 0.5666188050839315,
+   "floor_engaged_fraction": 0.0
+  },
+  "latency:normalised": {
+   "members": 12,
+   "instants": 479,
+   "max_z": 9.60357405453769,
+   "median_scale": 0.15849338753157613,
+   "scale_at_max_over_median": 0.2536875734546994,
+   "p05_scale_over_median": 0.5167410940023822,
+   "floor_engaged_fraction": 0.0
+  },
+  "error_ratio:raw": {
+   "members": 5,
+   "instants": 478,
+   "max_z": 25.728360129572376,
+   "median_scale": 8.707368217433186e-05,
+   "scale_at_max_over_median": 0.06789368852590451,
+   "p05_scale_over_median": 0.20022094324950154,
+   "floor_engaged_fraction": 0.0
+  },
+  "error_ratio:normalised": {
+   "members": 5,
+   "instants": 478,
+   "max_z": 29.81794020674891,
+   "median_scale": 0.022581502891716503,
+   "scale_at_max_over_median": 0.1839435590771125,
+   "p05_scale_over_median": 0.242336498628612,
+   "floor_engaged_fraction": 0.0020920502092050207
+  },
+  "ci_ratio:raw": {
+   "members": 5,
+   "instants": 479,
+   "max_z": 77.4455951587995,
+   "median_scale": 0.003341231626461006,
+   "scale_at_max_over_median": 0.03029409336601073,
+   "p05_scale_over_median": 0.24205049877481655,
+   "floor_engaged_fraction": 0.0
+  },
+  "ci_ratio:normalised": {
+   "members": 5,
+   "instants": 479,
+   "max_z": 32.777789742514265,
+   "median_scale": 0.15956358626452805,
+   "scale_at_max_over_median": 0.09366688418041737,
+   "p05_scale_over_median": 0.2609317206859162,
+   "floor_engaged_fraction": 0.0
+  },
+  "disk_ratio:raw": {
+   "members": 3,
+   "instants": 479,
+   "max_z": 0.0,
+   "median_scale": 0.0,
+   "scale_at_max_over_median": NaN,
+   "p05_scale_over_median": NaN,
+   "floor_engaged_fraction": 1.0
+  },
+  "disk_ratio:normalised": {
+   "members": 3,
+   "instants": 479,
+   "max_z": 0.0,
+   "median_scale": 0.0,
+   "scale_at_max_over_median": NaN,
+   "p05_scale_over_median": NaN,
+   "floor_engaged_fraction": 1.0
+  }
+ },
+ "subsets": {
+  "memory:3:raw": {
+   "subsets": 40,
+   "median_max_z": 4.295108643183692,
+   "p90_max_z": 2014.4959117143264,
+   "worst_max_z": 3362.8415932989788,
+   "median_scale_at_max_over_median": 0.7388487073892281
+  },
+  "memory:3:normalised": {
+   "subsets": 40,
+   "median_max_z": 52.027020650693245,
+   "p90_max_z": 61.309993441483684,
+   "worst_max_z": 70.07229896564196,
+   "median_scale_at_max_over_median": 0.06685239224376438
+  },
+  "memory:5:raw": {
+   "subsets": 40,
+   "median_max_z": 1.9990550691526021,
+   "p90_max_z": 5.0013864359233065,
+   "worst_max_z": 955.8418028587581,
+   "median_scale_at_max_over_median": 0.812730485512489
+  },
+  "memory:5:normalised": {
+   "subsets": 40,
+   "median_max_z": 37.47555218458027,
+   "p90_max_z": 51.38599130531528,
+   "worst_max_z": 66.89094529862533,
+   "median_scale_at_max_over_median": 0.0745939292157983
+  },
+  "memory:8:raw": {
+   "subsets": 40,
+   "median_max_z": 3.800141447745818,
+   "p90_max_z": 4.529118178016513,
+   "worst_max_z": 9.530257220572105,
+   "median_scale_at_max_over_median": 0.9006892901608733
+  },
+  "memory:8:normalised": {
+   "subsets": 40,
+   "median_max_z": 16.44317380029468,
+   "p90_max_z": 30.192930921535737,
+   "worst_max_z": 44.030876863319065,
+   "median_scale_at_max_over_median": 0.16012389490640166
+  },
+  "cpu:3:raw": {
+   "subsets": 40,
+   "median_max_z": 430.61698728077096,
+   "p90_max_z": 2602.851995728843,
+   "worst_max_z": 6668.8846108652515,
+   "median_scale_at_max_over_median": 0.004602018076596576
+  },
+  "cpu:3:normalised": {
+   "subsets": 40,
+   "median_max_z": 299.3720807098835,
+   "p90_max_z": 407.59746031937937,
+   "worst_max_z": 577.3015998165024,
+   "median_scale_at_max_over_median": 0.00936950301717232
+  },
+  "cpu:5:raw": {
+   "subsets": 40,
+   "median_max_z": 11.8497257366033,
+   "p90_max_z": 119.07627548924354,
+   "worst_max_z": 193.24450460061828,
+   "median_scale_at_max_over_median": 0.10376477539820916
+  },
+  "cpu:5:normalised": {
+   "subsets": 40,
+   "median_max_z": 50.87420557511403,
+   "p90_max_z": 120.57573838693796,
+   "worst_max_z": 188.79290573617845,
+   "median_scale_at_max_over_median": 0.04789707925221374
+  },
+  "cpu:8:raw": {
+   "subsets": 40,
+   "median_max_z": 4.376307429123248,
+   "p90_max_z": 5.999451954065448,
+   "worst_max_z": 10.29211923876121,
+   "median_scale_at_max_over_median": 0.2897403818489859
+  },
+  "cpu:8:normalised": {
+   "subsets": 40,
+   "median_max_z": 13.57804158454914,
+   "p90_max_z": 19.00364290594092,
+   "worst_max_z": 21.09820372120484,
+   "median_scale_at_max_over_median": 0.16653935750859034
+  },
+  "latency:3:raw": {
+   "subsets": 40,
+   "median_max_z": 607.9491488771744,
+   "p90_max_z": 3001.7923951302537,
+   "worst_max_z": 13439.769445612737,
+   "median_scale_at_max_over_median": 0.004702484664850611
+  },
+  "latency:3:normalised": {
+   "subsets": 40,
+   "median_max_z": 705.7235252753352,
+   "p90_max_z": 1172.9981027043696,
+   "worst_max_z": 2293.33390902276,
+   "median_scale_at_max_over_median": 0.003510087725823551
+  },
+  "latency:5:raw": {
+   "subsets": 40,
+   "median_max_z": 38.3465844064276,
+   "p90_max_z": 122.43868231374765,
+   "worst_max_z": 678.095542512191,
+   "median_scale_at_max_over_median": 0.06494934416437761
+  },
+  "latency:5:normalised": {
+   "subsets": 40,
+   "median_max_z": 41.05904249789971,
+   "p90_max_z": 103.27116258450685,
+   "worst_max_z": 171.54458624420823,
+   "median_scale_at_max_over_median": 0.06037568613359859
+  },
+  "latency:8:raw": {
+   "subsets": 40,
+   "median_max_z": 8.246992702884398,
+   "p90_max_z": 20.867465487109143,
+   "worst_max_z": 41.19193752093727,
+   "median_scale_at_max_over_median": 0.23936888870513937
+  },
+  "latency:8:normalised": {
+   "subsets": 40,
+   "median_max_z": 13.231017601345183,
+   "p90_max_z": 18.41436208224996,
+   "worst_max_z": 45.38879542309563,
+   "median_scale_at_max_over_median": 0.14565488502870422
+  }
+ }
+}

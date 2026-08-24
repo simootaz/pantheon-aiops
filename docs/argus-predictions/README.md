@@ -40,3 +40,5 @@ experiments.
 | [05](05-run-ordering.md) | does run order affect a baseline once the reset works | S/A confirmed, N reproduced 22.76 exactly |
 | [06](06-experiment-b-rerun.md) | Experiment B re-run under asserted isolation | 4 of 5 separate, but only **2 of 5** have the 12 peers the rule requires; `carried=0` throughout |
 | [07](07-aggregation-level.md) | Is the split per aggregation level, or per peer availability? | peer **availability**, not metric character; 4 hits, 3 misses |
+| [08](08-peer-scale-stability.md) | Is MIN_PEERS a count, or a scale-stability property? | a **property** - scale stability beats size, -0.932 against -0.476 |
+| [09](09-threshold-validation.md) | Does the fitted 0.259 threshold survive a fresh run? | no - **MIN_PEERS = 12 stays**; the property replicates, no safe threshold |
