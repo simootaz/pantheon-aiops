@@ -48,7 +48,67 @@ the fix did not reach the case that matters.
 
 ---
 
-# Result — PENDING
+# Result — measured 2026-08-24
 
-The measurement has not been run. Predictions committed first; this section is
-a placeholder so that "not yet scored" is a state the repository states.
+One `disk_pressure` run at 630x: 617s wall, 275 baseline instants, 342 fault
+instants, not degraded. Peak ratio 0.8932, matching the offline projection of
+0.8925. Raw data in `data/disk-fault.json`.
+
+| quantity | measured |
+|---|---|
+| baseline max abs z | **6.04** |
+| fault max abs z | **1580.53** |
+| baseline floor fraction | 48.7% |
+| fault floor fraction | **19.0%** |
+| margin over the 1e-4 threshold of 12 | **131.7x** |
+
+## P2 — HIT
+
+`disk_pressure` is detectable, by 131.7x against a required 6x.
+
+## P1 — FALSIFIED, and the reason is embarrassing in a useful way
+
+Predicted 80 – 400. Measured **1580.53**, four times the top of the band. The
+floor clause held at 19.0% against a bound of 20%, close enough that it decided
+nothing.
+
+The arithmetic was stated in advance so it could be checked, and checking it
+finds the error exactly. I estimated the scale from the **measured baseline
+range over time**, 0.3355 – 0.3451, and took the spread of two unaffected nodes
+to be of that order - about 0.003. The measured scale implies roughly 3.5e-4,
+ten times smaller.
+
+That temporal range is dominated by the **seasonal swing**, which is 1% of
+level. But the three nodes are compared **at a single instant**, where they all
+sit at the same point of the same daily curve. Seasonality is common-mode across
+peers, so it cancels, and the scale is set by noise alone - which is 0.004
+relative, halved again by averaging four pods per node.
+
+> **Peer comparison removes exactly the component I used to estimate its
+> scale.** Cancelling common-mode seasonality with no window and no period
+> estimate is the property that makes the peer path worth having, and it is the
+> first thing established on this branch. I forgot it while predicting the
+> behaviour of the method it defines.
+
+The consequence is not confined to this prediction. Any estimate of a peer
+scale taken from a series' variation **over time** will be too large by the
+ratio of seasonal amplitude to noise - here about 10x, and for `cpu`, whose
+seasonal amplitude is 0.45 against noise of 0.06, closer to 50x.
+
+## The floor, which is a real caveat
+
+The scale floor engages on **48.7% of baseline instants**. For nearly half the
+baseline, the three-node group's MAD collapses below `min|v| * 1e-3` and the
+comparison is measuring the floor rather than the data.
+
+This is conservative in direction - the floor is a lower bound on the scale, so
+engaging it makes z *smaller* - and it does not threaten the verdict here,
+because the fault clears its threshold by 131.7x with the floor active for 19%
+of the fault window.
+
+It does mean `disk_ratio`'s **baseline** numbers are half floor-determined, and
+that any future work tightening the disk threshold has to fix the floor first.
+Three nodes is where the scale estimator was always going to be worst, and 11
+already established that group size does not decide safety - this is the same
+finding from the other end: a three-member group is usable and its scale is
+still half artificial.

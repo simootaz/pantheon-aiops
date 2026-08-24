@@ -1,0 +1,15 @@
+{
+ "window_start": 1787574934.251252,
+ "window_end": 1787575551.5053093,
+ "fault_from": 1787575209.439252,
+ "fault_to": 1787575551.376252,
+ "nodes": 3,
+ "baseline_instants": 275,
+ "fault_instants": 342,
+ "baseline_max_z": 6.040413466005163,
+ "fault_max_z": 1580.5251041226377,
+ "baseline_floor_fraction": 0.48727272727272725,
+ "fault_floor_fraction": 0.19005847953216373,
+ "peak_ratio": 0.8932079643728942,
+ "margin_over_threshold_12": 131.71042534355314
+}
