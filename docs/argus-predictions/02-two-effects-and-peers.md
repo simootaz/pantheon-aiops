@@ -100,3 +100,56 @@ for divergence, temporal for common-mode. Predicted, so it can be wrong:
 peer-relative detects **4 of 5** scenarios above threshold; `disk_pressure` is
 the one at risk of being common-mode, and if all four nodes fill together its
 peer z lands **below 5** while its temporal z stays high.
+
+---
+
+# Result — measured 2026-08-20 and 2026-08-22
+
+## A1 — FALSIFIED
+
+`error_ratio` at a fixed cycle fraction of 0.66, sample count varying 10x:
+
+| speed | W | measured | predicted |
+|---|---|---|---|
+| 228x | 250 | 15.63 | 12-20 |
+| 630x | 91 | 21.60 | 18-25 |
+| 2500x | **23** | **20.60** | **> 28** |
+
+All three land inside 15-25 - the *drift-alone* band written as the
+alternative. The two-effect prediction is falsified for `error_ratio`.
+
+## A2 — FALSIFIED
+
+`request_rate` at fraction 0.25: **8.70** (W=95), **10.00** (W=34), **10.87**
+(W=9). Nearly equal across a 10x range of sample counts, which is the exact
+falsification condition written down.
+
+## The cell that says otherwise, and was not predicted
+
+`latency` at 0.25 cycles: 4.96 (W=95), 6.68 (W=34), **36.33 (W=9)**. That is
+sample-count dependence, and it is real - but the second effect was predicted at
+W=23, and W=23 came back clean.
+
+Identifying a supporting cell after the fact is the fitting behaviour this
+practice exists to stop, so it is recorded as a **hypothesis for a future
+prediction** - estimator noise bites below roughly 15 samples - not as a
+finding. It does not rescue A1 or A2.
+
+## What is confirmed three times over
+
+Whole-cycle windows are best at every speed, and the values become
+speed-independent, which is the property a single per-metric threshold needs:
+
+| metric | 1.0 cyc @228x | @630x | @2500x |
+|---|---|---|---|
+| `error_ratio` | 5.68 | 7.28 | 4.53 |
+| `request_rate` | 1.84 | 1.67 | 2.03 |
+| `latency` | 2.87 | 3.38 | 4.53 |
+
+At 0.66 cycles the same three speeds give 15.63 / 21.60 / 20.60.
+
+## The B predictions
+
+Superseded. They were scored against runs whose baselines were contaminated by
+a reset that never cleared - see [05](05-run-ordering.md). The valid scoring is
+in [06](06-experiment-b-rerun.md).

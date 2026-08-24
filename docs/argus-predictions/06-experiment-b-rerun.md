@@ -16,7 +16,7 @@ numbers I would defend.
 **Result: `carried=0` on all thirty metric-scenario pairs.** No series repeated
 the previous run's last value at any window's first sample.
 
-## Scored by separation, per scenario's own metric
+# Result — scored by separation, per scenario's own metric
 
 | scenario | metric | peers | baseline | fault | separation | |
 |---|---|---|---|---|---|---|

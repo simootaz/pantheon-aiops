@@ -1332,6 +1332,44 @@ caught by planting:
   the raise from `reset()` left it green. It now walks the AST of `reset` and
   asserts the raise is inside it.
 
+## A commit existing locally and a commit surviving a merge are different facts
+
+`55b0360` was written, committed, and referenced by name in a later document. It
+was on `feature/argus`. `develop` was reached by a merge that did not carry it,
+and the file stayed in the working tree the whole time - so every local check
+that opened it succeeded, and it was one `git branch -D` from gone.
+
+"I committed it" is a claim about a local object. What matters is whether the
+branch contains it, and those come apart silently, because deleting a branch
+removes the only reference to the commit while leaving the file on disk
+untouched.
+
+The recovery was a cherry-pick. The guard is
+`tests/unit/test_prediction_records.py`, which compares what is **tracked by
+git** against what is present on disk, rather than checking that files exist:
+
+```python
+tracked = set(subprocess.run(["git", "ls-files", "docs/argus-predictions"], ...))
+on_disk = {p.relative_to(REPO_ROOT).as_posix() for p in PREDICTIONS.rglob("*") if p.is_file()}
+assert not (on_disk - tracked)
+```
+
+Verified against five planted violations, each fixed before the next:
+untracking a file; removing a `# Result` section; deleting a record so the index
+disagrees; deleting a record **and tidying the index to match** (caught by the
+numbering gap, which the tidied index cannot hide); and removing a cited
+measurement. All five failed. The first plant also found four real gaps - three
+prediction files scored only in conversation, never in the repo.
+
+### Plant against committed state, not against uncommitted work
+
+The plantings were run before committing the scorings, and `git checkout --
+docs/argus-predictions/` between plants reverted three files of real work that
+happened to be unstaged. Nothing was lost that could not be retyped, which is
+luck rather than process. Commit first, then plant: the restore step of a
+planting is destructive by design and cannot distinguish your plant from your
+work.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
