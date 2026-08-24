@@ -164,7 +164,154 @@ No threshold is written from this run. The matrix follows it.
 
 ---
 
-# Result — PENDING
+# Result — measured 2026-08-24
 
-The measurement has not been run. Predictions committed first; this section is
-a placeholder so that "not yet scored" is a state the repository states.
+One baseline-only run at 630x for 480s, `kept_up=True`, `degraded=False`.
+Window start and end recorded, which is why the quantile analysis below is a
+re-query of the same window rather than a second run. Raw data in
+`data/scale-stability.json` and `data/scale-quantiles.json`.
+
+## Full groups, raw and normalised
+
+| group | n | max abs z | scale@max / median | p05 / median | floor |
+|---|---|---|---|---|---|
+| `memory` raw | 12 | **3.95** | 0.874 | 0.872 | 0.0% |
+| `memory` normalised | 12 | **13.28** | 0.184 | 0.490 | 0.0% |
+| `cpu` raw | 12 | 3.56 | 0.322 | 0.452 | 0.0% |
+| `cpu` normalised | 12 | 8.07 | 0.466 | 0.504 | 0.0% |
+| `latency` raw | 12 | 5.56 | 0.430 | 0.567 | 0.0% |
+| `latency` normalised | 12 | 9.60 | 0.254 | 0.517 | 0.0% |
+| `error_ratio` raw | 5 | 25.73 | 0.068 | 0.200 | 0.0% |
+| `ci_ratio` raw | 5 | 77.45 | 0.030 | 0.242 | 0.0% |
+| `disk_ratio` raw | 3 | 0.00 | n/a | n/a | 100.0% |
+
+## Seeded subsets, median over 40 draws
+
+| metric | n | raw | normalised |
+|---|---|---|---|
+| `memory` | 3 | 4.30 | 52.03 |
+| `memory` | 5 | 2.00 | 37.48 |
+| `memory` | 8 | 3.80 | 16.44 |
+| `cpu` | 5 | 11.85 | 50.87 |
+| `latency` | 5 | 38.35 | 41.06 |
+| `latency` | 8 | 8.25 | 13.23 |
+
+---
+
+## P1 — FALSIFIED
+
+Normalised 12-member groups are worse than raw at every metric: `memory`
+3.95 to **13.28**, `cpu` 3.56 to 8.07, `latency` 5.56 to 9.60. The bound was 10
+and `memory` cleared it.
+
+**Removing between-member level differences makes peer comparison worse, at
+n = 12.** So this is not a pure count effect, and homogeneity is not the
+condition peer comparison wants - it is the condition it suffers under.
+
+## P2 — HIT
+
+Normalised 5-member medians: `memory` **37.48**, `cpu` **50.87**, `latency`
+**41.06**, all above the predicted 30, against raw medians of 2.00, 11.85 and
+38.35 on the same subsets.
+
+## P3 — FALSIFIED as stated, and right about the mechanism
+
+The stated falsifier was "5-member groups above 0.6". `memory:5:raw` came back
+at **0.813**, so P3 fails.
+
+It failed by tying the collapse to group size instead of to the outcome. Tied to
+the outcome it is close to deterministic - the rank correlation between
+`scale@max / median` and `max abs z` is **-0.958** over the 28 groups in the
+first table, and **-0.932** over 154 groups once the subsets are expanded.
+
+Where the maximum is large the scale is collapsed at that instant
+(`ci_ratio` 0.030 with 77.45; `error_ratio` 0.068 with 25.73). Where it is small
+the scale is intact (`memory:8:raw` 0.901 with 3.80). The mechanism is
+confirmed; the prediction attached it to the wrong variable.
+
+## P4 — survived its falsifier and failed its purpose
+
+The falsification condition was overlap between 5-member and 12-member groups.
+There is none: 12-member p05/median spans 0.452 to 0.872, 5-member spans 0.200
+to 0.261. Ordering holds, no overlap, condition not met.
+
+**And the statistic does not work.** `memory:normalised` has p05/median 0.490
+and a max abs z of 13.28; `cpu:raw` has 0.452 and 3.56. The proposed property
+orders the group *sizes* while failing to separate the *outcomes*, which is the
+thing it was proposed to do.
+
+That is the third instance in two documents of a falsification condition passing
+while the prediction it guards is wrong. Here the condition tested the ordering
+by n - which was never in doubt - instead of the discrimination that mattered.
+The lesson recorded after 07 was to ask what could satisfy a clause other than
+the case it targets; the complement is to ask whether the clause can be
+satisfied *by the very thing the prediction is trying to displace*. P4's
+falsifier was satisfied by group size.
+
+## P5 — HIT, on a knife edge
+
+06 measured `error_ratio`'s peer baseline at 51.82. This run gives **25.73**, a
+factor of **2.014** - over the stated 2x by a margin that would vanish on
+rounding. It is scored a hit and should be read as "unstable, marginally
+demonstrated", not as a clean result.
+
+One thing strengthens it: this run has roughly 480 baseline instants against
+06's 137, and a maximum over more instants can only grow. The larger sample
+produced the smaller maximum.
+
+## P6 — FALSIFIED, and it invalidates part of the reading
+
+`error_ratio` moved 25.73 to 29.82 (+15.9%, inside the bound). `ci_ratio` moved
+77.45 to **32.78**, a **-57.7%** change.
+
+Identical base levels do not give identical realised medians. `ci_ratio` carries
+the largest noise in the simulator (0.35 relative), the value is clipped at zero
+in `_baseline`, and services have two or three pods - so the mean of a service's
+pods has a different variance and a different clipping bias per service.
+**Base-level homogeneity is not realised-level homogeneity.**
+
+The pre-registered consequence was explicit: if P6 fails, "P1 and P2 could not be
+read as I intend to read them". Honouring that, rather than arguing around it:
+
+On inspection the effect is in the *service* groups, where realised medians
+differ more than base levels imply. The pod normalisation divides each pod by its
+own median, and pods differ in level by 5.8x to 7.6x, so it demonstrably removes
+level differences there. That is a reasonable argument and it is exactly the
+shape of a post-hoc rescue, which is what pre-registering the consequence was
+meant to prevent. **P1 and P2 are therefore marked provisional**, and 09
+re-tests the normalisation directly rather than accepting the argument.
+
+---
+
+## What the run establishes
+
+**Exchangeability is backwards.** Peer comparison wants members that differ.
+Between-member spread makes the MAD a stable divisor dominated by persistent
+structure; homogeneity leaves it estimating noise, where it is jumpy and can
+only fail downward - a small denominator inflates z, and no accident makes the
+denominator large.
+
+**The property beats the count, measured on the same 154 groups.**
+
+| rule | accepts | of those, blew up | worst accepted | rejects that were fine |
+|---|---|---|---|---|
+| `min(scale)/median(scale) >= 0.259` | 35 | **0** | 6.89 | 7 |
+| `n >= 12` | 6 | **3** | 13.28 | 39 |
+
+Rank correlation with `max abs z`: the scale statistic **-0.932**, group size
+**-0.476**.
+
+Two rows settle the count question on their own. `memory:3:raw` - three members -
+reaches **1.02**, the best-behaved group in the table. `memory:normalised` -
+twelve members - reaches 13.28. **Twelve peers is neither necessary nor
+sufficient.**
+
+## The threshold is fitted, and is not adopted
+
+0.259 was chosen after seeing these results, and it sits exactly at the maximum
+of the failing class, which is the most overfit point available. Reporting it as
+a validated rule would be the fitting behaviour this practice exists to stop.
+
+`MIN_PEERS = 12` stays in force. 09 states what the fitted threshold should do
+out of sample, before a fresh run is made, and predicts that this particular
+value will fail.
