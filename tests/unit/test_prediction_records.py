@@ -71,6 +71,31 @@ def test_every_prediction_carries_its_scoring() -> None:
     )
 
 
+def test_pending_records_say_so_in_both_places() -> None:
+    """An unscored prediction is a state, not an omission.
+
+    A record committed before its measurement is correct practice. What is not
+    correct is an index claiming a result the file does not have, or a file
+    scored while the index still reads pending - either way the reader is told
+    something the directory does not support.
+    """
+    index = read_data(PREDICTIONS / "README.md")
+    for path in sorted(PREDICTIONS.glob("[0-9][0-9]-*.md")):
+        body = read_data(path)
+        pending_in_file = bool(
+            re.search(r"^#+ .*Result.*PENDING", body, re.MULTILINE | re.IGNORECASE)
+        )
+        row = next((line for line in index.splitlines() if f"]({path.name})" in line), None)
+        assert row is not None, f"{path.name} is not in the index"
+        pending_in_index = "pending" in row.lower()
+
+        assert pending_in_file == pending_in_index, (
+            f"{path.name}: the file says pending={pending_in_file} and the index "
+            f"says pending={pending_in_index}. Scoring a record means updating "
+            "both."
+        )
+
+
 def test_the_index_lists_every_record_and_no_others() -> None:
     """An index that drifts from its directory is worse than no index."""
     index = read_data(PREDICTIONS / "README.md")
