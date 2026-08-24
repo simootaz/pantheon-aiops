@@ -19,7 +19,14 @@ So every series carries:
 * **per-pod phase jitter**, so twelve pods are not twelve copies of one curve.
 
 `tests/integration/test_simulator_data.py` asserts the seasonality is
-statistically detectable rather than eyeballed.
+statistically detectable rather than eyeballed - for the three series it names.
+It does not iterate `MetricName`, and for most of this branch's life the
+sentence above was false for `disk_used`, whose gauge was built without ever
+calling `_baseline`.
+
+`tests/unit/test_simulator_tables_are_read.py` covers the quantifier: for every
+metric and every per-metric table, perturbing that metric's entry must change
+what the exporter emits.
 
 COUNTERS READ `speed` TIMES FASTER THAN THEY "ARE"
 --------------------------------------------------

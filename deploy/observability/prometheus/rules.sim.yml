@@ -174,9 +174,24 @@ groups:
 
       # --- disk_pressure --------------------------------------------------
       # A ratio of two gauges, so it is both compression-proof and independent
-      # of node size. Baseline is 0.34 of capacity; the scenario ramps to ~0.88
-      # over three simulated days. 0.75 fires with time to spare before the
-      # kubelet's own eviction threshold.
+      # of node size. 0.75 fires with time to spare before the kubelet's own
+      # eviction threshold.
+      #
+      # Re-measured 2026-08-24, against a node disk gauge that finally carries
+      # the noise and seasonality it declares. `_node_disk` used to build its
+      # value from scratch and never called `_baseline`, so this rule was
+      # written against a deterministic straight line at 0.34.
+      #
+      # Baseline now spans 0.3355 - 0.3451 across 4.5 simulated days. The ramp
+      # peaks at 0.8925 and first crosses 0.75 at simulated 336300s, staying
+      # above it for 0.60 simulated days - 23.6% of the fault window, which is
+      # what gives the 10s `for` room to hold.
+      #
+      # The margin that nearly disappeared: disk carries no weekly component
+      # (`WEEKLY_AMPLITUDE[DISK_USED] = 0.0`). With the global 0.72 weekend
+      # multiplier that every other metric uses, the peak would fall to 0.636
+      # and this rule would never fire on a run landing on a simulated
+      # weekend.
       - alert: NodeDiskFillingUp
         expr: |
           pantheon_node_disk_used_bytes / pantheon_node_disk_total_bytes > 0.75
