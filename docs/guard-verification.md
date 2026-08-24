@@ -1450,6 +1450,53 @@ gets read before anything is done on top of it. That rule does not have an
 exception for checks whose failure you expect to be harmless, and "one of these
 two is fine" is a prediction about a failure that has not been read yet.
 
+## A point prediction and its falsifier must agree about what failure is
+
+Three occurrences in three documents, and the third is what made it a pattern
+rather than three slips.
+
+| where | point prediction | falsification condition | measured | verdict |
+|---|---|---|---|---|
+| 07 P4 | at least 5x | below 2.42x | 4.77x | misses the prediction, does not trigger the falsifier |
+| 08 P4 | p05 separates outcomes | 5-member and 12-member overlap | no overlap, no separation | **passes the falsifier while being wrong** |
+| 09 P1 | 1 – 6 blow-ups | zero blow-ups | 7 | misses the prediction, does not trigger the falsifier |
+
+Each falsifier was written to be conservative - to avoid crying failure over a
+near miss. The effect was the opposite of the intent: the gap between the number
+predicted and the number that would count as refutation is a region where the
+result is neither, and something has to decide. That something is the author,
+after seeing the data, which is the state writing predictions down exists to
+leave.
+
+08's P4 is the worst form. Its falsifier asked whether the proposed statistic
+orders the group sizes - which was never in question, and which **group size
+itself satisfies trivially**. So the clause could be satisfied by the very
+quantity the prediction was trying to displace, and it was: the statistic
+ordered by n and failed to separate outcomes, and the falsifier reported
+success.
+
+> A falsification condition is not a safety margin. Write it at the edge of the
+> prediction, so that missing the prediction and triggering the falsifier are
+> the same event.
+>
+> Then ask two things of the clause. What could satisfy it other than the case
+> it targets? And can it be satisfied by the thing the prediction is trying to
+> displace?
+
+## Deriving the metric and then declaring the cutoff
+
+`BLOWUP = 8.0` divides "fine" from "blew up" through the whole of 09, and
+nothing derived it. Three of the run's verdicts sit within 20% of it - 8.42,
+8.96, 9.42 - so the accept and reject counts move if the number does.
+
+The conclusion was carried by rank correlations, which have no cutoff, and the
+counts were reported beside them rather than instead of them. That is the
+mitigation, not a defence: the repository's rule is that every number in the
+docs is derived, and an analysis boundary is a number in the docs.
+
+Same class as `Z_THRESHOLD_PLACEHOLDER` in `calibration.py`, which is at least
+named for what it is.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
