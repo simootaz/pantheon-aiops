@@ -645,7 +645,17 @@ def test_node_disk_responds_to_a_phase_that_fills_it() -> None:
 
 
 def test_a_phase_targeting_another_node_leaves_this_one_alone() -> None:
-    generator = MetricsGenerator()
+    """Two generators rather than two calls on one.
+
+    Node disk now derives from its pods' samples, and `sample` draws noise from
+    a per-pod RNG - so a second call on the same generator returns a different
+    number whatever the phase does, and this compared 72171693874.9 against
+    72299467715.3. Fresh generators seed identically (`_seed` is a blake2b of
+    the pod name), so the streams line up and any difference is the deviation.
+
+    Left as exact equality on purpose. A tolerance here would have accepted the
+    0.18% drift that was really the RNG advancing.
+    """
     phase = Phase(
         name="fills",
         start_seconds=0.0,
@@ -654,9 +664,16 @@ def test_a_phase_targeting_another_node_leaves_this_one_alone() -> None:
         deviations=[Deviation(metric=MetricName.DISK_USED, factor=2.5, shape=Shape.STEP)],
     )
     node = NODES_BY_NAME["node-a"]
-    assert generator._node_disk(
-        node, 500.0, [ActivePhase(phase=phase, progress=1.0)]
-    ) == generator._node_disk(node, 500.0, [])
+    targeted = MetricsGenerator()._node_disk(node, 500.0, [ActivePhase(phase=phase, progress=1.0)])
+    untouched = MetricsGenerator()._node_disk(node, 500.0, [])
+    assert targeted == untouched
+
+    # And the control: the node the phase does target must move, or the
+    # assertion above would hold for a generator that ignored phases entirely.
+    affected = MetricsGenerator()._node_disk(
+        NODES_BY_NAME["node-c"], 500.0, [ActivePhase(phase=phase, progress=1.0)]
+    )
+    assert affected > MetricsGenerator()._node_disk(NODES_BY_NAME["node-c"], 500.0, [])
 
 
 def test_push_without_a_client_falls_back_to_the_library(
