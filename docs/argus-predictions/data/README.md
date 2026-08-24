@@ -9,6 +9,7 @@ only defensible peer-relative measurements taken so far.
 | `experiment-b-rerun.json` | five scenarios, isolation asserted, `carried=0` throughout | [06](../06-experiment-b-rerun.md) |
 | `run-ordering.json` | three conditions S / A / N, N reproducing 22.76 | [05](../05-run-ordering.md) |
 | `peer-group-size-sweep.json` | seeded random subsets, seed 20260821 | [03](../03-grouping-and-group-size.md) |
+| `aggregation-level.json` | temporal path at W = one diurnal cycle, 36 metric-run pairs, `carried=0` throughout | [07](../07-aggregation-level.md) |
 
 Each row carries `window_start` and `fault_from` where applicable, so a window
 can be reconstructed rather than inferred. Not storing those cost two re-runs

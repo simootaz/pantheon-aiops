@@ -57,3 +57,54 @@ IF CONFIRMED: every threshold in the table is an artifact of where its
 measurement sat in the cycle. W=90 was never right - it was lucky for the
 metrics with small swings, and `error_ratio` is not a special case but the
 loudest instance of a general defect.
+
+---
+
+# Result — measured 2026-08-20
+
+```
+metric           0.25cyc    0.50cyc    0.66cyc    1.00cyc    2.00cyc
+W (samples)           34         69         91        137        274
+error_ratio        11.10      18.43      22.14       6.57       5.89
+request_rate       12.97       8.03       4.84       1.72       1.58
+latency             6.29       4.21       3.99       3.31       2.72
+ci_ratio            6.30       4.60       4.71       3.38       3.05
+cpu                 5.48       6.63       5.71       2.15       2.01
+```
+
+## P1 — shape confirmed, magnitude missed
+
+Peak at 0.66 (22.14, predicted 18-25) and collapse at whole cycles (6.57 and
+5.89, predicted 3-8 and 2-6). But **0.25 came in at 11.10 against a predicted
+3-8** - outside the range, and visible only because the number was written
+first. Read afterwards it would have been absorbed as "low".
+
+## P2 — FALSIFIED
+
+`request_rate` has the largest seasonal amplitude (0.55) and shows **no peak at
+all**: a clean monotonic decline, 12.97 to 1.58, peaking at the *smallest*
+window. It never exceeds `error_ratio`. Whatever makes `error_ratio` peak
+mid-cycle is not seasonal amplitude, because the metric with the most
+seasonality does not do it.
+
+No replacement mechanism is proposed here. The ratio structure is the obvious
+candidate, and obvious candidates are what produced the aliasing story.
+
+## P3 — shape falsified, substance confirmed
+
+`latency` and `ci_ratio` show **no peak at 0.66** - they decline monotonically,
+so that half is wrong. The half flagged as mattering most holds, and holds for
+every metric:
+
+| metric | worst sub-cycle | best whole-cycle | improvement |
+|---|---|---|---|
+| `request_rate` | 12.97 | 1.58 | **8.2x** |
+| `error_ratio` | 22.14 | 5.89 | 3.8x |
+| `cpu` | 6.63 | 2.01 | 3.3x |
+| `latency` | 6.29 | 2.72 | 2.3x |
+| `ci_ratio` | 6.30 | 3.05 | 2.1x |
+
+**Every metric is quietest at whole-cycle windows.** W=90 at 630x sits at 0.66
+of a cycle - the worst point for `error_ratio` and a middling one for the rest.
+Any threshold table built on W=90 would have encoded where each metric's
+measurement happened to fall in the cycle.

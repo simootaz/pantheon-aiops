@@ -1,0 +1,317 @@
+{
+ "speed": 630.0,
+ "window_samples": 137,
+ "baseline": {
+  "memory": {
+   "max_z": 2.036350312065796,
+   "series": 12,
+   "windows": 4116,
+   "min_mad_scale": 20942500.928056646,
+   "floor_engaged_fraction": 0.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  },
+  "latency": {
+   "max_z": 3.309270485262432,
+   "series": 12,
+   "windows": 4116,
+   "min_mad_scale": 0.007289339485333236,
+   "floor_engaged_fraction": 0.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  },
+  "cpu": {
+   "max_z": 2.0756410421798437,
+   "series": 12,
+   "windows": 4116,
+   "min_mad_scale": 0.07054795097059377,
+   "floor_engaged_fraction": 0.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  },
+  "disk_ratio": {
+   "max_z": 0.06197912679048198,
+   "series": 3,
+   "windows": 1029,
+   "min_mad_scale": 1.4053812499906892e-05,
+   "floor_engaged_fraction": 1.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  },
+  "ci_ratio": {
+   "max_z": 2.8694565761855215,
+   "series": 5,
+   "windows": 1715,
+   "min_mad_scale": 0.005608826722250645,
+   "floor_engaged_fraction": 0.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  },
+  "error_ratio": {
+   "max_z": 5.811481486495458,
+   "series": 5,
+   "windows": 1710,
+   "min_mad_scale": 0.0004836387776155115,
+   "floor_engaged_fraction": 0.0,
+   "non_finite_dropped": 0,
+   "carried_series": 0
+  }
+ },
+ "scenarios": {
+  "bad_deploy_5xx": {
+   "memory": {
+    "fault_max_z": 1.931391011298543,
+    "series": 12,
+    "fault_windows": 17,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9484571489761131
+   },
+   "latency": {
+    "fault_max_z": 43.37343684247024,
+    "series": 12,
+    "fault_windows": 17,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 13.106646022327375
+   },
+   "cpu": {
+    "fault_max_z": 2.036251912567156,
+    "series": 12,
+    "fault_windows": 17,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.981023149565726
+   },
+   "disk_ratio": {
+    "fault_max_z": 0.059191170123606064,
+    "series": 3,
+    "fault_windows": 17,
+    "floor_engaged_fraction": 1.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9550178130727706
+   },
+   "ci_ratio": {
+    "fault_max_z": 2.499784358366478,
+    "series": 5,
+    "fault_windows": 17,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.8711699557027404
+   },
+   "error_ratio": {
+    "fault_max_z": 95.46953058344461,
+    "series": 5,
+    "fault_windows": 16,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 16.42774407959378
+   }
+  },
+  "flaky_test_storm": {
+   "memory": {
+    "fault_max_z": 2.083713801139911,
+    "series": 12,
+    "fault_windows": 40,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.0232590084296775
+   },
+   "latency": {
+    "fault_max_z": 3.242249176732221,
+    "series": 12,
+    "fault_windows": 40,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9797474069198377
+   },
+   "cpu": {
+    "fault_max_z": 2.0545050503503686,
+    "series": 12,
+    "fault_windows": 40,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9898171256975734
+   },
+   "disk_ratio": {
+    "fault_max_z": 0.05919114473525015,
+    "series": 3,
+    "fault_windows": 40,
+    "floor_engaged_fraction": 1.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9550174034452519
+   },
+   "ci_ratio": {
+    "fault_max_z": 58.90631368975468,
+    "series": 5,
+    "fault_windows": 40,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 20.528735015067245
+   },
+   "error_ratio": {
+    "fault_max_z": 6.088789228062284,
+    "series": 5,
+    "fault_windows": 39,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.0477172201634344
+   }
+  },
+  "noisy_neighbor": {
+   "memory": {
+    "fault_max_z": 1.8216099355479054,
+    "series": 12,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.8945464465296027
+   },
+   "latency": {
+    "fault_max_z": 15.778081490011594,
+    "series": 12,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 4.767842810153477
+   },
+   "cpu": {
+    "fault_max_z": 1.8761935265285208,
+    "series": 12,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.903910400884219
+   },
+   "disk_ratio": {
+    "fault_max_z": 0.05822605923588882,
+    "series": 3,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 1.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.939446266042433
+   },
+   "ci_ratio": {
+    "fault_max_z": 2.887738733350781,
+    "series": 5,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.0063712959857936
+   },
+   "error_ratio": {
+    "fault_max_z": 9.396000376079657,
+    "series": 5,
+    "fault_windows": 24,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.616799502487239
+   }
+  },
+  "memory_leak": {
+   "memory": {
+    "fault_max_z": 10.950995354645991,
+    "series": 12,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 5.377756120722001
+   },
+   "latency": {
+    "fault_max_z": 3.8934946105421324,
+    "series": 12,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.176541666171289
+   },
+   "cpu": {
+    "fault_max_z": 2.8103497274861096,
+    "series": 12,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.3539671216631335
+   },
+   "disk_ratio": {
+    "fault_max_z": 0.06208636377124541,
+    "series": 3,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 1.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.0017302112229807
+   },
+   "ci_ratio": {
+    "fault_max_z": 3.2865970399985085,
+    "series": 5,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.145372635109714
+   },
+   "error_ratio": {
+    "fault_max_z": 5.405407684716163,
+    "series": 5,
+    "fault_windows": 132,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.930125596593069
+   }
+  },
+  "disk_pressure": {
+   "memory": {
+    "fault_max_z": 2.03531853830081,
+    "series": 12,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9994933220679798
+   },
+   "latency": {
+    "fault_max_z": 8.314157938307726,
+    "series": 12,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 2.5123839152266805
+   },
+   "cpu": {
+    "fault_max_z": 1.9566677398944239,
+    "series": 12,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 0.9426811766255722
+   },
+   "disk_ratio": {
+    "fault_max_z": 324.9056006953613,
+    "series": 3,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 1.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 5242.177770488635
+   },
+   "ci_ratio": {
+    "fault_max_z": 3.272827489667857,
+    "series": 5,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.140573973772606
+   },
+   "error_ratio": {
+    "fault_max_z": 5.838139566476938,
+    "series": 5,
+    "fault_windows": 342,
+    "floor_engaged_fraction": 0.0,
+    "carried_series": 0,
+    "separation_vs_baseline_run": 1.0045871401368873
+   }
+  }
+ },
+ "p6_group_size_absent": {
+  "pod": "catalog-9a1d3e-a1",
+  "identical": true,
+  "max_abs_difference": 0.0
+ }
+}

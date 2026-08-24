@@ -272,6 +272,7 @@ pantheon-aiops/
 | `docs/REPOSITORY_MAP.md` | ★ **This file.** The canonical map of the repository. | 0 |
 | `docs/argus-predictions/` | What each Argus calibration measurement was expected to produce, written **before** it ran, with falsification conditions - and its **scoring** beside it. A prediction without its committed scoring is half a record. | 1 |
 | `docs/argus-predictions/data/` | The raw measurements the scorings cite, committed because they otherwise live only in a session scratchpad. | 1 |
+| `tests/unit/test_prediction_records.py` | Asserts every prediction record is **tracked by git**, not merely present on disk, carries a scoring, and cites measurements that exist. `55b0360` was one branch deletion from gone. | 1 |
 | `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
 | `docs/guard-verification.md` | How every guard was verified against a planted violation — including three that turned out not to work. | 0 |
 

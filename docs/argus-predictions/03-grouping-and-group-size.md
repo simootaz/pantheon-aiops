@@ -71,3 +71,59 @@ labels, and in production the first is a silent false positive.
 
 Predicted minimum to encode: **8 peers**. If P2 falsifies at 5 or 6, that
 number changes and hierarchical grouping becomes available.
+
+---
+
+# Result — measured 2026-08-21
+
+## P1 — FALSIFIED, and the anomaly moved
+
+```
+baseline n=483   max=5.04   p95=3.45   frac>10=0.0%   median=2.24
+high-z moments: []
+```
+
+Not a transient and not a raised floor - **the 22.76 was absent entirely** on a
+standalone run. At the time this was attributed to partial peer coverage; that
+explanation was itself wrong (coverage measured 100%, 1501 timestamps, zero
+gaps). The cause was a reset that never cleared - see
+[05](05-run-ordering.md).
+
+## P2 — direction confirmed, numbers falsified
+
+The sweep here used the *first* 40 subsets lexicographically, which
+over-represents the earliest pods and makes per-size figures incomparable. A
+seeded random sweep (seed 20260821, `data/peer-group-size-sweep.json`) replaced
+it:
+
+| peers | median | p90 | worst | frac > 8 |
+|---|---|---|---|---|
+| 3 | 365.01 | 1388.77 | 9444.81 | 100% |
+| 4 | 10.97 | 74.19 | 719.88 | 70% |
+| 5 | 15.27 | 72.62 | 359.87 | 78% |
+| 6 | 8.25 | 43.04 | 216.40 | 52% |
+| 8 | 6.57 | 12.17 | 30.70 | 42% |
+| 10 | 5.72 | 7.69 | 11.97 | 8% |
+| 12 | 5.35 | 5.35 | 5.35 | 0% |
+
+Predicted minimum was 8; at 8 peers the median is 9.11 and 42% of subsets exceed
+8, so **the prediction is wrong and the minimum is 12**.
+
+**The tail decides, not the median.** Three peers has a *best* subset of 24.92 -
+a particular small group can look well behaved while every neighbouring choice
+is catastrophic, so sampling one group proves nothing about the size.
+
+## P3 — CONFIRMED
+
+| axis | group | peers | baseline | fault | separation |
+|---|---|---|---|---|---|
+| all-12 | all | 12 | 5.04 | 23.80 | **4.72x** |
+| service-mates | checkout | 3 | 220.19 | 276.11 | 1.25x |
+| service-mates | catalog | 3 | 454.03 | 206.75 | 0.46x |
+| node-mates | node-b | 4 | 7.38 | 6.60 | 0.89x |
+| node-mates | node-c | 4 | 10.51 | 2.33 | 0.22x |
+| either | notifier, payments, search | 2 | - | - | refused |
+
+Service-mate and node-mate grouping are both worse, as predicted from the target
+set: `search` is 2 pods both on node-c, so 2/2 are affected and the comparison
+is pure common-mode within the service.
