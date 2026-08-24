@@ -133,7 +133,56 @@ class MetricNotCalibratedError(LookupError):
 #: This is why counters are excluded outright and why a rate ratio is not a
 #: safe substitute: the compression factor cancels in the *value* of a ratio,
 #: but not in its *noise*.
-THRESHOLDS: dict[str, MetricThreshold] = {}
+#: Derived 2026-08-24. Floors from runs 1-5 of a ten-run baseline set, then
+#: thresholds from runs 6-10 under those floors - so the threshold is measured
+#: on runs the floor was not fitted to. Each is the smallest ladder value with
+#: **zero exceedances** across roughly 2760 held-out instants.
+#:
+#: The bound is the rule of three, not the target that selected it: zero events
+#: in n samples puts the rate below 3/n at 95%, which is **1.1e-3** here. The
+#: 1e-4 in prediction 11 was a selection criterion. A rate that small cannot be
+#: measured from this many samples, only bounded above.
+#:
+#: Conditions are 630x compression, 480s runs, and the node-disk fix applied.
+#: A threshold is valid for the conditions it was measured under and no others.
+THRESHOLDS: dict[str, MetricThreshold] = {
+    "memory": MetricThreshold(
+        observed_baseline_max=3.98,
+        threshold=4.0,
+        runs=5,
+        conditions="630x, 480s, 12 pods, floor 4.084e+08 bytes; held out of a 10-run set",
+    ),
+    "cpu": MetricThreshold(
+        observed_baseline_max=3.01,
+        threshold=3.5,
+        runs=5,
+        conditions="630x, 480s, 12 pods, floor 0.1746 cores; held out of a 10-run set",
+    ),
+    "latency": MetricThreshold(
+        observed_baseline_max=5.10,
+        threshold=6.0,
+        runs=5,
+        conditions="630x, 480s, 12 pods, floor 0.03933 s; held out of a 10-run set",
+    ),
+    "disk_ratio": MetricThreshold(
+        observed_baseline_max=92.77,
+        threshold=100.0,
+        runs=5,
+        conditions="630x, 480s, 3 nodes, floor 2.953e-05 ratio; held out of a 10-run set",
+    ),
+    "ci_ratio": MetricThreshold(
+        observed_baseline_max=19.30,
+        threshold=20.0,
+        runs=5,
+        conditions="630x, 480s, 5 services, floor 8.634e-04 ratio; held out of a 10-run set",
+    ),
+    "error_ratio": MetricThreshold(
+        observed_baseline_max=24.19,
+        threshold=25.0,
+        runs=5,
+        conditions="630x, 480s, 5 services, floor 1.920e-05 ratio; held out of a 10-run set",
+    ),
+}
 
 
 def threshold_for(metric: str) -> MetricThreshold:
@@ -176,7 +225,31 @@ def threshold_for(metric: str) -> MetricThreshold:
 #: Twelve is where the exceedance reaches zero. Ten is close, and only 12 has
 #: been measured as a whole population rather than sampled, so the number stays
 #: provisional until the sweep is repeated across scenarios and metrics.
-MIN_PEERS = 12
+#: SUPERSEDED as a safety rule, 2026-08-24. Three runs of predictions - 08, 09
+#: and 11 - tested whether the count is the variable, and it is not.
+#:
+#: `disk_ratio` at **three** nodes is calibrated and detects its scenario by
+#: 101x. Two of three **twelve**-peer groups fail the same pooled-covers-worst
+#: test a five-peer group passes. Peer count correlates with the threshold a
+#: group needs at -0.600, too weak to be a rule.
+#:
+#: What the count was standing in for is the number of RUNS: a bound from one
+#: run is one sample of a distribution whose worst case decides safety. See
+#: `MIN_CALIBRATION_RUNS`.
+#:
+#: Three is what remains, and it is arithmetic rather than a safety margin: a
+#: median and a MAD over fewer than three values describe nothing. Safety comes
+#: from the calibrated threshold in `THRESHOLDS`, which a group either has or
+#: does not.
+MIN_PEERS = 3
+
+#: Runs a threshold must be derived over before it may be written down.
+#:
+#: Measured in prediction 11: five of six groups settle by N = 4, and N = 2 does
+#: not - it put `ci_ratio` at 150 against a settled 40, and `disk_ratio` at 12
+#: against 9. A pooled bound at 1e-3 failed to cover its own worst run for five
+#: of six groups, which is what makes a single run's number unusable.
+MIN_CALIBRATION_RUNS = 4
 
 
 #: Per-metric scale floors. **A missing entry is a refusal, not a default.**
@@ -194,7 +267,32 @@ MIN_PEERS = 12
 #:
 #: Empty because nothing has been measured yet. `floor_for` refuses rather than
 #: substituting a plausible constant, for the same reason `THRESHOLDS` does.
-SCALE_FLOORS: dict[str, float] = {}
+#: Measured 2026-08-24 as the **5th percentile of the observed scale
+#: distribution** over five baseline runs, so the floor engages 5% of the time
+#: by construction. Held-out engagement came in at 4.6% to 5.3%.
+#:
+#: What it replaces, and why: `min(|value|) * 1e-3` scales with a metric's
+#: LEVEL rather than its dispersion. Measured over 5525 instants it never
+#: engaged at all for memory, cpu, latency or ci_ratio, and engaged on **46.9%**
+#: of `disk_ratio` instants - because disk sits at 0.34 with a dispersion near
+#: 3.7e-04, some 900x smaller. One heuristic, inert for five metrics and
+#: dominant for the sixth.
+#:
+#: Changing it moved every threshold: `ci_ratio` from 150 to 20 and
+#: `error_ratio` from 100 to 25, because a floor large enough to catch a
+#: collapsing MAD suppresses exactly the excursions that set those numbers.
+#: Much of what records 08 to 11 read as "small groups are dangerous" was the
+#: floor being too small to catch the collapse.
+#:
+#: In the metric's own units, not in z.
+SCALE_FLOORS: dict[str, float] = {
+    "memory": 4.08355e08,
+    "cpu": 0.174567,
+    "latency": 0.0393306,
+    "disk_ratio": 2.95257e-05,
+    "ci_ratio": 8.63377e-04,
+    "error_ratio": 1.92034e-05,
+}
 
 
 class ScaleFloorNotMeasuredError(LookupError):

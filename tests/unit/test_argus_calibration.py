@@ -9,6 +9,8 @@ import pytest
 
 from agents.anomaly.calibration import (
     MEASURED_COVERAGE,
+    MIN_CALIBRATION_RUNS,
+    SCALE_FLOORS,
     SUSTAIN_SAMPLES,
     THRESHOLDS,
     WINDOW_SECONDS,
@@ -152,10 +154,13 @@ def test_a_metric_with_no_measured_bound_cannot_be_scanned() -> None:
     samples from an unmapped space are not a bound, so it has no entry and
     Argus must refuse to scan it.
     """
-    with pytest.raises(MetricNotCalibratedError, match="no measured baseline bound"):
-        threshold_for("error_ratio")
-    with pytest.raises(MetricNotCalibratedError, match="no measured baseline bound"):
-        threshold_for("a_metric_invented_this_afternoon")
+    # Both are real exclusions rather than gaps. `request_rate` and `restarts`
+    # are counters: a rate's noise depends on the compression it was measured
+    # at, so a single number for one means nothing across a gate that runs each
+    # scenario at a different speed.
+    for metric in ("request_rate", "restarts", "a_metric_invented_this_afternoon"):
+        with pytest.raises(MetricNotCalibratedError, match="no measured baseline bound"):
+            threshold_for(metric)
 
 
 def test_every_declared_threshold_carries_the_measurement_behind_it() -> None:
@@ -233,13 +238,20 @@ def test_a_peer_group_below_the_minimum_is_refused() -> None:
     scenario and 1585.74 as a "signal" in another: the same degeneracy wearing
     opposite labels, and in production the first is a silent false positive.
     """
-    for size in (2, 3, 5, 8, 11):
+    for size in (0, 1, 2):
         peers = _TWELVE[:size]
         with pytest.raises(InsufficientPeersError, match="below the measured minimum"):
             peer_z(peers, _flat(peers), scale_floor=_FLOOR)
 
-    result = peer_z(_TWELVE, _flat(_TWELVE, **{"pod-0": 9.0}), scale_floor=_FLOOR).z
-    assert result["pod-0"] > 0, "a full group must still produce a comparison"
+    # Three is now permitted, and the reason is the point: `disk_ratio` runs on
+    # three nodes, is calibrated at a threshold of 100, and detects its scenario
+    # by 101x. Records 08, 09 and 11 all tested whether the count is the safety
+    # variable and it is not - what a group needs is a threshold derived over
+    # `MIN_CALIBRATION_RUNS` runs, which it either has or does not.
+    for size in (3, 5, 8, 11, 12):
+        peers = _TWELVE[:size]
+        result = peer_z(peers, _flat(peers, **{"pod-0": 9.0}), scale_floor=_FLOOR).z
+        assert result["pod-0"] > 0, f"{size} peers must still produce a comparison"
 
 
 def test_a_timestamp_missing_any_peer_is_refused() -> None:
@@ -321,6 +333,38 @@ def test_a_declared_floor_keeps_cancellation_even_when_mad_collapses() -> None:
     )
 
 
+def test_a_threshold_and_its_floor_arrive_together() -> None:
+    """Neither half of a calibration is usable without the other.
+
+    A threshold is a number of scale units, so it means nothing without the
+    scale that produced it. Changing the floor moved `ci_ratio` from 150 to 20
+    and `error_ratio` from 100 to 25 - the same metric, the same data, a
+    different divisor. A threshold carried forward across a floor change is two
+    statistics divided by each other.
+    """
+    assert set(THRESHOLDS) == set(SCALE_FLOORS), (
+        f"only a threshold: {sorted(set(THRESHOLDS) - set(SCALE_FLOORS))}; "
+        f"only a floor: {sorted(set(SCALE_FLOORS) - set(THRESHOLDS))}"
+    )
+    for metric, floor in SCALE_FLOORS.items():
+        assert floor > 0.0, f"{metric}: a floor of {floor} disables the guard it exists to be"
+
+
+def test_no_threshold_rests_on_too_few_runs() -> None:
+    """One run is one sample of a distribution whose worst case decides safety.
+
+    Measured in prediction 11: a pooled bound at 1e-3 failed to cover its own
+    worst run for five of six groups, and N = 2 put `ci_ratio` at 150 against a
+    settled 40. Four is where five of six stop moving.
+    """
+    for metric, entry in THRESHOLDS.items():
+        assert entry.runs >= MIN_CALIBRATION_RUNS, (
+            f"{metric}: derived over {entry.runs} runs, below the measured minimum of "
+            f"{MIN_CALIBRATION_RUNS}. A bound from fewer runs has not seen its own tail."
+        )
+        assert entry.conditions.strip(), f"{metric}: a threshold with no stated conditions"
+
+
 def test_a_metric_with_no_measured_scale_floor_is_refused() -> None:
     """The floor is the third parameter, and it was the one nobody derived.
 
@@ -328,7 +372,7 @@ def test_a_metric_with_no_measured_scale_floor_is_refused() -> None:
     measured, invisible in every result it produced. It is not a small
     correction: when the scale collapses it decides the answer outright.
     """
-    for metric in ("disk_ratio", "latency", "anything_at_all"):
+    for metric in ("request_rate", "restarts", "anything_at_all"):
         with pytest.raises(ScaleFloorNotMeasuredError, match="no measured scale floor"):
             floor_for(metric)
 
