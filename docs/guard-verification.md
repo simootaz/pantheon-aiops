@@ -1497,6 +1497,40 @@ docs is derived, and an analysis boundary is a number in the docs.
 Same class as `Z_THRESHOLD_PLACEHOLDER` in `calibration.py`, which is at least
 named for what it is.
 
+## A guard inside a branch cannot see what never arrived in it
+
+`tests/unit/test_prediction_records.py` was written because `55b0360` was
+committed on a feature branch, missed the merge, and was one deletion from gone.
+It compares `git ls-files` against the directory, requires each record to carry
+its scoring, requires the index to agree with the directory, and requires the
+numbering to have no gaps. Seven planted violations, all red.
+
+It did not catch the next occurrence of the same thing.
+
+`feature/argus-peer-bound` carried prediction 10 and its scoring - the run that
+established T = 10 for pod metrics and retracted 09's conclusion. It was pushed
+and no pull request was opened, because the next task started immediately.
+`develop` reached `bc00735` holding records 01 to 09, while 10's result was
+being relied on in conversation as though it were in the repository.
+
+**Every clause of the guard passed, correctly.** The record and its index entry
+were both on the unmerged branch, so `develop`'s index agreed with `develop`'s
+directory and the numbering ran 01 to 09 without a gap. There is nothing
+inconsistent about a branch that never received something.
+
+> A guard can assert that a branch is internally consistent. It cannot assert
+> that the branch is complete, because completeness is a claim about what exists
+> outside it. No test inside a repository can see a commit that is not in it.
+
+The remedy is not a better assertion. It is the order of operations: **open the
+pull request before starting the next branch.** The failure needs a human or a
+forge to notice, which is what a pull request is for.
+
+Related in kind to the quantifier variant recorded above. There, a guard covered
+an instance while the claim covered every instance. Here, a guard covers a
+branch while the claim covers the repository. Both are the guard being narrower
+than the sentence it is cited for, one level up each time.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
