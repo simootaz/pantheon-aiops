@@ -19,7 +19,14 @@ So every series carries:
 * **per-pod phase jitter**, so twelve pods are not twelve copies of one curve.
 
 `tests/integration/test_simulator_data.py` asserts the seasonality is
-statistically detectable rather than eyeballed.
+statistically detectable rather than eyeballed - for the three series it names.
+It does not iterate `MetricName`, and for most of this branch's life the
+sentence above was false for `disk_used`, whose gauge was built without ever
+calling `_baseline`.
+
+`tests/unit/test_simulator_tables_are_read.py` covers the quantifier: for every
+metric and every per-metric table, perturbing that metric's entry must change
+what the exporter emits.
 
 COUNTERS READ `speed` TIMES FASTER THAN THEY "ARE"
 --------------------------------------------------
@@ -83,6 +90,28 @@ NOISE: dict[MetricName, float] = {
     MetricName.CI_FAILURE_RATIO: 0.35,
 }
 
+#: How much of a metric the weekend takes away, as a fraction.
+#:
+#: This was a single global multiplier applied to every metric, which is right
+#: for anything traffic-driven and wrong for a level that accumulates. Disk does
+#: not empty by 28% because it is Saturday. Left global, routing the node disk
+#: gauge through `_baseline` would have dropped `disk_ratio` to 0.245 at
+#: weekends and put the `disk_pressure` fault peak at 0.636 - under the 0.75 the
+#: alert rule fires at, so the gate would have failed on whichever runs happened
+#: to land on a simulated weekend.
+WEEKLY_AMPLITUDE: dict[MetricName, float] = {
+    MetricName.CPU: 0.28,
+    MetricName.MEMORY: 0.28,
+    MetricName.REQUEST_RATE: 0.28,
+    MetricName.LATENCY: 0.28,
+    MetricName.ERROR_RATE: 0.28,
+    MetricName.RESTARTS: 0.28,
+    MetricName.CI_FAILURE_RATIO: 0.28,
+    # Bytes on disk are accumulated state, not a rate. The weekly rhythm shows
+    # up in how fast it *grows*, which is the drift term, not in the level.
+    MetricName.DISK_USED: 0.0,
+}
+
 #: How strongly each metric follows the daily cycle. Memory barely does - a
 #: process holds its heap overnight - while request rate is almost all cycle.
 SEASONAL_AMPLITUDE: dict[MetricName, float] = {
@@ -120,6 +149,7 @@ def require_every_metric(name: str, table: dict[MetricName, float]) -> None:
 
 require_every_metric("NOISE", NOISE)
 require_every_metric("SEASONAL_AMPLITUDE", SEASONAL_AMPLITUDE)
+require_every_metric("WEEKLY_AMPLITUDE", WEEKLY_AMPLITUDE)
 
 
 def _seed(*parts: str) -> int:
@@ -154,15 +184,20 @@ def diurnal(day_fraction: float, phase_shift: float = 0.0) -> float:
     return -math.cos(2 * math.pi * (skewed - 0.06))
 
 
-def weekly(simulated_seconds: float) -> float:
+def weekly(simulated_seconds: float, amplitude: float = 0.28) -> float:
     """A weekly multiplier: weekdays busy, weekends quiet.
 
     Without this a detector that learns a 24h period explains everything, and
     the simulator stops being a useful adversary.
+
+    `amplitude` is how much the weekend removes. It is per-metric because a
+    global value is a claim that every metric is traffic-driven, and disk is
+    not - see `WEEKLY_AMPLITUDE`. The default reproduces the original 0.72 for
+    callers outside the per-metric path, such as the log generator.
     """
     day_of_week = (simulated_seconds / SECONDS_PER_DAY) % 7.0
     weekend = 5.0 <= day_of_week < 7.0
-    return 0.72 if weekend else 1.0
+    return (1.0 - amplitude) if weekend else 1.0
 
 
 @dataclass(slots=True)
@@ -220,7 +255,7 @@ class MetricsGenerator:
         # twelve copies of one curve.
         shift = (_seed(pod.name, metric.value) % 1000) / 1000.0 * 0.04
         season = diurnal(day_fraction, shift) * SEASONAL_AMPLITUDE[metric]
-        week = weekly(simulated_seconds)
+        week = weekly(simulated_seconds, WEEKLY_AMPLITUDE[metric])
 
         base = {
             MetricName.CPU: pod.base_cpu_cores,
@@ -437,21 +472,35 @@ class MetricsGenerator:
             )
 
     def _node_disk(self, node: Node, simulated_seconds: float, active: list[ActivePhase]) -> float:
-        """Node disk, driven by whichever of its pods a phase is filling.
+        """Node disk, as the mean of what its own pods report using.
 
-        The second site that recomputed progress from the wrong origin.
+        This used to build the value from scratch - 0.34 of capacity plus a
+        drift - and so never called `_baseline`. `NOISE[DISK_USED] = 0.004` and
+        `SEASONAL_AMPLITUDE[DISK_USED] = 0.01` were declared, present in both
+        tables, and read by nothing: the exported gauge was a deterministic
+        straight line. Two tables can be complete and still describe a metric
+        nothing consumes.
+
+        The consequence was not cosmetic. `disk_ratio` was degenerate under
+        every comparison Argus has - the 0.00 peer baseline in experiment B and
+        the 100%-floor temporal reading in prediction 07 are the same defect
+        seen from two sides, and a metric whose scale is always the floor has
+        not been measured at all.
+
+        The mean, not the sum: each pod's disk state is initialised to its
+        node's usage rather than to a share of it, so summing would report the
+        node four times over. Deviations arrive through `sample`, which applies
+        them to the pods a phase actually targets - so a fault aimed at one
+        service on this node moves the node's disk by that service's share
+        rather than by all of it.
         """
-        used = 0.34 * node.disk_bytes
-        drift = 0.00004 * node.disk_bytes * (simulated_seconds / SECONDS_PER_DAY)
-        used += drift
-
-        for running in active:
-            targets = pods_for(running.phase.target)
-            if not any(pod.node == node.name for pod in targets):
-                continue
-            for deviation in running.phase.deviations:
-                if deviation.metric is MetricName.DISK_USED:
-                    used = self._apply(used, deviation, running.progress)
+        on_node = [pod for pod in PODS if pod.node == node.name]
+        used = fmean(
+            self.sample(pod, MetricName.DISK_USED, simulated_seconds, active) for pod in on_node
+        )
+        # Accumulation. Deterministic, and with no daily rhythm of its own: the
+        # rhythm is in how fast disk grows, not in how much is on it.
+        used += 0.00004 * node.disk_bytes * (simulated_seconds / SECONDS_PER_DAY)
         return min(used, float(node.disk_bytes))
 
 
