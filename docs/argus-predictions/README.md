@@ -39,4 +39,4 @@ experiments.
 | [04](04-pushgateway-staleness.md) | DELETE semantics and Prometheus staleness | Q1 falsified — the delete never worked; Q2 and Q3 confirmed |
 | [05](05-run-ordering.md) | does run order affect a baseline once the reset works | S/A confirmed, N reproduced 22.76 exactly |
 | [06](06-experiment-b-rerun.md) | Experiment B re-run under asserted isolation | 4 of 5 separate, but only **2 of 5** have the 12 peers the rule requires; `carried=0` throughout |
-| [07](07-aggregation-level.md) | Is the split per aggregation level, or per peer availability? | pending — predictions committed, measurement not yet run |
+| [07](07-aggregation-level.md) | Is the split per aggregation level, or per peer availability? | peer **availability**, not metric character; 4 hits, 3 misses |
