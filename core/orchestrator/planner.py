@@ -1,6 +1,65 @@
-"""Builds the agent execution plan: which agents run, in what order, under what budget.
+"""Builds the agent execution plan: which agents run, and why.
+
+ONE STEP, AND THE REASON IS NOT MODESTY
+---------------------------------------
+The plan has one step because one agent detects. Nine manifests load and
+validate, and every one of those agents raises `NotImplementedError` - planning
+a step for a stub would produce an Investigation that fails for a reason that
+has nothing to do with the incident.
+
+So the planner asks the registry which agents are *implemented*, not which are
+declared. The registry is the allowlist for what may be planned, and
+`IMPLEMENTED` is the narrower set of what can actually run. When Lethe lands it
+joins that set and the plan widens without the planner changing.
 
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
-# TODO: Phase 2 - implement capability-driven plan construction
+from __future__ import annotations
+
+from core.contracts.plan import PlanStep
+from core.orchestrator.classifier import Classification
+from core.registry import loader
+
+#: Agents whose `investigate` does something. Deliberately a separate set from
+#: the manifest roster: a manifest declares intent, and dispatching on intent is
+#: how a stub ends up in a plan and fails a run for the wrong reason.
+IMPLEMENTED: dict[str, str] = {"anomaly": "argus"}
+
+
+class NoAgentForDomain(RuntimeError):
+    """Nothing implemented can serve this classification.
+
+    A distinct exception rather than an empty plan. An empty plan and a plan
+    nobody could build are different states, and a run that dispatched nothing
+    should not look like a run where every agent found nothing.
+    """
+
+
+def build(classification: Classification) -> list[PlanStep]:
+    """The steps Zeus intends to take, in order.
+
+    Each step carries *why* it is being asked, because a plan whose steps have
+    no reasons cannot be reviewed - and the classifier's uncertainty is part of
+    that reason when it is uncertain.
+    """
+    codename = IMPLEMENTED.get(classification.domain)
+    if codename is None:
+        raise NoAgentForDomain(
+            f"domain {classification.domain!r} has no implemented agent. Implemented: "
+            f"{sorted(IMPLEMENTED)}. A manifest exists for every domain, but planning a "
+            "step for a stub produces a run that fails for the wrong reason."
+        )
+
+    manifest = loader.for_codename(codename)
+    reason = classification.reason
+    if not classification.certain:
+        reason = f"{reason}; routing was NOT determined by the trigger"
+
+    return [
+        PlanStep(
+            agent=manifest.codename,
+            reason=reason,
+            depends_on=[],
+        )
+    ]

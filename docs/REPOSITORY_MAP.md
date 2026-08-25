@@ -275,6 +275,10 @@ pantheon-aiops/
 | `docs/argus-threshold-matrix.md` | How every number in `calibration.py` was derived: floors from one half of a ten-run set, thresholds from the other, and what the configuration cannot do. | 1 |
 | `tests/unit/test_argus_detection.py` | What Argus emits, refuses and never claims - the properties that need no live stack. | 1 |
 | `tests/integration/test_argus_detection_flow.py` | The live gate, both directions: a clean baseline three times over produces no anomalies, and each scenario is detected on the series that moved. | 1 |
+| `core/orchestrator/` | Zeus: classify, plan, dispatch, aggregate. One step, because one agent is implemented; the verdict proposes no hypotheses, because nothing ranks candidate causes. | 2 |
+| `core/store/investigations.py` | Where an Investigation lives between the run that made it and the read that wants it. Postgres, one JSONB document, table created on first use. | 2 |
+| `tests/unit/test_orchestrator.py` | What Zeus plans, what it refuses to plan, and what its Verdict will not claim. | 2 |
+| `tests/integration/test_flow_one.py` | The live gate for flow 1, both directions, reading the result back on a second connection. | 2 |
 | `tests/unit/test_prediction_records.py` | Asserts every prediction record is **tracked by git**, not merely present on disk, carries a scoring, and cites measurements that exist. `55b0360` was one branch deletion from gone. | 1 |
 | `tests/unit/test_simulator_tables_are_read.py` | For every metric and every per-metric table, asserts that perturbing the entry changes what the **exporter** emits. `require_every_metric` proves a table is complete; this proves it is read. | 1 |
 | `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |

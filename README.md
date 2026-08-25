@@ -33,7 +33,7 @@ Here is the honest split.
 | **Argus** — detection | Peer-relative robust z against per-metric thresholds and scale floors, every one measured rather than chosen. `make test-argus` proves it in both directions: three clean baseline runs produce **zero** Findings, and all five fault scenarios are detected on the series that moved. It separates fault from clean baseline and nothing more — several Findings per incident, none of them a diagnosis. |
 | **A calibration record** | [13 prediction files](docs/argus-predictions/), each written before its measurement ran and scored after, with the raw data committed beside them. Four of them overturned a conclusion this project had already drawn. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
-| **351 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
+| **363 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
 | **Deploy skeleton** | Helm lints and templates, Terraform validates, Compose brings the stack up. |
 | **Seven ADRs** | The decisions, and what was rejected. |

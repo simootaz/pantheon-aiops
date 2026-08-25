@@ -27,18 +27,38 @@ Phase: 1 - Contracts & First Agent Path
 from __future__ import annotations
 
 import hmac
+import logging
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api.routers.investigations import get_store
 from api.routers.webhooks import get_event_bus
 from core.bus import EventBus
 from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from core.contracts.investigation import Trigger, TriggerKind
+from core.orchestrator import for_manifest, investigate
+from core.store.investigations import InvestigationStore
+
+logger = logging.getLogger(__name__)
+
+
+class InvestigationRunner(Protocol):
+    """What the receiver hands an accepted alert to."""
+
+    async def __call__(
+        self,
+        *,
+        trigger: Trigger,
+        investigation_id: UUID,
+        store: InvestigationStore,
+        bus: EventBus,
+    ) -> None: ...
+
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -98,10 +118,18 @@ def _title_for(payload: dict[str, Any]) -> str:
 )
 async def receive_alertmanager(
     request: Request,
+    background: BackgroundTasks,
     bus: Annotated[EventBus, Depends(get_event_bus)],
+    store: Annotated[InvestigationStore, Depends(get_store)],
     token: Annotated[str | None, Header(alias="X-Pantheon-Token")] = None,
 ) -> AlertsAccepted:
-    """Accept a notification, open an Investigation, and say so on the bus."""
+    """Accept a notification, open an Investigation, and say so on the bus.
+
+    202 and a background task, not a synchronous run: Alertmanager retries a
+    slow receiver, and an investigation that takes seconds would be started
+    twice. The returned `investigation_id` is the one Zeus will write, so a
+    caller can poll `GET /investigations/{id}` and see 404 until it exists.
+    """
     _verify_token(token)
 
     try:
@@ -132,8 +160,58 @@ async def receive_alertmanager(
         investigation_id=investigation_id,
     )
 
+    # A resolved batch is recorded and not investigated. "This stopped" is worth
+    # knowing and is not a reason to go looking for a fault that has ended.
+    if str(payload.get("status", FIRING)) == FIRING:
+        background.add_task(
+            _runner(request),
+            trigger=trigger,
+            investigation_id=investigation_id,
+            store=store,
+            bus=bus,
+        )
+
     return AlertsAccepted(
         investigation_id=investigation_id,
         status=str(payload.get("status", FIRING)),
         alert_count=len(alerts),
     )
+
+
+def _runner(request: Request) -> InvestigationRunner:
+    """What actually runs an accepted alert, from application state.
+
+    Injectable because the default reaches Prometheus and Postgres, and a unit
+    test that exercises this endpoint would otherwise open sockets as a side
+    effect of asserting a 202. Substituting a recorder keeps those tests offline
+    and makes "an alert schedules an investigation" an assertion rather than a
+    consequence nobody checks.
+    """
+    runner: InvestigationRunner | None = getattr(request.app.state, "investigation_runner", None)
+    return runner if runner is not None else _investigate
+
+
+async def _investigate(
+    *,
+    trigger: Trigger,
+    investigation_id: UUID,
+    store: InvestigationStore,
+    bus: EventBus,
+) -> None:
+    """Run Zeus for an accepted alert.
+
+    Failures are logged and swallowed rather than raised: this runs after the
+    response, so an exception here reaches nobody. Zeus itself records a FAILED
+    Investigation for anything it can attribute, which is the path a reader will
+    actually see.
+    """
+    try:
+        await investigate(
+            trigger,
+            store=store,
+            bus=bus,
+            toolset=for_manifest,
+            investigation_id=investigation_id,
+        )
+    except Exception:
+        logger.exception("investigation %s failed", investigation_id)
