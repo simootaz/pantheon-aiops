@@ -5,11 +5,14 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from agents.anomaly.calibration import (
     MEASURED_COVERAGE,
     MIN_CALIBRATION_RUNS,
+    PEER_TOPOLOGY_FINGERPRINT,
     SCALE_FLOORS,
     SUSTAIN_SAMPLES,
     THRESHOLDS,
@@ -29,6 +32,7 @@ from agents.anomaly.calibration import (
     robust_z,
     threshold_for,
 )
+from simulator.cluster import NODES, PODS
 
 
 def _run(
@@ -330,6 +334,45 @@ def test_a_declared_floor_keeps_cancellation_even_when_mad_collapses() -> None:
     assert moved.z["pod-0"] == pytest.approx(quiet.z["pod-0"]), (
         "a uniform shift changed a floor-determined reading, so the floor is "
         "level-dependent again - check it is not being derived from the samples"
+    )
+
+
+def test_the_peer_topology_has_not_moved_under_the_thresholds() -> None:
+    """A peer threshold is a bound on a topology, not only on a distribution.
+
+    Peer z divides by a scale estimated across members at one instant, so the
+    maximum is set by whichever member sits furthest from the group median.
+    Measured over five fresh baseline runs, `memory`'s maximum was attained by
+    `search-2f6b8c-a1` in **5 of 5** runs, at 3.913, 3.985, 3.985, 3.914 and
+    3.916 - a constant, not a tail. Its threshold of 4.0 clears that by 0.5%.
+
+    Resize a pod or add a replica and that constant moves, with no fault
+    occurring and nothing in any Finding to say the bound stopped applying. So
+    the cluster is hashed and compared: a topology change fails the build and
+    forces the thresholds to be re-derived.
+
+    Not a formatting check. The hash covers the base values that determine where
+    each member sits relative to its peers - which is exactly what sets the
+    maximum.
+    """
+    parts = []
+    for pod in sorted(PODS, key=lambda p: p.name):
+        parts.append(
+            f"{pod.name}|{pod.service}|{pod.node}|{pod.base_cpu_cores!r}|"
+            f"{pod.base_memory_bytes!r}|{pod.base_rps!r}|{pod.base_latency_seconds!r}"
+        )
+    for node in sorted(NODES, key=lambda n: n.name):
+        parts.append(f"{node.name}|{node.cpu_cores!r}|{node.memory_bytes!r}|{node.disk_bytes!r}")
+    joined = chr(10).join(parts).encode("utf-8")
+    live = hashlib.blake2b(joined, digest_size=16).hexdigest()
+
+    assert live == PEER_TOPOLOGY_FINGERPRINT, (
+        f"the peer topology has changed: live {live}, thresholds measured against "
+        f"{PEER_TOPOLOGY_FINGERPRINT}. Every peer threshold in THRESHOLDS is a bound "
+        "on where members sit relative to each other, and `memory`'s is a constant "
+        "attained by one pod in every run measured. Re-derive them against the live "
+        "cluster - do not update this hash on its own, which would assert that "
+        "nothing moved while the numbers it protects went stale."
     )
 
 

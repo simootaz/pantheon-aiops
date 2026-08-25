@@ -150,7 +150,12 @@ THRESHOLDS: dict[str, MetricThreshold] = {
         observed_baseline_max=3.98,
         threshold=4.0,
         runs=5,
-        conditions="630x, 480s, 12 pods, floor 4.084e+08 bytes; held out of a 10-run set",
+        conditions=(
+            "630x, 480s, 12 pods, floor 4.084e+08 bytes; held out of a 10-run set. "
+            "TOPOLOGY-BOUND: the maximum is attained by search-2f6b8c-a1 in 5 of 5 "
+            "fresh runs and is a structural constant, so this number is void if "
+            "PEER_TOPOLOGY_FINGERPRINT changes."
+        ),
     ),
     "cpu": MetricThreshold(
         observed_baseline_max=3.01,
@@ -242,6 +247,34 @@ def threshold_for(metric: str) -> MetricThreshold:
 #: from the calibrated threshold in `THRESHOLDS`, which a group either has or
 #: does not.
 MIN_PEERS = 3
+
+#: The peer topology every threshold in `THRESHOLDS` was measured against.
+#:
+#: Peer z divides by a scale estimated **across members at one instant**, so with
+#: heterogeneous members the maximum is set by whichever member sits furthest
+#: from the group median - a property of the cluster, not of the data.
+#:
+#: `memory` is the extreme case and it was measured. Across five fresh baseline
+#: runs the maximum was attained by **`search-2f6b8c-a1` in 5 of 5 runs**, and
+#: the values were 3.913, 3.985, 3.985, 3.914, 3.916 - two clusters a few parts
+#: per thousand wide. That pod holds 2.52 GB against a group median of 0.94, so
+#: it sits (2.52 - 0.94) / 0.459 = 3.44 robust deviations out by arithmetic,
+#: before any noise. Every other metric spread across two to four different
+#: members; `memory` was the only one with a single owner.
+#:
+#: A threshold at 4.0 over a constant of 3.99 is not a bound on a distribution.
+#: It is a bound on a topology, and it moves when a pod is resized or a replica
+#: is added - with no fault occurring and nothing to say it happened. So the
+#: dependency is made mechanical: `tests/unit/test_argus_calibration.py` fails
+#: the build if the live cluster no longer hashes to this, which forces a
+#: re-derivation rather than letting the number quietly stop applying.
+#:
+#: The structural fix is to compare `memory` temporally instead - record 07
+#: measured its temporal baseline at 2.04 with no structural outlier problem -
+#: and that is deferred rather than done, because the temporal path needs a
+#: diurnal cycle of history that production may not have.
+PEER_TOPOLOGY_FINGERPRINT = "8e5844e41c4de46807437e1b040b7b72"
+
 
 #: Runs a threshold must be derived over before it may be written down.
 #:
@@ -588,6 +621,7 @@ def robust_z(values: list[float], window: int, scale_floor: float) -> list[float
 __all__ = [
     "MEASURED_COVERAGE",
     "MIN_PEERS",
+    "PEER_TOPOLOGY_FINGERPRINT",
     "SCALE_FLOORS",
     "SUSTAIN_SAMPLES",
     "THRESHOLDS",
