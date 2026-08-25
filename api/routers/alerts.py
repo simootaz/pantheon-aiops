@@ -41,7 +41,7 @@ from core.bus import EventBus
 from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from core.contracts.investigation import Trigger, TriggerKind
-from core.orchestrator import for_manifest, investigate
+from core.orchestrator import investigate
 from core.store.investigations import InvestigationStore
 
 logger = logging.getLogger(__name__)
@@ -210,7 +210,6 @@ async def _investigate(
             trigger,
             store=store,
             bus=bus,
-            toolset=for_manifest,
             investigation_id=investigation_id,
         )
     except Exception:

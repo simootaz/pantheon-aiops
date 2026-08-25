@@ -22,13 +22,11 @@ Phase: 2 - Orchestrator & Investigation Flow
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
 from agents._base.base_agent import AgentContext, AgentOutcome, AgentStatus, BaseAgent
 from core.contracts.investigation import Trigger
-from core.contracts.manifest import AgentManifest
 from core.contracts.plan import PlanStep, StepStatus
 
 #: Codename to the class that implements it. Not discovered by import scanning:
@@ -53,7 +51,6 @@ async def run_step(
     trigger: Trigger,
     window_start: datetime,
     window_end: datetime,
-    toolset: Callable[[AgentManifest], object] | None = None,
 ) -> tuple[PlanStep, AgentOutcome]:
     """Run one step and return it updated, with what the agent produced.
 
@@ -69,19 +66,16 @@ async def run_step(
         )
 
     agent = implementation()
-    # Per-manifest, not per-run: each agent's allowlist is its own, and one
-    # shared toolset would let the widest manifest set the ceiling for all.
-    tools = toolset(agent.manifest) if toolset is not None else None
-    if tools is not None:
-        agent.bind_tools(tools)
 
+    # No toolset is passed. `BaseAgent.run` builds one from the manifest and
+    # calls `bind_tools`, replacing anything set here - so an orchestrator that
+    # supplied its own would be handing over an object the runtime discards.
     ctx = AgentContext(
         investigation_id=investigation_id,
         trigger=trigger,
         window_start=window_start,
         window_end=window_end,
     )
-    ctx.tools = tools
 
     started = datetime.now(UTC)
     outcome = await agent.run(ctx)

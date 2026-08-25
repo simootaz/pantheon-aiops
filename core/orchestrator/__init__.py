@@ -19,7 +19,6 @@ from core.orchestrator.classifier import Classification, classify
 from core.orchestrator.dispatcher import AGENTS, AgentNotDispatchable, register
 from core.orchestrator.planner import IMPLEMENTED, NoAgentForDomain, build
 from core.orchestrator.router import DEFAULT_LOOKBACK, get, investigate
-from core.orchestrator.toolsets import for_manifest
 
 
 def register_implemented() -> None:
@@ -44,7 +43,6 @@ __all__ = [
     "aggregate",
     "build",
     "classify",
-    "for_manifest",
     "get",
     "investigate",
     "register",

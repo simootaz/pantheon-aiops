@@ -36,7 +36,7 @@ from core.contracts.investigation import (
 )
 from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.verdict import Verdict
-from core.orchestrator import for_manifest, investigate, register_implemented
+from core.orchestrator import investigate, register_implemented
 from core.store.investigations import PostgresInvestigationStore
 from simulator.alerting import GATE_TICK_SECONDS, gate_speed
 from simulator.metrics_generator import MetricsGenerator
@@ -120,9 +120,7 @@ async def test_an_alert_produces_a_complete_investigation(stack: None) -> None:
     store = PostgresInvestigationStore()
     bus = InMemoryEventBus()
     try:
-        investigation = await investigate(
-            _trigger(_alert_payload(SCENARIO)), store=store, bus=bus, toolset=for_manifest
-        )
+        investigation = await investigate(_trigger(_alert_payload(SCENARIO)), store=store, bus=bus)
     finally:
         await store.close()
 

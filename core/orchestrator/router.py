@@ -20,7 +20,6 @@ Phase: 2 - Orchestrator & Investigation Flow
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -33,7 +32,6 @@ from core.contracts.events import (
     VerdictReadyEvent,
 )
 from core.contracts.investigation import Investigation, InvestigationState, Trigger
-from core.contracts.manifest import AgentManifest
 from core.contracts.plan import StepStatus
 from core.orchestrator import aggregator, dispatcher, planner
 from core.orchestrator.classifier import classify, scenario_of
@@ -54,7 +52,6 @@ async def investigate(
     *,
     store: InvestigationStore,
     bus: EventBus,
-    toolset: Callable[[AgentManifest], object] | None = None,
     investigation_id: UUID | None = None,
     lookback: timedelta = DEFAULT_LOOKBACK,
 ) -> Investigation:
@@ -120,7 +117,6 @@ async def investigate(
             trigger=trigger,
             window_start=window_start,
             window_end=window_end,
-            toolset=toolset,
         )
         completed_steps.append(finished)
         findings.extend(outcome.findings)

@@ -49,6 +49,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from agents._base.base_agent import AgentContext, AgentDegraded, BaseAgent
@@ -63,6 +64,7 @@ from agents.anomaly.calibration import (
     peer_z,
     threshold_for,
 )
+from agents.anomaly.tools import attach
 from core.contracts.evidence import (
     BaselineEstimator,
     Evidence,
@@ -168,6 +170,16 @@ class Argus(BaseAgent):
     """The first real agent, and the template the other nine follow."""
 
     domain = "anomaly"
+
+    def bind_tools(self, tools: Any) -> None:
+        """Attach the Prometheus connector to the toolset the runtime built.
+
+        The runtime owns the toolset - `BaseAgent.run` constructs it from the
+        manifest and replaces whatever a caller put on the context. Registering
+        here is the only place that survives that, and an orchestrator that
+        injected its own had every call come back `ToolNotBound`.
+        """
+        attach(tools)
 
     async def investigate(self, ctx: AgentContext) -> list[Finding]:
         """Report every metric whose peer comparison crossed its threshold.

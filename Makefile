@@ -78,8 +78,11 @@ test-connectors:
 # The negative half is the point: a clean baseline must open NO investigation,
 # and the positive half reads the result back on a second connection, because a
 # test that reads through the object it wrote to cannot tell a dict from a database.
+# The database credential is sourced from deploy/compose/.env rather than
+# duplicated here: it is where the stack's own password is defined, and a second
+# copy is a second thing to keep in step.
 test-flow-one:
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_flow_one.py -m integration --no-cov -v
+	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_flow_one.py 	   -m integration --no-cov -v
 
 ## test-argus: prove Argus detects each scenario and stays silent on a clean baseline
 # The negative case runs three times. A detector that fires on everything passes

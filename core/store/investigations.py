@@ -90,12 +90,17 @@ class PostgresInvestigationStore:
     """The real one. Owns its pool, creates its table on first use."""
 
     def __init__(self, dsn: str | None = None) -> None:
-        self._dsn = dsn or _dsn()
+        # The DSN is resolved on first use, not here. Constructing the store is
+        # what the app factory does at import time, and a missing password is a
+        # reason to fail a query rather than a reason the process cannot start -
+        # every unit test that builds the app would otherwise need a database.
+        self._configured = dsn
         self._pool: asyncpg.Pool | None = None
 
     async def _ready(self) -> asyncpg.Pool:
         if self._pool is None:
-            self._pool = await asyncpg.create_pool(self._dsn, min_size=1, max_size=4)
+            dsn = self._configured or _dsn()
+            self._pool = await asyncpg.create_pool(dsn, min_size=1, max_size=4)
             async with self._pool.acquire() as connection:
                 await connection.execute(SCHEMA)
         return self._pool
@@ -140,6 +145,16 @@ class PostgresInvestigationStore:
         return [Investigation.model_validate_json(row["document"]) for row in rows]
 
 
+class PostgresNotConfigured(RuntimeError):
+    """No password is configured, so no connection can be attempted.
+
+    Raised here rather than letting asyncpg fail, because the driver's message -
+    `InvalidPasswordError: password authentication failed` - describes a wrong
+    password and this is a missing one. The two have different fixes and the
+    first sends you looking in the wrong place, which is where it sent me.
+    """
+
+
 def _dsn() -> str:
     """Built from settings, like every other connection in this repository.
 
@@ -147,6 +162,14 @@ def _dsn() -> str:
     out of call sites, and keeps one place that knows where the database is.
     """
     postgres = get_settings().postgres
-    password = postgres.password.get_secret_value() if postgres.password else ""
-    credentials = f"{postgres.user}:{password}@" if password else f"{postgres.user}@"
-    return f"postgresql://{credentials}{postgres.host}:{postgres.port}/{postgres.db}"
+    if postgres.password is None:
+        raise PostgresNotConfigured(
+            "POSTGRES_PASSWORD is not set, so the investigation store cannot connect. "
+            f"The compose stack's value lives in deploy/compose/.env (user "
+            f"{postgres.user!r}, database {postgres.db!r}); export it, or put it in a "
+            "repository-root .env, which is the file core/config.py reads."
+        )
+    return (
+        f"postgresql://{postgres.user}:{postgres.password.get_secret_value()}"
+        f"@{postgres.host}:{postgres.port}/{postgres.db}"
+    )

@@ -15,7 +15,7 @@ from uuid import uuid4
 
 import pytest
 
-from agents._base.base_agent import AgentContext, AgentDegraded
+from agents._base.base_agent import AgentContext, AgentDegraded, AgentStatus
 from agents.anomaly.agent import (
     SERIES,
     Argus,
@@ -316,3 +316,46 @@ def test_parse_drops_non_finite_samples() -> None:
     }
     parsed = _parse(payload, "pod")
     assert list(parsed["a"].values()) == [1.0, 3.0]
+
+
+@pytest.mark.asyncio
+async def test_the_runtime_hands_argus_a_toolset_its_connector_is_bound_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Through `run()`, not `investigate()` - which is where this broke.
+
+    `BaseAgent.run` builds its own `BoundTools` from the manifest, calls
+    `bind_tools`, and REPLACES `ctx.tools`. Every test above calls `investigate`
+    directly with a fake toolset, so none of them exercises that path - and an
+    orchestrator that set `ctx.tools` itself had it discarded, producing
+    `ToolNotBound` on every metric and a run that degraded instantly.
+
+    This calls the real entry point and asserts the query reached the connector.
+    """
+    seen: list[dict[str, Any]] = []
+
+    async def fake_range(arguments: dict[str, Any]) -> dict[str, Any]:
+        seen.append(arguments)
+        spec = next(s for s in SERIES.values() if s.query == arguments["query"])
+        return _range(
+            {
+                member: [100.0 + index * 0.01] * SAMPLES
+                for index, member in enumerate(MEMBERS[spec.label])
+            },
+            spec.label,
+        )
+
+    monkeypatch.setattr("connectors.prometheus.tools.query_range", fake_range)
+
+    outcome = await Argus().run(_context())
+
+    assert seen, (
+        "no query reached the connector: the runtime's toolset was never bound, so "
+        "every metric failed before it was fetched"
+    )
+    assert outcome.status is AgentStatus.COMPLETE, (
+        f"argus degraded through its own runtime: {outcome.degraded_reason}"
+    )
+    assert outcome.tool_calls == len(SERIES), (
+        f"expected one query per calibrated metric, got {outcome.tool_calls}"
+    )
