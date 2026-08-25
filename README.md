@@ -15,10 +15,10 @@ write action gated, every credential brokered, and every run auditable.
 
 ## Status: Phase 1, in progress
 
-**No investigation has run end to end.** Zeus does not dispatch, no agent
-produces a Finding, and every domain agent is a stub carrying a `# TODO: Phase N`
-marker. What exists is the substrate those agents will stand on, and a simulator
-that produces the data they will read.
+**One agent detects. Nothing orchestrates yet.** Argus produces real Findings
+against thresholds derived from measurement, gated in both directions on a live
+stack. Zeus does not dispatch, the other nine domain agents are stubs carrying a
+`# TODO: Phase N` marker, and no investigation runs from trigger to verdict.
 
 Here is the honest split.
 
@@ -30,6 +30,8 @@ Here is the honest split.
 | **Contracts** — 49 Pydantic v2 models | The single source of truth. Go structs and TypeScript types are generated from them, and drift fails the build. |
 | **Connectors** | Prometheus and Alertmanager speak MCP, read-only, with the tool allowlist enforced at bind **and** at call. |
 | **Agent runtime** | `agents/_base/` gives a subclass one required coroutine; the manifest registry loads and validates all ten. Finding ids are deterministic, so a retry cannot duplicate a claim. |
+| **Argus** — detection | Peer-relative robust z against per-metric thresholds and scale floors, every one measured rather than chosen. `make test-argus` proves it in both directions: three clean baseline runs produce **zero** Findings, and all five fault scenarios are detected on the series that moved. It separates fault from clean baseline and nothing more — several Findings per incident, none of them a diagnosis. |
+| **A calibration record** | [13 prediction files](docs/argus-predictions/), each written before its measurement ran and scored after, with the raw data committed beside them. Four of them overturned a conclusion this project had already drawn. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
 | **351 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
@@ -41,7 +43,7 @@ Here is the honest split.
 | | |
 |---|---|
 | **Zeus** | The orchestrator. Routing, classification, planning, dispatch and aggregation are Phase 2. |
-| **Every domain agent** | Argus first, at Phase 1. The other nine follow. |
+| **The other nine agents** | Argus detects; Lethe, Hermes and the rest are stubs. |
 | **Delphi** | The LLM gateway is designed ([ADR 0004](docs/adr/0004-llm-provider-abstraction.md)) and unbuilt. |
 | **Cerberus behaviour** | Contracts and redaction exist; brokering, leases and revocation do not. |
 | **The remaining connectors** | Kubernetes, Loki, GitLab, GitHub and Litmus. |
@@ -58,7 +60,7 @@ decision.
 | Codename | Domain | Role | Phase |
 |---|---|---|---|
 | **Zeus** | `core/orchestrator/` | Routes, classifies, plans, dispatches, aggregates | 2 |
-| **Argus** | `agents/anomaly/` | Detects metric anomalies, correlates them into findings | 1 |
+| **Argus** | `agents/anomaly/` | Detects metric anomalies against calibrated thresholds. Does not correlate — that is Zeus. | 1 |
 | **Lethe** | `agents/log_clustering/` | Clusters high-volume logs, surfaces novelty | 2 |
 | **Hermes** | `agents/nl_query/` | Turns natural language into connector queries, and back | 2 |
 | **Hephaestus** | `agents/ci_triage/` | Triages failing CI, separates flake from real regression | 4 |
