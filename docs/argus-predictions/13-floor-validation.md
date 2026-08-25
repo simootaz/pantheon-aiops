@@ -135,7 +135,158 @@ No detection code is written before this is scored.
 
 ---
 
-# Result — PENDING
+# Result — measured 2026-08-24
 
-The measurement has not been run. Predictions committed first; this section is
-a placeholder so that "not yet scored" is a state the repository states.
+Five fresh baseline runs at 630x for 480s, isolation asserted, on a stack
+restarted between sessions. Raw data in `data/floor-validation.json`.
+
+**The floor is validated. The matrix stands. `memory` is topology-bound.**
+
+## P2 — HIT, and it is the one that mattered
+
+| metric | committed floor | fresh p05 | differs | engagement |
+|---|---|---|---|---|
+| `memory` | 4.0836e+08 | 4.0825e+08 | **0.0%** | 5.1% |
+| `cpu` | 0.17457 | 0.17457 | **0.0%** | 4.9% |
+| `disk_ratio` | 2.9526e-05 | 2.9809e-05 | 1.0% | 4.9% |
+| `latency` | 0.039331 | 0.040648 | 3.3% | 4.0% |
+| `ci_ratio` | 8.6338e-04 | 8.9181e-04 | 3.3% | 4.8% |
+| `error_ratio` | 1.9203e-05 | 1.8353e-05 | **4.4%** | 5.5% |
+
+Predicted under 15%; the worst is 4.4%. Engagement came in at 4.0 – 5.5%
+against the 5% the quantile was chosen to produce.
+
+This is the opposite of record 09, where a fitted number looked perfect on its
+own data and let seven blow-ups through on fresh runs. The difference is what
+was fitted: 09 fitted a **boundary to the extreme point** of one sample, and a
+boundary drawn at the worst observation cannot generalise. This fits a **robust
+quantile of a bulk distribution** over thousands of instants, which is a
+different kind of estimate and behaves like one.
+
+## P4 — HIT
+
+| metric | committed T | re-derived on fresh data | steps moved |
+|---|---|---|---|
+| `memory` | 4.0 | 4.0 | 0 |
+| `cpu` | 3.5 | 3.5 | 0 |
+| `latency` | 6.0 | 6.0 | 0 |
+| `ci_ratio` | 20.0 | 20.0 | 0 |
+| `error_ratio` | 25.0 | 25.0 | 0 |
+| `disk_ratio` | 100.0 | **80.0** | 1 |
+
+Five of six are identical. `disk_ratio` re-derives one step lower because this
+run's maximum was 77.99 against the committed set's 92.77.
+
+**The committed 100 stays.** A threshold has to clear the worst run observed
+anywhere, not the worst run of the most recent five - and 92.77 is still the
+worst. Taking 80 would be choosing the friendlier sample, which is the mistake
+this whole sequence of records exists to avoid.
+
+## P3 — first clause hit, second unmeasured
+
+Single-run floors against the five-run value: all five runs inside 25% for
+`memory`, `cpu`, `latency`, `ci_ratio` and `error_ratio`; four of five for
+`disk_ratio`, whose worst single run was 28.6% out. Predicted at least four of
+six metrics; six of six qualify.
+
+The second clause — "N = 3 brings all six inside 15%" — **cannot be scored**.
+Pooled floors at N = 3 are not the mean of three single-run floors; they need
+the raw scale samples, and the harness dropped those before writing its output
+to keep the file small. That is a harness defect, not a result, and it is named
+rather than glossed.
+
+## P1 — UNSCOREABLE
+
+The stack was restarted between sessions and Prometheus lost the ten windows the
+split-half needed. The check reported it as unavailable rather than inferring
+anything.
+
+Losing it costs little: the two halves shared a session, a stack and a clock, so
+they were always the weaker test. P2 is the one that carries the conclusion.
+
+## P6 — HIT
+
+`memory`'s per-run maxima on the fresh runs: **3.913, 3.985, 3.985, 3.914,
+3.916** - inside the predicted 3.85 – 4.05, with floor engagement at 5.1%
+against a bound of 8%.
+
+Two clusters a few parts per thousand wide, from five independent runs. That is
+not a distribution with a tail.
+
+## P5 — the half that decides `memory` holds; the control half misses
+
+| metric | dominant member | runs | distinct members |
+|---|---|---|---|
+| `memory` | `search-2f6b8c-a1` | **5 / 5** | **1** |
+| `cpu` | `search-2f6b8c-a1` | 3 / 5 | 2 |
+| `latency` | `search-2f6b8c-b2` | 3 / 5 | 2 |
+| `disk_ratio` | `node-c` | 2 / 5 | 3 |
+| `ci_ratio` | `payments` | 2 / 5 | 3 |
+| `error_ratio` | `payments` | 2 / 5 | 4 |
+
+`memory` is unanimous and is the only metric with a single owner. The gradient
+runs 1, 2, 2, 3, 3, 4 and `memory` sits alone at the end of it.
+
+The control half missed: `latency` and `cpu` were predicted to spread across at
+least three members and reached two. Their falsifier - each dominated by one
+member in 9 of 10 runs - did not fire either, so the result sits in the gap
+between the prediction and its refutation.
+
+**That is the fourth occurrence of the defect recorded after the third**, and
+recording it did not stop me writing it again. The falsifier here was aimed at
+the strong opposite case rather than at the edge of the claim, which is the same
+error in a new place. The claim should have read "fewer than three distinct
+members" as its own refutation.
+
+Worth stating plainly: `cpu` favouring the same pod in 3 of 5 runs is a weaker
+version of the same structural effect. `search-2f6b8c-a1` holds 1.10 cores
+against a group median of 0.59, so it is an outlier there too - just not one
+that wins every time.
+
+---
+
+## What this licenses, per the table committed before the run
+
+P2 and P4 hold, so **the floor is validated out-of-sample and the matrix
+stands.** P5's deciding half holds, so **`memory` is treated as topology-bound**
+and the choice is recorded rather than assumed.
+
+### The treatment chosen, and the two rejected
+
+`memory`'s maximum is a constant of the cluster: `search-2f6b8c-a1` holds 2.52
+GB against a group median of 0.94, putting it (2.52 - 0.94) / 0.459 = **3.44**
+robust deviations out by arithmetic, before any noise. The measured 3.91 – 3.99
+is that constant plus a little.
+
+**Chosen: make the dependency mechanical.** `PEER_TOPOLOGY_FINGERPRINT` records
+the hash of the pod and node base values, and a guard fails the build if the
+live cluster no longer matches. Resizing a pod or adding a replica now forces a
+re-derivation instead of silently voiding a threshold. Verified against two
+planted changes - the outlier pod grown by 1 MB, and a thirteenth pod added.
+
+**Rejected: raising the threshold against the fault budget.** The fault reaches
+33.37, so 8.0 would leave 4.2x and remove the headroom problem. But the factor
+would be invented. Trying to derive it exposed that: a "minimum 4x detection
+margin" rule sounds principled and would force `latency` down to 3.5 against a
+baseline maximum of 5.16, which would fire constantly. A rule that cannot be
+applied to the other five metrics is a justification, not a rule.
+
+**Deferred: comparing `memory` temporally.** Record 07 measured its temporal
+baseline at 2.04, and the temporal path has no structural-outlier problem at
+all - each series is compared against its own history. That is the structural
+fix. It is deferred because the temporal path needs a diurnal cycle of history
+that production may not have, and moving one metric to a different comparison
+is a design change rather than a calibration.
+
+## A planting that passed and should not have
+
+The first attempt at the topology plant reported exit 0 - a pass. The sed
+pattern did not match the file, so nothing was ever changed and the guard was
+never exercised. A plant that fails to plant looks exactly like a guard that
+correctly stays green.
+
+Caught only by checking `git diff --stat` before reading the exit code. The
+second attempt printed the diffstat first, and both real changes went red.
+
+> A planting is two assertions, not one: that the violation was introduced, and
+> that the guard fired. Skip the first and the second is unfalsifiable.

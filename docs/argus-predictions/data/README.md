@@ -18,6 +18,7 @@ only defensible peer-relative measurements taken so far.
 | `disk-fault.json` | one disk_pressure run after the node-disk fix, peer z with floor engagement reported separately | [12](../12-disk-fault-remeasure.md) |
 | `threshold-matrix.json` | floors from runs 1-5, thresholds from runs 6-10, held out | [argus-threshold-matrix.md](../../argus-threshold-matrix.md) |
 | `scenario-faults.json` | all five scenarios re-measured under the p05 floors, `carried=0` throughout | [argus-threshold-matrix.md](../../argus-threshold-matrix.md) |
+| `floor-validation.json` | five fresh baseline runs, floors re-derived and the attaining member recorded per run | [13](../13-floor-validation.md) |
 
 Each row carries `window_start` and `fault_from` where applicable, so a window
 can be reconstructed rather than inferred. Not storing those cost two re-runs

@@ -1531,6 +1531,26 @@ an instance while the claim covered every instance. Here, a guard covers a
 branch while the claim covers the repository. Both are the guard being narrower
 than the sentence it is cited for, one level up each time.
 
+## A planting that fails to plant looks exactly like a guard that holds
+
+The topology guard's first planting reported exit 0. The `sed` pattern did not
+match `simulator/cluster.py`, so nothing was changed, the guard was never
+exercised, and the run looked identical to a correct pass.
+
+It was caught by printing `git diff --stat` before reading the exit code. The
+second attempt changed `search-2f6b8c-a1` by 1 MB and then added a thirteenth
+pod, and both went red.
+
+> A planting is two assertions, not one: **that the violation was introduced**,
+> and that the guard fired. Only the second is usually checked, and it is
+> unfalsifiable without the first - a green result is consistent with a working
+> guard and with an edit that never happened.
+
+Print the diff, or assert the mutated content, before trusting the exit code.
+This is the same family as the `make test` result that was reported green by a
+`grep | tail` whose exit status came from `tail`: in both, the check ran and its
+verdict was about something other than what was being asked.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
