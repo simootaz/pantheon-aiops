@@ -1551,6 +1551,53 @@ This is the same family as the `make test` result that was reported green by a
 `grep | tail` whose exit status came from `tail`: in both, the check ran and its
 verdict was about something other than what was being asked.
 
+## A pipe between the gate and its exit status, a second time
+
+The rule after the first occurrence was **report every gate by exit code**. It
+was followed, and it did not help.
+
+`make test-flow-one | tee out.txt` reported `exited with code 0` while the file
+it had just written ended with `make: *** [test-flow-one] Error 1`. The exit
+code reported was real - it was `tee`'s. The first occurrence was
+`make test | grep -E "FAILED|passed" | tail -2`, where the status came from
+`tail`. Same mechanism, different command, two months apart.
+
+What made it survivable was luck: pytest's own summary line happened to be
+inside the tail I printed, so the failure was visible next to the "success".
+Had the failure been quieter - a hang, a collection error, an empty file - the
+gate would have been reported green.
+
+> "Report by exit code" is not enough, because a pipeline has an exit code and
+> it is the wrong one. **Never put a pipe between a gate and the status you
+> read.** Redirect to a file, capture `$?` on the next statement, print the tail
+> afterwards.
+
+`make test-flow-one > out.txt 2>&1; code=$?` is the shape. `PIPESTATUS` works
+too and is easier to get subtly wrong.
+
+## A gate that exercises the wrong entry point
+
+`tests/integration/test_argus_detection_flow.py` was green on the day the
+orchestrator could not make Argus fetch a single metric.
+
+It calls `investigate()` directly, building its own toolset. The orchestrator
+calls `run()`, which constructs a `BoundTools` from the manifest, calls
+`bind_tools`, and **replaces `ctx.tools`** - discarding whatever a caller put
+there. So the agent's own live gate covered a path nothing in production takes,
+and the layer between them was untested while both sides looked proven.
+
+Not a coverage gap in the sense of a line nobody ran. `investigate` and `run`
+were both exercised; what nothing exercised was `run` *calling* `investigate`,
+which is where the ownership of `ctx.tools` is decided.
+
+> When a component has a public entry point and an inner one, test through the
+> entry point the real caller uses. A test that reaches past it is testing a
+> composition nobody performs.
+
+The fix deleted the losing path rather than leaving it beside the winner. Two
+ways to attach a connector, one of which silently does nothing, is worse than
+the bug that revealed it.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
