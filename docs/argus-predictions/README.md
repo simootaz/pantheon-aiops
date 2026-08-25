@@ -45,3 +45,4 @@ experiments.
 | [10](10-peer-bound-over-runs.md) | Is the peer bound uncalibratable, or was the wrong summary bounded? | **under-sampled** - one run was not enough; T=10 holds pod metrics at 1e-3 |
 | [11](11-min-peers-decision.md) | Does a pooled bound over N runs make a 5-peer group safe? | yes at 1e-4 - **MIN_PEERS = 12 is replaced** by N >= 4 runs |
 | [12](12-disk-fault-remeasure.md) | What is disk_ratio's peer fault z, now the gauge is real? | 1580.53 - **detectable at 131.7x**; my estimate was 10x low |
+| [13](13-floor-validation.md) | Does the scale floor survive out-of-sample, and is `memory` a threshold at all? | pending - predictions committed, measurement not yet run |
