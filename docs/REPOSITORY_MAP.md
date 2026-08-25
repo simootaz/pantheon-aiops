@@ -273,6 +273,8 @@ pantheon-aiops/
 | `docs/argus-predictions/` | What each Argus calibration measurement was expected to produce, written **before** it ran, with falsification conditions - and its **scoring** beside it. A prediction without its committed scoring is half a record. | 1 |
 | `docs/argus-predictions/data/` | The raw measurements the scorings cite, committed because they otherwise live only in a session scratchpad. | 1 |
 | `docs/argus-threshold-matrix.md` | How every number in `calibration.py` was derived: floors from one half of a ten-run set, thresholds from the other, and what the configuration cannot do. | 1 |
+| `tests/unit/test_argus_detection.py` | What Argus emits, refuses and never claims - the properties that need no live stack. | 1 |
+| `tests/integration/test_argus_detection_flow.py` | The live gate, both directions: a clean baseline three times over produces no anomalies, and each scenario is detected on the series that moved. | 1 |
 | `tests/unit/test_prediction_records.py` | Asserts every prediction record is **tracked by git**, not merely present on disk, carries a scoring, and cites measurements that exist. `55b0360` was one branch deletion from gone. | 1 |
 | `tests/unit/test_simulator_tables_are_read.py` | For every metric and every per-metric table, asserts that perturbing the entry changes what the **exporter** emits. `require_every_metric` proves a table is complete; this proves it is read. | 1 |
 | `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
