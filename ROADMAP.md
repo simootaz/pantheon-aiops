@@ -48,29 +48,49 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 The first end-to-end slice: an alert produces a Finding.
 
-**Five of seven items are done.** The phase is not complete until an alert
-actually produces a Finding. The trigger half now runs end to end — a scenario
-fires a real alert, Alertmanager delivers it, and an Investigation opens — but
-nothing yet turns that into a Finding, which is the half that remains.
+**Eight of nine items are done, and the phase's own criterion is met.** It was
+"not complete until an alert actually produces a Finding", and one now does:
+`make test-flow-one` fires a scenario, Alertmanager delivers the alert, Zeus
+opens an Investigation, dispatches Argus, and a Verdict comes back citing the
+series that moved. A clean baseline opens nothing.
+
+What remains is `api/routers/`, and only partly — investigations landed with
+Zeus, `agents` and health's `/ready` and `/build-info` are still stubs.
 
 - ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
 - ✅ `core/registry/` — manifest discovery, capability matching
 - ✅ `agents/_base/` — `BaseAgent`, tool binding, test fixtures
-- **Argus** (anomaly detection) — the first real agent
+- ✅ **Argus** (anomaly detection) — the first real agent. Peer-relative robust
+  z against per-metric thresholds and scale floors, every one measured rather
+  than chosen and validated out-of-sample ([the derivation](docs/argus-threshold-matrix.md),
+  [13 prediction records](docs/argus-predictions/)). `make test-argus` gates it
+  both ways: three clean baseline runs produce zero Findings, all five scenarios
+  are detected on the series that moved.
 - ✅ Prometheus and Alertmanager connectors, read-only
 - ✅ **Alerting rules and the trigger path** — one rule per scenario, wired
   through Alertmanager to `POST /webhooks/alertmanager`. Gated both directions
   per rule: the scenario fires its alert, a clean baseline fires none.
-- `api/routers/` — investigations, agents, health
+- `api/routers/` — **partial.** Investigations (list, fetch) landed with Zeus;
+  `agents` listing and health's `/ready` and `/build-info` remain. The only
+  item still open in this phase.
 - ✅ Simulator: metric, log and pipeline generation, five scenarios, `pantheon-sim`
 - ✅ **Coverage floor raised.** Set from what the code measures rather than an
   aspiration: 95 aggregate, plus a per-module floor of 90 over the modules that
   actually branch (`tests/coverage_floor.py`). The aggregate alone is flattered
   because most statements are Pydantic field declarations covered by import.
 
-## Phase 2 — Orchestrator & Investigation Flow ⬜ not started
+## Phase 2 — Orchestrator & Investigation Flow 🚧 in progress
 
-- **Zeus**: router, classifier, planner, dispatcher, aggregator
+**One of six.** Zeus runs flow 1 end to end. Everything that would let an
+investigation *reason* rather than aggregate is still ahead — Delphi is the
+large one, and until it exists a Verdict proposes no hypotheses by design rather
+than by omission.
+
+- ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. Plans one
+  step because one agent is implemented, and the plan is built from what is
+  implemented rather than what is rostered. No Temporal: a single step with no
+  waits needs no durable execution, and `dispatcher.run_step` is the one
+  function that would change — see ADR 0007 for what forces it.
 - `core/memory/` — vector store, repository, cache
 - **Delphi** implemented: gateway, resolver, catalog, `chat_completions`, tracing
 - **Lethe** and **Hermes**; Loki connector
