@@ -539,3 +539,52 @@ async def test_a_response_without_usage_reports_zero_rather_than_an_estimate() -
 
 def test_the_provider_id_is_the_configured_one() -> None:
     assert ChatCompletionsProvider(_config()).provider_id == PROVIDER
+
+
+@pytest.mark.asyncio
+async def test_a_completion_cut_off_before_it_spoke_is_reported_not_returned_empty() -> None:
+    """Found by the live gate, on its first run that got past auth.
+
+    `openai/gpt-oss-20b` is a reasoning model: it spent all 16 permitted tokens
+    thinking and returned `text=""` with `finish_reason="length"`. Passing that
+    back as an empty string hands the caller the exact ambiguity this adapter
+    exists to prevent - "the model said nothing" against "the model never got to
+    speak" - and the second has an obvious fix the first does not.
+    """
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "reasoner",
+                "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                "usage": {"prompt_tokens": 93, "completion_tokens": 16},
+            },
+        )
+
+    async with _transport(handler) as client:
+        provider = ChatCompletionsProvider(_config(), client=client)
+        with pytest.raises(ProviderError, match="cut off before it produced any content"):
+            await provider.complete(model_id="reasoner", prompt="p", max_tokens=16)
+
+
+@pytest.mark.asyncio
+async def test_an_empty_answer_that_finished_normally_is_still_an_answer() -> None:
+    """The other side of it. A model that stopped on its own and said nothing
+    has answered - unhelpfully, but it answered, and that is not an error."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "m",
+                "choices": [{"message": {"content": ""}, "finish_reason": "stop"}],
+            },
+        )
+
+    async with _transport(handler) as client:
+        provider = ChatCompletionsProvider(_config(), client=client)
+        completion = await provider.complete(model_id="m", prompt="p")
+
+    assert completion.text == ""
+    assert completion.finish_reason == "stop"

@@ -17,6 +17,13 @@ result while the second is a bug.
 Usage is read where the provider reports it and left at zero where it does not.
 Zero tokens is visibly wrong in an audit trail; an estimate is invisibly wrong.
 
+A completion that is empty *because the model was cut off* raises too. The live
+gate found this on its first green-ish run: `openai/gpt-oss-20b` is a reasoning
+model, spent all 16 permitted tokens thinking, and returned `text=""` with
+`finish_reason="length"`. Passing that back as an empty string hands the caller
+the exact ambiguity this module exists to prevent - "the model said nothing"
+against "the model never got to speak".
+
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
@@ -185,6 +192,16 @@ def _completion(payload: dict[str, Any], *, fallback_model: str) -> Completion:
             retryable=False,
         )
 
+    finish_reason = str(first.get("finish_reason") or "") if isinstance(first, dict) else ""
+    if not str(text).strip() and finish_reason == "length":
+        raise ProviderError(
+            "the model was cut off before it produced any content "
+            f"(finish_reason={finish_reason!r}). Reasoning models spend tokens "
+            "thinking before they answer, so a small max_tokens returns an empty "
+            "string rather than a short one. Raise max_tokens.",
+            retryable=False,
+        )
+
     raw_usage = payload.get("usage")
     usage: dict[str, Any] = raw_usage if isinstance(raw_usage, dict) else {}
     return Completion(
@@ -193,5 +210,5 @@ def _completion(payload: dict[str, Any], *, fallback_model: str) -> Completion:
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
         completion_tokens=int(usage.get("completion_tokens") or 0),
         cost=None,
-        finish_reason=str(first.get("finish_reason") or "") if isinstance(first, dict) else "",
+        finish_reason=finish_reason,
     )

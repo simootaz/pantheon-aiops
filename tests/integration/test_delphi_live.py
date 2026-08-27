@@ -65,7 +65,10 @@ async def test_the_configured_provider_answers_a_real_prompt() -> None:
         model_id=DELPHI.tier_cheap_model,
         prompt="Reply with exactly the word: pantheon",
         system="You answer in one word, lowercase, no punctuation.",
-        max_tokens=16,
+        # Not 16. A reasoning model spends tokens thinking before it answers, so
+        # a tight cap returns nothing at all - which the adapter now reports as
+        # truncation rather than as an empty answer. Found by this gate.
+        max_tokens=512,
     )
 
     assert completion.text.strip(), "the provider returned an empty completion"
@@ -95,6 +98,11 @@ async def test_a_wrong_model_id_fails_saying_which_one() -> None:
 
     message = str(raised.value)
     assert DELPHI.provider_id in message, "the failure does not say which provider refused"
+    assert "a-model-that-was-never-released" in message, (
+        "the failure does not name the model id that was refused, so nobody can "
+        "tell it from an auth failure - which is exactly what happened on the "
+        f"first live run of this gate: {message}"
+    )
     assert raised.value.retryable is False, (
         "an unknown model id was marked retryable, so the chain will spend the "
         "budget asking again for something that does not exist"
@@ -115,6 +123,7 @@ async def test_the_gateway_reaches_a_model_without_anyone_naming_one() -> None:
         ModelRequirements(tier=Tier.CHEAP),
         prompt="Reply with exactly the word: resolved",
         requested_by="delphi-live-gate",
+        max_tokens=512,
     )
 
     assert "resolved" in result.completion.text.lower()
@@ -145,7 +154,7 @@ async def test_json_mode_produces_json_when_the_model_supports_it() -> None:
     completion = await provider.complete(
         model_id=DELPHI.tier_cheap_model,
         prompt='Return a JSON object with one key "status" set to "ok".',
-        max_tokens=64,
+        max_tokens=512,
         json_mode=True,
     )
 
