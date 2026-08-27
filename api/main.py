@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api import __version__
-from api.routers import alerts, health, investigations, webhooks
+from api.routers import agents, alerts, health, investigations, webhooks
 from core.bus import EventBus, InMemoryEventBus
 from core.orchestrator import register_implemented
 from core.store.investigations import InvestigationStore
@@ -63,6 +63,7 @@ def create_app(
     app.include_router(webhooks.router)
     app.include_router(alerts.router)
     app.include_router(investigations.router)
+    app.include_router(agents.router)
 
     return app
 
