@@ -43,6 +43,10 @@ lets connectors be written in whichever language fits the client library best.
 | `core/llm/provider.py` | The adapter Protocol every dialect implements, plus `Completion` and a recording fake. `stream` and `probe` are deliberately absent until something calls them. | 2 |
 | `core/llm/catalog.py` | Configured providers and models. A configured model is described as **unprobed** - zero context, baseline capabilities - because configured is not observed. | 2 |
 | `core/llm/resolver.py` | The four-step cascade. A binding that cannot satisfy the requirements is skipped; an explicit override that cannot is an **error**, never a downgrade. | 2 |
+| `core/llm/providers/chat_completions.py` | The reference dialect adapter. Refuses to guess: no `choices` raises rather than returning `""`, because an empty completion and a model that said nothing are different facts. | 2 |
+| `core/llm/gateway.py` | `consult()`. The fallback chain never widens the search - relaxing a declared capability under load produces the worst output exactly when the system is struggling. | 2 |
+| `core/llm/tracing.py` | A span per call carrying a prompt **digest**, not the text: redaction removes the secrets Cerberus knows about and cannot remove the ones nobody registered. | 2 |
+| `tests/unit/test_llm_gateway.py` | The adapter, the chain, the cost stop and the span - all offline behind an injected transport. | 2 |
 | `tests/unit/test_llm_resolution.py` | The cascade rung by rung, both refusals, and the rejection record that explains why. | 2 |
 | **Argus** | [agents/anomaly/](../agents/anomaly/) | Detects metric anomalies and correlates them into findings | 1 |
 | **Lethe** | [agents/log_clustering/](../agents/log_clustering/) | Clusters high-volume logs into signatures, surfaces novelty | 2 |
