@@ -44,18 +44,18 @@ make test-ts`, `make codegen-verify`, `helm lint` ×3, `terraform fmt -check`,
 
 ---
 
-## Phase 1 — Contracts & First Agent Path 🚧 in progress
+## Phase 1 — Contracts & First Agent Path ✅
 
 The first end-to-end slice: an alert produces a Finding.
 
-**Eight of nine items are done, and the phase's own criterion is met.** It was
-"not complete until an alert actually produces a Finding", and one now does:
-`make test-flow-one` fires a scenario, Alertmanager delivers the alert, Zeus
-opens an Investigation, dispatches Argus, and a Verdict comes back citing the
-series that moved. A clean baseline opens nothing.
+**Complete.** The phase's criterion was "not complete until an alert actually
+produces a Finding", and one does: `make test-flow-one` fires a scenario,
+Alertmanager delivers the alert, Zeus opens an Investigation, dispatches Argus,
+and a Verdict comes back citing the series that moved. A clean baseline opens
+nothing.
 
-What remains is `api/routers/`, and only partly — investigations landed with
-Zeus, `agents` and health's `/ready` and `/build-info` are still stubs.
+What it does **not** mean: nothing reasons about a Finding, and nothing acts on
+one. A Verdict aggregates and proposes no hypotheses — see Phase 2.
 
 - ✅ `core/contracts/` filled out beyond the codegen-exercising minimum
 - ✅ `core/registry/` — manifest discovery, capability matching
@@ -70,9 +70,11 @@ Zeus, `agents` and health's `/ready` and `/build-info` are still stubs.
 - ✅ **Alerting rules and the trigger path** — one rule per scenario, wired
   through Alertmanager to `POST /webhooks/alertmanager`. Gated both directions
   per rule: the scenario fires its alert, a clean baseline fires none.
-- `api/routers/` — **partial.** Investigations (list, fetch) landed with Zeus;
-  `agents` listing and health's `/ready` and `/build-info` remain. The only
-  item still open in this phase.
+- ✅ `api/routers/` — investigations (list, fetch), the agent roster, and
+  health's `/ready` and `/build-info`. The roster carries `implemented` per
+  agent, read from the dispatcher's registry rather than the manifest: ten
+  manifests validate and one agent runs, and a listing that hid that would be
+  the most misleading thing this API could say.
 - ✅ Simulator: metric, log and pipeline generation, five scenarios, `pantheon-sim`
 - ✅ **Coverage floor raised.** Set from what the code measures rather than an
   aspiration: 95 aggregate, plus a per-module floor of 90 over the modules that

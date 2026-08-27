@@ -21,4 +21,60 @@ class HealthResponse(BaseModel):
     version: str = Field(description="Running version, from the package metadata.")
 
 
-# TODO: Phase 1 - add pagination and error envelopes
+class AgentSummary(BaseModel):
+    """One row of the roster.
+
+    `implemented` is the field that matters and the reason this envelope exists
+    rather than returning `AgentManifest` directly. Ten manifests validate; one
+    agent runs. A listing without this would say Pantheon has ten working
+    agents, which is the most misleading thing this API could report.
+
+    It is read from the dispatcher's registry, not from the manifest - a
+    manifest describes an intention and cannot know whether anyone implemented
+    it.
+    """
+
+    codename: str
+    domain: str
+    description: str
+    capabilities: list[str] = Field(
+        default_factory=list, description="Capability names, not their full definitions."
+    )
+    tools: list[str] = Field(
+        default_factory=list, description="The manifest's tool allowlist, verbatim."
+    )
+    implemented: bool = Field(
+        description="Whether an implementation is registered. False means a stub."
+    )
+
+
+class BuildInfo(BaseModel):
+    """What is actually running, for the question asked after an incident."""
+
+    service: str
+    version: str
+    python: str = Field(description="Interpreter version, since behaviour depends on it.")
+
+
+class ReadinessCheck(BaseModel):
+    """One dependency, and whether it answered."""
+
+    name: str
+    ready: bool
+    detail: str = Field(default="", description="Why not, when it did not.")
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness, and the checks behind it.
+
+    The checks are returned rather than collapsed into the boolean. A probe
+    reads `ready`; a human reads why - and "not ready" with nothing to look at
+    is the state that costs an hour at three in the morning.
+    """
+
+    ready: bool
+    service: str
+    checks: list[ReadinessCheck] = Field(default_factory=list)
+
+
+# TODO: Phase 2 - add pagination and error envelopes
