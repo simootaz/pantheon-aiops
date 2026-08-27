@@ -214,6 +214,8 @@ pantheon-aiops/
 | `connectors/kubernetes/` | **Go.** `cmd/server/`, `internal/{tools,readonly,write,client}/`. | 6 |
 | `connectors/kubernetes/python_ref/` | Temporary Python implementation. **Deleted in Phase 6.** | 1 |
 | `connectors/prometheus/` | Python. Range/instant queries, series and label discovery. | 1 |
+| `agents/log_clustering/agent.py` | **Lethe.** Reports log patterns whose absence from the preceding window is *surprising*, plus exception traces. Detects **three of five** simulator scenarios and says which two it cannot: a fault that multiplies an existing pattern is invisible, because the rate test that would catch it could not tell a fault from the time of day and was deleted. | 2 |
+| `tests/unit/test_lethe_detection.py` | What Lethe emits, refuses and never claims. The blind spot is pinned by a test, not only stated in prose - a limitation that lives only in a docstring gets fixed by accident and re-broken the same way. | 2 |
 | `agents/log_clustering/templates.py` | **Lethe's method.** Log templates by *measuring* which fields vary across the corpus rather than masking what looks variable - a regex list encodes what its author had seen. A field is variable when it has too many values **or** when it is a sequence: cardinality cannot tell a clock from a status code, and a compressed run put `ts` inside every template. A group too small to tell says so instead of guessing. | 2 |
 | `docs/lethe-predictions/` | Numbers written before the measurement that decides them. Eight rounds committed, including the six that were wrong - six of them were tuning a rule against one dataset, and what actually fixed it was a defect in the simulator. | 2 |
 | `connectors/loki/` | Python. LogQL queries and label discovery. | 2 |

@@ -29,8 +29,10 @@ def register_implemented() -> None:
     else has been imported, and the failure shows up at dispatch.
     """
     from agents.anomaly.agent import Argus
+    from agents.log_clustering.agent import Lethe
 
     register("argus", Argus)
+    register("lethe", Lethe)
 
 
 __all__ = [

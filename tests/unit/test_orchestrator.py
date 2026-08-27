@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from agents._base.base_agent import AgentContext, AgentDegraded, BaseAgent
+from core import orchestrator
 from core.bus import InMemoryEventBus
 from core.contracts.events import InvestigationCompletedEvent
 from core.contracts.finding import Finding, FindingKind, Severity
@@ -412,3 +413,50 @@ async def test_a_degraded_run_still_records_what_it_spent(registered: Any) -> No
     assert len(investigation.resolutions) == 1, (
         "a degraded run lost the record of the model it had already paid for"
     )
+
+
+# --- what the planner promises, the dispatcher must be able to deliver -----------
+
+
+def test_every_implemented_agent_is_actually_registered() -> None:
+    """`IMPLEMENTED` is a promise the dispatcher has to keep.
+
+    The planner reads it to decide what a plan may contain; the dispatcher reads
+    AGENTS to decide what can run. Nothing tied the two together, so an entry
+    added to one and forgotten in the other produced a plan naming an agent that
+    raises `AgentNotDispatchable` at dispatch - discovered during an
+    investigation rather than at import.
+
+    Found by planting exactly that: `lethe` in IMPLEMENTED, never registered,
+    and the whole suite stayed green.
+    """
+    orchestrator.register_implemented()
+
+    missing = sorted(set(planner.IMPLEMENTED.values()) - set(dispatcher.AGENTS))
+    assert not missing, (
+        f"planner.IMPLEMENTED names {missing}, which register_implemented() does not "
+        "register. A plan would name them and dispatch would refuse."
+    )
+
+
+def test_nothing_is_registered_that_the_planner_will_never_name() -> None:
+    """The other direction. A registered agent no plan reaches is dead code that
+    looks live - and the way it is usually discovered is someone assuming it ran."""
+    orchestrator.register_implemented()
+
+    orphaned = sorted(set(dispatcher.AGENTS) - set(planner.IMPLEMENTED.values()))
+    assert not orphaned, (
+        f"{orphaned} are dispatchable but no domain in IMPLEMENTED maps to them, "
+        "so no plan can ever name one."
+    )
+
+
+def test_every_implemented_domain_has_a_manifest_declaring_that_domain() -> None:
+    """The third leg. A codename in IMPLEMENTED with no manifest, or one whose
+    manifest claims a different domain, plans fine and binds no tools."""
+    for domain, codename in sorted(planner.IMPLEMENTED.items()):
+        manifest = loader.for_codename(codename)
+        assert manifest.domain == domain, (
+            f"IMPLEMENTED maps {domain!r} to {codename!r}, but that manifest "
+            f"declares domain {manifest.domain!r}"
+        )

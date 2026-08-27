@@ -129,6 +129,16 @@ class LokiSettings(BaseSettings):
 
     url: HttpUrl = HttpUrl("http://localhost:3100")
 
+    #: The LogQL selector Lethe reads. Deliberately NOT the simulator's
+    #: `LOKI_JOB_LABEL`, which is what the simulator writes: one is a producer's
+    #: identity and one is a consumer's scope, they belong to different systems,
+    #: and in any real deployment they differ. The dev-shaped default happens to
+    #: match because the only producer here today is the simulator.
+    #:
+    #: One selector for both the incident and the reference window - narrowing it
+    #: per window would make them disagree about what "the logs" are.
+    selector: str = '{job="pantheon-sim"}'
+
     @property
     def base(self) -> str:
         return _base(self.url)

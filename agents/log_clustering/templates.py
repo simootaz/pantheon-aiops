@@ -45,7 +45,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from itertools import pairwise
+from itertools import groupby
 from typing import Any
 
 #: A field taking more distinct values than this is variable however large the
@@ -65,17 +65,10 @@ VARIABILITY_RATIO = 0.30
 #: fourth line arrives is not a template set.
 MIN_GROUP_FOR_VARIABILITY = 12
 
-#: How many times a field must actually CHANGE before its direction means
-#: anything. Two changes agreeing is a coin landing the same way twice. A
-#: constant never changes and so is never called a sequence, which is right - a
-#: field with one value is the purest category there is.
-MIN_ORDER_CHANGES = 8
-
-#: The fraction of adjacent pairs that must move consistently before a field is
-#: called a sequence. High, because the alternative reading - a category whose
-#: values happen to be interleaved by chance - sits near one half and never
-#: approaches this. Measured: `ts` reaches ~0.99 and `status` ~0.67.
-ORDER_FRACTION = 0.95
+#: How many contiguous blocks a field needs before "none of its values ever came
+#: back" means anything. Two blocks is a field that changed once - a phase, not a
+#: sequence - and one block is a constant, which is the purest category there is.
+MIN_ORDER_BLOCKS = 3
 
 #: How many example lines a template keeps. Enough to read, not enough to make
 #: the result a copy of the window.
@@ -192,67 +185,53 @@ def _render(value: Any) -> str:
 
 
 def _ordered(values: list[str]) -> bool:
-    """True when a field only ever moves one way through the window.
+    """True when a field's values form contiguous BLOCKS: none ever comes back.
 
     THE RULE CARDINALITY ALONE CANNOT REPLACE
     -------------------------------------------
     A clock is a variable field however few values it takes. Measured on a
-    compressed simulator run, `ts` took five distinct values across 5000 lines -
-    comfortably under any cardinality cap - and was templated as a category. The
-    result was 298 templates from ten source templates, and a novelty check that
-    reported sixty new patterns in a window with no fault in it.
+    compressed run, `ts` took five distinct values across 5000 lines - well under
+    any cardinality cap - and was templated as a category. The result was 298
+    templates from ten, and sixty new patterns reported in a window with no
+    fault in it.
 
-    Cardinality asks how many values a field has. This asks whether they are a
-    *sequence*, which is what separates a timestamp, an offset or a counter from
-    a status code. Both are needed: neither alone gets this right.
+    Cardinality asks how many values a field has. This asks whether they *recur*,
+    which is what separates a clock from a status code: a clock moves on and
+    never returns, a category comes back.
 
-    Lexicographic, so it holds for ISO-8601 timestamps and zero-padded ids and
-    does NOT hold for unpadded numeric counters - `9` sorts after `10`. Stated
-    rather than claimed universal; an unpadded counter is caught by cardinality
-    instead, since a counter with few values is not a counter.
+    WHY BLOCKS AND NOT A DIRECTION
+    --------------------------------
+    Two earlier rules failed here, and both failures are worth keeping.
 
-    A FRACTION OF ADJACENT PAIRS, NOT GLOBAL SORTEDNESS
-    -----------------------------------------------------
-    The first version asked whether the whole list was sorted. It caught nothing,
-    because a window read out of Loki is several streams concatenated and the
-    clock restarts at every boundary. Global sortedness is a property of one
-    source; a corpus assembled from many has no single order.
+    Global sortedness caught nothing: a window read from Loki is several streams
+    concatenated, and a clock restarts at every boundary.
 
-    Counting adjacent pairs survives that - a handful of boundary inversions
-    among thousands of pairs cannot drag the fraction below the threshold, while
-    a genuinely interleaved category sits near half and never approaches it.
+    Counting the direction of adjacent pairs worked on one dataset and was wrong.
+    Counting ties made a RARE value look ordered - `status` is 500 three times in
+    five thousand lines, so 99.9% of its pairs are equal - which would have masked
+    the single most important discriminator in an incident. Excluding ties then
+    needed a minimum number of changes to mean anything, and that minimum
+    (`8`) sat exactly at the cardinality cap (`8`): a clock with two to eight
+    distinct values was caught by neither rule. A unit test with six stamps
+    proved it, after a live run had already shown it once.
 
-    TIES ARE EXCLUDED, WHICH IS THE WHOLE OF IT
-    ---------------------------------------------
-    Counting every pair made a RARE value look ordered. `status` is 500 three
-    times in five thousand lines, so 99.9% of its adjacent pairs are equal and
-    "consistently ordered" was satisfied by a field that is the single most
-    important discriminator in the window.
-
-    So only pairs where the value CHANGES are counted. A clock changes upward
-    every time; a category changes both ways in roughly equal measure whatever
-    the mix of its values. That also removes the need for a distinct-value floor
-    to exclude constants - a constant has no changes at all.
+    Blocks need no direction, no tie handling and no change count. They also do
+    not depend on values sorting lexicographically, so an unpadded counter -
+    where `9` follows `10` - is handled the same as an ISO timestamp.
 
     THIS REQUIRES `lines` TO BE IN EMISSION ORDER
     -----------------------------------------------
-    Stated because it is not free. A window read out of Loki arrives as several
-    streams concatenated, and in that arrangement a real clock is only ~80%
-    consistent - it runs one way inside a stream and jumps back at every
-    boundary. Counting ties hid that: the equal pairs were so numerous they
-    carried the fraction over the line, and the rule appeared to work for a
-    reason that had nothing to do with time.
-
-    So the caller sorts. Loki stamps every entry with a nanosecond timestamp,
-    which is emission order stated by the source rather than inferred from the
-    text. `Clustering.sequence_fields` reports what this found, so a caller that
-    forgot to sort sees an empty set instead of a quietly worse template set.
+    Stated because it is not free. Concatenated streams make a clock recur, and a
+    recurring field is not a sequence. The caller sorts by Loki's own nanosecond
+    stamps, which is emission order stated by the source rather than inferred
+    from the text; `Clustering.sequence_fields` reports what was found, so a
+    caller that forgot sees an empty set rather than a quietly worse result.
     """
-    steps = [(left, right) for left, right in pairwise(values) if left != right]
-    if len(steps) < MIN_ORDER_CHANGES:
+    blocks = [value for value, _ in groupby(values)]
+    if len(blocks) < MIN_ORDER_BLOCKS:
         return False
-    rising = sum(1 for left, right in steps if left < right)
-    return max(rising, len(steps) - rising) / len(steps) >= ORDER_FRACTION
+    # One block per distinct value means no value ever came back.
+    return len(blocks) == len(set(blocks))
 
 
 def _sequence_fields(rows: list[_Parsed]) -> list[str]:

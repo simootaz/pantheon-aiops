@@ -23,6 +23,10 @@ ALLOWED = {
     # A different concept that happens to share the spelling: the console
     # script's name, and docstrings showing how to invoke it.
     "simulator/cli.py": "the CLI command name, not a job identity",
+    # A consumer's scope, not a producer's identity - the same distinction that
+    # already separates PUSHGATEWAY_JOB from LOKI_JOB_LABEL. Lethe reads through
+    # this; the simulator writes through its own.
+    "core/config.py": "declares LOKI_SELECTOR, the scope Lethe reads",
     "simulator/scenario.py": "a docstring naming the CLI command",
     # The push path's spelling is asserted here deliberately - see the test below.
     "tests/unit/test_simulator_components.py": "asserts the push path's URL",

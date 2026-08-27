@@ -9,8 +9,8 @@ has nothing to do with the incident.
 
 So the planner asks the registry which agents are *implemented*, not which are
 declared. The registry is the allowlist for what may be planned, and
-`IMPLEMENTED` is the narrower set of what can actually run. When Lethe lands it
-joins that set and the plan widens without the planner changing.
+`IMPLEMENTED` is the narrower set of what can actually run. Lethe has landed and
+joined it; the plan widened without the planner changing, which was the point.
 
 Phase: 2 - Orchestrator & Investigation Flow
 """
@@ -24,7 +24,7 @@ from core.registry import loader
 #: Agents whose `investigate` does something. Deliberately a separate set from
 #: the manifest roster: a manifest declares intent, and dispatching on intent is
 #: how a stub ends up in a plan and fails a run for the wrong reason.
-IMPLEMENTED: dict[str, str] = {"anomaly": "argus"}
+IMPLEMENTED: dict[str, str] = {"anomaly": "argus", "log_clustering": "lethe"}
 
 
 class NoAgentForDomain(RuntimeError):

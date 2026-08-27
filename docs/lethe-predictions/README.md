@@ -18,6 +18,7 @@ rather than by name, so this one was under guard the moment it existed.
 |---|---|---|
 | [01-template-recovery.md](01-template-recovery.md) | Whether corpus-driven variability recovers a usable template set, and whether it is stable enough for novelty detection | 5 hit, 1 miss, 0 falsified — after six rounds of tuning that fixed nothing and one that fixed the simulator |
 | [02-surprise-and-surge.md](02-surprise-and-surge.md) | Whether testing an absence for surprise removes the noise without the signal, and whether a rate-increase test finds the fault novelty is blind to | 2 hit, 3 falsified — `surged()` could not tell a fault from the time of day and was deleted |
+| [03-block-ordering.md](03-block-ordering.md) | The clock rule rewritten after a planted violation showed it could be deleted without a failure | confirmed on real logs — **no prediction committed**, and the record says why |
 
 ## Raw measurements
 
