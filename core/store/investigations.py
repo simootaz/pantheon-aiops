@@ -1,8 +1,11 @@
 """Where Investigations live between the run that made them and the read that wants them.
 
 A Protocol with two implementations, following `core/bus.py` exactly: the
-in-memory one is for tests and development, the Postgres one is what the API
-actually reads from.
+in-memory one is here, and the Postgres one is in `core/store/postgres.py` -
+split because that module is exempt from the coverage floor and this one must
+not be. `dsn()` builds a connection string from settings and touches no
+database; exempting it along with the driver code would have left the function
+that already got this wrong once unprotected.
 
 WHY POSTGRES NOW RATHER THAN A DICT
 ------------------------------------
@@ -28,25 +31,8 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-import asyncpg  # type: ignore[import-untyped]  # no py.typed marker upstream
-
 from core.config import get_settings
 from core.contracts.investigation import Investigation
-
-#: One table, created on first use. `document` is the contract verbatim, so a
-#: field added to `Investigation` needs no migration to be stored - only to be
-#: queried by, which nothing does yet.
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS investigations (
-    id          UUID PRIMARY KEY,
-    state       TEXT        NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    document    JSONB       NOT NULL
-);
-CREATE INDEX IF NOT EXISTS investigations_created_at_idx
-    ON investigations (created_at DESC);
-"""
 
 
 class InvestigationStore(Protocol):
@@ -86,65 +72,6 @@ class InMemoryInvestigationStore:
         return ordered[:limit]
 
 
-class PostgresInvestigationStore:
-    """The real one. Owns its pool, creates its table on first use."""
-
-    def __init__(self, dsn: str | None = None) -> None:
-        # The DSN is resolved on first use, not here. Constructing the store is
-        # what the app factory does at import time, and a missing password is a
-        # reason to fail a query rather than a reason the process cannot start -
-        # every unit test that builds the app would otherwise need a database.
-        self._configured = dsn
-        self._pool: asyncpg.Pool | None = None
-
-    async def _ready(self) -> asyncpg.Pool:
-        if self._pool is None:
-            dsn = self._configured or _dsn()
-            self._pool = await asyncpg.create_pool(dsn, min_size=1, max_size=4)
-            async with self._pool.acquire() as connection:
-                await connection.execute(SCHEMA)
-        return self._pool
-
-    async def close(self) -> None:
-        if self._pool is not None:
-            await self._pool.close()
-            self._pool = None
-
-    async def save(self, investigation: Investigation) -> None:
-        pool = await self._ready()
-        async with pool.acquire() as connection:
-            await connection.execute(
-                """
-                INSERT INTO investigations (id, state, created_at, updated_at, document)
-                VALUES ($1, $2, $3, now(), $4)
-                ON CONFLICT (id) DO UPDATE
-                   SET state = EXCLUDED.state,
-                       updated_at = now(),
-                       document = EXCLUDED.document
-                """,
-                investigation.id,
-                investigation.state.value,
-                investigation.created_at,
-                investigation.model_dump_json(),
-            )
-
-    async def get(self, investigation_id: UUID) -> Investigation | None:
-        pool = await self._ready()
-        async with pool.acquire() as connection:
-            row = await connection.fetchrow(
-                "SELECT document FROM investigations WHERE id = $1", investigation_id
-            )
-        return Investigation.model_validate_json(row["document"]) if row else None
-
-    async def recent(self, limit: int = 20) -> list[Investigation]:
-        pool = await self._ready()
-        async with pool.acquire() as connection:
-            rows = await connection.fetch(
-                "SELECT document FROM investigations ORDER BY created_at DESC LIMIT $1", limit
-            )
-        return [Investigation.model_validate_json(row["document"]) for row in rows]
-
-
 class PostgresNotConfigured(RuntimeError):
     """No password is configured, so no connection can be attempted.
 
@@ -155,7 +82,7 @@ class PostgresNotConfigured(RuntimeError):
     """
 
 
-def _dsn() -> str:
+def dsn() -> str:
     """Built from settings, like every other connection in this repository.
 
     Reading `POSTGRES_*` here rather than accepting a URL keeps the credential

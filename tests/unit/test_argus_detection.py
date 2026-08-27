@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 
 from agents._base.base_agent import AgentContext, AgentDegraded, AgentStatus
+from agents._base.tool_binding import BoundTools, ToolNotDeclared
 from agents.anomaly.agent import (
     SERIES,
     Argus,
@@ -26,6 +27,7 @@ from agents.anomaly.agent import (
     _sustained_run,
 )
 from agents.anomaly.calibration import SCALE_FLOORS, SUSTAIN_SAMPLES, THRESHOLDS
+from agents.anomaly.tools import IMPLEMENTATIONS, attach
 from core.contracts.evidence import BaselineEstimator, MetricWindowPayload
 from core.contracts.finding import FindingKind
 from core.contracts.investigation import Trigger, TriggerKind
@@ -359,3 +361,50 @@ async def test_the_runtime_hands_argus_a_toolset_its_connector_is_bound_to(
     assert outcome.tool_calls == len(SERIES), (
         f"expected one query per calibrated metric, got {outcome.tool_calls}"
     )
+
+
+@pytest.mark.asyncio
+async def test_every_declared_adapter_reaches_the_connector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All three, not just the one detection happens to use.
+
+    `query_instant` and `series` are declared in the manifest, so an agent may
+    call them and a future one will. An adapter that mangles its arguments fails
+    at the connector, which is a long way from where it was written.
+    """
+    calls: dict[str, dict[str, Any]] = {}
+
+    async def record(name: str, arguments: dict[str, Any]) -> str:
+        calls[name] = arguments
+        return name
+
+    monkeypatch.setattr("connectors.prometheus.tools.query_instant", lambda a: record("instant", a))
+    monkeypatch.setattr("connectors.prometheus.tools.series", lambda a: record("series", a))
+
+    tools = BoundTools(declared=frozenset(IMPLEMENTATIONS), max_calls=10)
+    attach(tools)
+
+    assert await tools.call("prometheus.query_instant", query="up", time=123.0) == "instant"
+    assert calls["instant"] == {"query": "up", "time": 123.0}
+
+    assert await tools.call("prometheus.series", match=["up"], start=1.0, end=2.0) == "series"
+    assert calls["series"] == {"match": ["up"], "start": 1.0, "end": 2.0}
+
+
+def test_attach_binds_only_what_the_manifest_declared() -> None:
+    """The allowlist narrows the toolset; `attach` may fill it, never widen it.
+
+    A manifest declaring one tool must not come back with three, or the manifest
+    has stopped being the allowlist `tool_binding.py` says it is.
+    """
+
+    async def unused(**_: Any) -> None:
+        return None
+
+    narrow = BoundTools(declared=frozenset({"prometheus.query_range"}), max_calls=10)
+    attach(narrow)
+
+    assert narrow.declared == frozenset({"prometheus.query_range"})
+    with pytest.raises(ToolNotDeclared):
+        narrow.register("prometheus.series", unused)

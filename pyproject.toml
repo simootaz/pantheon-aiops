@@ -148,4 +148,12 @@ exclude_lines = [
     # tests/unit/test_connectors.py, which asserts the wiring rather than
     # excusing it.
     'if __name__ == "__main__":',
+    # A `...` on its own line is a Protocol or overload stub body. It cannot
+    # execute - the implementation that satisfies the Protocol is what runs -
+    # so counting it as uncovered measures the shape of the type system rather
+    # than the code. Same reasoning as the __main__ guard above.
+    #
+    # Deliberately anchored: this matches a bare ellipsis statement and nothing
+    # else. `x = ...` and `foo(...)` are ordinary code and stay counted.
+    '^\s*\.\.\.$',
 ]

@@ -277,6 +277,8 @@ pantheon-aiops/
 | `tests/integration/test_argus_detection_flow.py` | The live gate, both directions: a clean baseline three times over produces no anomalies, and each scenario is detected on the series that moved. | 1 |
 | `core/orchestrator/` | Zeus: classify, plan, dispatch, aggregate. One step, because one agent is implemented; the verdict proposes no hypotheses, because nothing ranks candidate causes. | 2 |
 | `core/store/investigations.py` | Where an Investigation lives between the run that made it and the read that wants it. Postgres, one JSONB document, table created on first use. | 2 |
+| `core/store/postgres.py` | The driver half, split off because it is **exempt from the coverage floor** - every line needs a live database and every line runs under `make test-flow-one`. | 2 |
+| `tests/unit/test_coverage_exemptions.py` | An exemption must name a gate the Makefile defines, say what that gate covers, and point at a module that exists. | 2 |
 | `tests/unit/test_orchestrator.py` | What Zeus plans, what it refuses to plan, and what its Verdict will not claim. | 2 |
 | `tests/integration/test_flow_one.py` | The live gate for flow 1, both directions, reading the result back on a second connection. | 2 |
 | `tests/unit/test_prediction_records.py` | Asserts every prediction record is **tracked by git**, not merely present on disk, carries a scoring, and cites measurements that exist. `55b0360` was one branch deletion from gone. | 1 |

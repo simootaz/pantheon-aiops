@@ -37,7 +37,7 @@ from core.contracts.investigation import (
 from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.verdict import Verdict
 from core.orchestrator import investigate, register_implemented
-from core.store.investigations import PostgresInvestigationStore
+from core.store.postgres import PostgresInvestigationStore
 from simulator.alerting import GATE_TICK_SECONDS, gate_speed
 from simulator.metrics_generator import MetricsGenerator
 from simulator.runner import ScenarioRunner

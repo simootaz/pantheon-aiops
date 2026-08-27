@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPORT = REPO_ROOT / "coverage.json"
@@ -34,6 +35,50 @@ REPORT = REPO_ROOT / "coverage.json"
 #: measured baseline with a little headroom, so it bites on new untested logic
 #: rather than on ordinary churn.
 FLOOR = 90.0
+
+
+class Exemption(NamedTuple):
+    """A module the floor does not apply to, and the gate that does apply.
+
+    Both fields are load-bearing. `gate` is a make target that must exist -
+    `tests/unit/test_coverage_exemptions.py` fails the build if it does not -
+    so an exemption cannot name a gate nobody wrote. `reason` has to say what
+    that gate actually executes, because "needs a database" is a description of
+    the module and not a claim anyone can check.
+    """
+
+    gate: str
+    reason: str
+
+
+#: Modules the per-module floor does not apply to.
+#:
+#: **An entry here is a module CI stops protecting.** Adding one is a deliberate
+#: act with a cost, which is why it needs a gate that exists and a reason that
+#: says what the gate covers.
+#:
+#: Draw the boundary where the claim becomes true, not where the module ends. The
+#: store was split for exactly this: `core/store/investigations.py` holds the
+#: Protocol, the in-memory implementation and `dsn()` - all pure logic, all under
+#: the floor - and only the driver code moved to the exempt module. A
+#: whole-module exemption would have covered `dsn()`, which touches no database
+#: and had already been wrong once.
+EXEMPT: dict[str, Exemption] = {
+    "core/store/postgres.py": Exemption(
+        gate="test-flow-one",
+        reason=(
+            "every path needs a live Postgres and every path is executed by the "
+            "flow-one gate: the pool being created, the table being made, save, "
+            "get, recent and close. CI's Python job starts no database, so none "
+            "of it is covered there."
+        ),
+    ),
+}
+
+
+def _relative(name: str) -> str:
+    """Coverage reports OS-native paths; the exemption list is written one way."""
+    return name.replace("\\", "/")
 
 
 def main() -> int:
@@ -55,7 +100,7 @@ def main() -> int:
     failures = [
         (name, summary["percent_covered"])
         for name, summary in sorted(branching.items())
-        if summary["percent_covered"] < FLOOR
+        if summary["percent_covered"] < FLOOR and _relative(name) not in EXEMPT
     ]
 
     worst = min(summary["percent_covered"] for summary in branching.values())

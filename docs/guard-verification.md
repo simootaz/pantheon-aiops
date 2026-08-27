@@ -1598,6 +1598,67 @@ The fix deleted the losing path rather than leaving it beside the winner. Two
 ways to attach a connector, one of which silently does nothing, is worse than
 the bug that revealed it.
 
+## Running the wrong thing, and reporting its result as the gate's
+
+The fourth in the family, and the first that is not about reading a status
+wrongly. The three before it were **the wrong verdict** - a `tail`'s exit code,
+a `tee`'s exit code, a `grep` that matched nothing. This one is **the wrong
+question**: the gate was never asked.
+
+Every test run on `feature/zeus-orchestrator` was
+`uv run pytest tests/unit -q --no-cov`. Three things are wrong with it as a
+stand-in for `make test`:
+
+- `--no-cov` disables coverage measurement outright. I added it early for speed
+  and never revisited it.
+- `tests/unit` is narrower than the gate's `-m "not integration"`.
+- `make test` has a **second command**, `uv run python -m tests.coverage_floor`,
+  which was never invoked at all. Half the gate did not exist as far as any
+  local run was concerned.
+
+Reported as "914 unit tests pass, `make lint` clean". Every word true of what
+was run, and silent about what the gate runs. **The silence is the defect.**
+CI then failed on four modules below the per-module floor, and `make test` fails
+identically on the machine that reported green - it had simply never been asked.
+
+> Report the gate's name and its exit code, or say plainly that you ran
+> something else. A convenience command is fine. Reporting its result as the
+> gate's is not.
+
+Different fix from the first three. Those need the pipe removed so the status
+comes from the right process. This one needs the substitution **declared** -
+there is no pipe to remove, because the failing command was never run.
+
+## An exemption is a promise about coverage, so draw its boundary where the promise is true
+
+`core/store/investigations.py` came back at 46.2% because its Postgres paths
+cannot execute without a database, and CI's Python job starts none. The obvious
+move is a per-module exemption reading "covered by the integration gate".
+
+It would have been false. The module also held `dsn()` - pure string and
+settings logic, no database anywhere in it, and **already wrong once**: it built
+a passwordless DSN and produced `InvalidPasswordError: password authentication
+failed`, which describes a wrong password when the problem is a missing one.
+Exactly the kind of thing a coverage floor exists to catch, and it would have
+been sheltered by an exemption justified on behalf of the driver code beside it.
+
+So the module was split at the line where the claim becomes true.
+`core/store/postgres.py` holds only what needs a database, and every line of it
+is executed by `make test-flow-one`. The Protocol, the in-memory store and
+`dsn()` stayed behind at 100%.
+
+> An exemption whose claim is checkable and true is a different object from one
+> that happens to be convenient. Say which lines the named gate covers and which
+> are covered by nothing - and if the answer to the second is "some", the
+> boundary is in the wrong place.
+
+`tests/unit/test_coverage_exemptions.py` enforces the shape: an entry needs a
+gate that the Makefile actually defines, a reason long enough to say what that
+gate executes, and a module that still exists. Verified against three planted
+violations - a gate nobody wrote, a reason that describes the module rather than
+its coverage ("needs a database"), and an entry whose module had been renamed -
+each confirmed to have actually applied before the exit code was read.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

@@ -19,7 +19,8 @@ from api import __version__
 from api.routers import alerts, health, investigations, webhooks
 from core.bus import EventBus, InMemoryEventBus
 from core.orchestrator import register_implemented
-from core.store.investigations import InvestigationStore, PostgresInvestigationStore
+from core.store.investigations import InvestigationStore
+from core.store.postgres import PostgresInvestigationStore
 
 TITLE = "Pantheon API"
 DESCRIPTION = "Polyglot multi-agent AIOps platform."

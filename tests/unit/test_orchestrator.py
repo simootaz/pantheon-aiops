@@ -22,6 +22,7 @@ from core.contracts.investigation import InvestigationState, Trigger, TriggerKin
 from core.contracts.plan import StepStatus
 from core.orchestrator import aggregator, dispatcher, planner
 from core.orchestrator.classifier import Classification, classify, scenario_of
+from core.orchestrator.router import get as orchestrator_get
 from core.orchestrator.router import investigate
 from core.registry import loader
 from core.store.investigations import InMemoryInvestigationStore
@@ -295,3 +296,45 @@ async def test_an_unregistered_agent_is_a_distinct_failure(registered: Any) -> N
     dispatcher.AGENTS.clear()
     with pytest.raises(dispatcher.AgentNotDispatchable, match="not an implementation"):
         await investigate(_trigger(), store=InMemoryInvestigationStore(), bus=InMemoryEventBus())
+
+
+@pytest.mark.asyncio
+async def test_an_unroutable_trigger_is_recorded_as_failed_before_it_raises(
+    registered: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run nobody could plan must not vanish.
+
+    The caller gets the exception, but the reason has to survive somewhere a
+    reader can find it - otherwise an unroutable alert is indistinguishable from
+    one that never arrived.
+    """
+    dispatcher.register("argus", _Quiet)
+    monkeypatch.setattr(planner, "IMPLEMENTED", {})
+    bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
+
+    with pytest.raises(planner.NoAgentForDomain, match="no implemented agent"):
+        await investigate(_trigger(), store=store, bus=bus)
+
+    saved = await store.recent()
+    assert len(saved) == 1, "the unroutable run left no record"
+    assert saved[0].state is InvestigationState.FAILED
+    assert saved[0].completed_at is not None, "a terminal state with no completion time"
+
+    completed = [e.event for e in bus.published if isinstance(e.event, InvestigationCompletedEvent)]
+    assert completed and completed[0].partial is True, (
+        "a run that never dispatched anything is partial by definition"
+    )
+    assert not any(e.event.type == "investigation_started" for e in bus.published), (
+        "a run that could not be planned announced itself as started"
+    )
+
+
+@pytest.mark.asyncio
+async def test_reading_one_back_returns_it_or_none(registered: Any) -> None:
+    """`get` is the read side of the same store the API uses."""
+    dispatcher.register("argus", _Quiet)
+    store = InMemoryInvestigationStore()
+    investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
+
+    assert (await orchestrator_get(investigation.id, store=store)) is not None
+    assert (await orchestrator_get(uuid4(), store=store)) is None
