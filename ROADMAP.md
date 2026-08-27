@@ -94,7 +94,10 @@ than by omission.
   waits needs no durable execution, and `dispatcher.run_step` is the one
   function that would change — see ADR 0007 for what forces it.
 - `core/memory/` — vector store, repository, cache
-- **Delphi** implemented: gateway, resolver, catalog, `chat_completions`, tracing
+- 🚧 **Delphi**: gateway, resolver, catalog, `chat_completions` and tracing are
+  implemented and unit-gated. What remains is `ResolutionRecord` persistence
+  onto the Investigation, a live gate against a real model, and the remaining
+  dialect adapters (Phase 5). Nothing consults it yet - no agent reasons.
 - **Lethe** and **Hermes**; Loki connector
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
