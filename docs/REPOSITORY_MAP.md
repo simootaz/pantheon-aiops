@@ -40,6 +40,10 @@ lets connectors be written in whichever language fits the client library best.
 | Codename | Folder | Role | Phase |
 |---|---|---|---|
 | **Zeus** | [core/orchestrator/](../core/orchestrator/) | Orchestrator — routes, classifies, plans, dispatches, aggregates | 2 |
+| `core/llm/provider.py` | The adapter Protocol every dialect implements, plus `Completion` and a recording fake. `stream` and `probe` are deliberately absent until something calls them. | 2 |
+| `core/llm/catalog.py` | Configured providers and models. A configured model is described as **unprobed** - zero context, baseline capabilities - because configured is not observed. | 2 |
+| `core/llm/resolver.py` | The four-step cascade. A binding that cannot satisfy the requirements is skipped; an explicit override that cannot is an **error**, never a downgrade. | 2 |
+| `tests/unit/test_llm_resolution.py` | The cascade rung by rung, both refusals, and the rejection record that explains why. | 2 |
 | **Argus** | [agents/anomaly/](../agents/anomaly/) | Detects metric anomalies and correlates them into findings | 1 |
 | **Lethe** | [agents/log_clustering/](../agents/log_clustering/) | Clusters high-volume logs into signatures, surfaces novelty | 2 |
 | **Hermes** | [agents/nl_query/](../agents/nl_query/) | Translates natural language into connector queries and back | 2 |
