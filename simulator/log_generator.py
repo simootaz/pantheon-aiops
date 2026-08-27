@@ -124,6 +124,10 @@ class LogGenerator:
         self.loki_url = (loki_url or get_settings().loki.base).rstrip("/")
         self.target_lines_per_pod_per_tick = target_lines_per_pod_per_tick
         self._rng = np.random.default_rng(seed)
+        # Where simulated time zero sits. One generator is one run, so anchoring
+        # here gives each run its own timeline while keeping the stamps inside a
+        # run consistent with the simulated seconds everything else uses.
+        self._epoch = time.time()
 
     # -- rendering --------------------------------------------------------
 
@@ -135,7 +139,16 @@ class LogGenerator:
         the log stream trivially compressible - and useless as a test.
         """
         rng = self._rng
-        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        # SIMULATED time, not wall clock. Volume already follows the simulated
+        # day; a stamp that followed the wall clock made every line of a
+        # compressed run claim the same three seconds, so the stream said "a
+        # day happened" and "nothing took any time" at once.
+        #
+        # That is the contradiction this module exists to avoid, and it is not
+        # cosmetic: it left a whole simulated day carrying three distinct
+        # timestamps, which is far too few for anything downstream to tell a
+        # clock from a category.
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self._epoch + simulated_seconds))
         fields = {
             "ts": stamp,
             "method": METHODS[rng.integers(len(METHODS))],

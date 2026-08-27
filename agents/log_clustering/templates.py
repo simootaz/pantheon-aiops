@@ -42,8 +42,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 #: A field taking more distinct values than this is variable however large the
@@ -63,6 +64,18 @@ VARIABILITY_RATIO = 0.30
 #: fourth line arrives is not a template set.
 MIN_GROUP_FOR_VARIABILITY = 12
 
+#: How many times a field must actually CHANGE before its direction means
+#: anything. Two changes agreeing is a coin landing the same way twice. A
+#: constant never changes and so is never called a sequence, which is right - a
+#: field with one value is the purest category there is.
+MIN_ORDER_CHANGES = 8
+
+#: The fraction of adjacent pairs that must move consistently before a field is
+#: called a sequence. High, because the alternative reading - a category whose
+#: values happen to be interleaved by chance - sits near one half and never
+#: approaches this. Measured: `ts` reaches ~0.99 and `status` ~0.67.
+ORDER_FRACTION = 0.95
+
 #: How many example lines a template keeps. Enough to read, not enough to make
 #: the result a copy of the window.
 EXAMPLES_KEPT = 3
@@ -72,10 +85,16 @@ EXAMPLES_KEPT = 3
 #: what logs look like.
 _TOKENS = re.compile(r"\s+")
 
-#: An embedded value is a stack trace when it has several lines that begin the
-#: same way. Language-agnostic: `at com.acme...` and `File "...", line N` both
-#: satisfy it, and neither is named here.
+#: An embedded value needs at least this many lines to be considered a stack.
+#: What makes it one is the shared punctuation skeleton below, not a keyword.
 MIN_TRACE_FRAMES = 2
+
+#: What varies between two throws of the same fault: line numbers, and pointers.
+#: Decimal runs and `0x`-prefixed hex, because a decimal-only rule left Go's
+#: `main.process(0xa)` and `main.process(0xb)` as separate faults - forty throws
+#: of one bug reported as forty. Not exhaustive: a bare hex address with no `0x`
+#: is indistinguishable from a word and is left alone.
+_VARIANT = re.compile(r"0[xX][0-9a-fA-F]+|\d+")
 
 
 @dataclass(frozen=True)
@@ -106,6 +125,10 @@ class Clustering:
     templates: list[Template] = field(default_factory=list)
     lines_seen: int = 0
     unparsed: int = 0
+    #: Fields the ordering rule identified as clocks or counters, per shape.
+    #: Empty across the board is a signal in itself: either these logs carry no
+    #: timestamp, or the caller did not pass the lines in emission order.
+    sequence_fields: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def signatures(self) -> set[str]:
@@ -165,6 +188,79 @@ def _render(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
 
+def _ordered(values: list[str]) -> bool:
+    """True when a field only ever moves one way through the window.
+
+    THE RULE CARDINALITY ALONE CANNOT REPLACE
+    -------------------------------------------
+    A clock is a variable field however few values it takes. Measured on a
+    compressed simulator run, `ts` took five distinct values across 5000 lines -
+    comfortably under any cardinality cap - and was templated as a category. The
+    result was 298 templates from ten source templates, and a novelty check that
+    reported sixty new patterns in a window with no fault in it.
+
+    Cardinality asks how many values a field has. This asks whether they are a
+    *sequence*, which is what separates a timestamp, an offset or a counter from
+    a status code. Both are needed: neither alone gets this right.
+
+    Lexicographic, so it holds for ISO-8601 timestamps and zero-padded ids and
+    does NOT hold for unpadded numeric counters - `9` sorts after `10`. Stated
+    rather than claimed universal; an unpadded counter is caught by cardinality
+    instead, since a counter with few values is not a counter.
+
+    A FRACTION OF ADJACENT PAIRS, NOT GLOBAL SORTEDNESS
+    -----------------------------------------------------
+    The first version asked whether the whole list was sorted. It caught nothing,
+    because a window read out of Loki is several streams concatenated and the
+    clock restarts at every boundary. Global sortedness is a property of one
+    source; a corpus assembled from many has no single order.
+
+    Counting adjacent pairs survives that - a handful of boundary inversions
+    among thousands of pairs cannot drag the fraction below the threshold, while
+    a genuinely interleaved category sits near half and never approaches it.
+
+    TIES ARE EXCLUDED, WHICH IS THE WHOLE OF IT
+    ---------------------------------------------
+    Counting every pair made a RARE value look ordered. `status` is 500 three
+    times in five thousand lines, so 99.9% of its adjacent pairs are equal and
+    "consistently ordered" was satisfied by a field that is the single most
+    important discriminator in the window.
+
+    So only pairs where the value CHANGES are counted. A clock changes upward
+    every time; a category changes both ways in roughly equal measure whatever
+    the mix of its values. That also removes the need for a distinct-value floor
+    to exclude constants - a constant has no changes at all.
+
+    THIS REQUIRES `lines` TO BE IN EMISSION ORDER
+    -----------------------------------------------
+    Stated because it is not free. A window read out of Loki arrives as several
+    streams concatenated, and in that arrangement a real clock is only ~80%
+    consistent - it runs one way inside a stream and jumps back at every
+    boundary. Counting ties hid that: the equal pairs were so numerous they
+    carried the fraction over the line, and the rule appeared to work for a
+    reason that had nothing to do with time.
+
+    So the caller sorts. Loki stamps every entry with a nanosecond timestamp,
+    which is emission order stated by the source rather than inferred from the
+    text. `Clustering.sequence_fields` reports what this found, so a caller that
+    forgot to sort sees an empty set instead of a quietly worse template set.
+    """
+    steps = [(left, right) for left, right in pairwise(values) if left != right]
+    if len(steps) < MIN_ORDER_CHANGES:
+        return False
+    rising = sum(1 for left, right in steps if left < right)
+    return max(rising, len(steps) - rising) / len(steps) >= ORDER_FRACTION
+
+
+def _sequence_fields(rows: list[_Parsed]) -> list[str]:
+    """Which of this group's fields are clocks or counters. Reported, not hidden."""
+    seen: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        for key, value in row.fields.items():
+            seen[key].append(value)
+    return sorted(key for key, values in seen.items() if _ordered(values))
+
+
 def _stable_fields(rows: list[_Parsed]) -> set[str] | None:
     """Which fields discriminate in this group, or None if it is too small.
 
@@ -175,16 +271,18 @@ def _stable_fields(rows: list[_Parsed]) -> set[str] | None:
     if len(rows) < MIN_GROUP_FOR_VARIABILITY:
         return None
 
-    seen: dict[str, set[str]] = defaultdict(set)
+    seen: dict[str, list[str]] = defaultdict(list)
     for row in rows:
         for key, value in row.fields.items():
-            seen[key].add(value)
+            seen[key].append(value)
 
     ceiling = max(1.0, VARIABILITY_RATIO * len(rows))
     return {
         key
         for key, values in seen.items()
-        if len(values) <= MAX_STABLE_VALUES and len(values) <= ceiling
+        if len(set(values)) <= MAX_STABLE_VALUES
+        and len(set(values)) <= ceiling
+        and not _ordered(values)
     }
 
 
@@ -200,13 +298,53 @@ def _signature(row: _Parsed, stable: set[str] | None) -> tuple[str, str]:
     return f"{row.shape}|{body}", rendered.strip() or row.shape
 
 
-def cluster(lines: list[str]) -> Clustering:
+#: Which fields discriminate, per shape. `None` for a shape whose group was too
+#: small to say. Learned once and applied to several windows - see `learn`.
+Classification = dict[str, set[str] | None]
+
+
+def learn(lines: list[str]) -> Classification:
+    """Work out which fields discriminate, so several windows can share it.
+
+    WHY THIS IS SEPARABLE FROM CLUSTERING
+    ---------------------------------------
+    Variability is inferred from a group, so the group's SIZE changes the
+    inference. Measured: during `bad_deploy_5xx` there are many `request failed`
+    lines, so `path` and `status` go high-cardinality and are masked; during
+    `disk_pressure` there are a handful, so the same two stay stable and split
+    that one event into twenty-six templates.
+
+    The same event, templated two ways, according to how much of it a window
+    happened to hold. Comparing those two windows for "templates present in one
+    and absent from the other" then measures fault intensity and reports it as
+    novelty - which is what the measurement showed: twenty-six novel templates
+    for `disk_pressure`, every one of them a `request failed` variant, none of
+    them anything to do with a disk.
+
+    So the classification is learned ONCE over the pooled corpus and applied to
+    every window compared against it. Two windows are then comparable by
+    construction rather than by luck.
+    """
+    groups: dict[str, list[_Parsed]] = defaultdict(list)
+    for line in lines:
+        row = _parse(line)
+        if row is not None:
+            groups[row.shape].append(row)
+    return {shape: _stable_fields(rows) for shape, rows in groups.items()}
+
+
+def cluster(lines: list[str], classification: Classification | None = None) -> Clustering:
     """Reduce a window of log lines to templates with counts.
 
     Two passes, because variability cannot be known from one line. The first
     groups by shape and counts distinct values per field; the second assigns
     each line to a template. A streaming one-pass version would have to guess at
     the first line what the thousandth will show.
+
+    Pass `classification` - from `learn()` over a pooled corpus - when the result
+    will be compared with another window. Without it each window infers its own,
+    and two windows holding different amounts of the same event template it
+    differently.
     """
     parsed: list[_Parsed] = []
     unparsed = 0
@@ -226,8 +364,12 @@ def cluster(lines: list[str]) -> Clustering:
     inferred: dict[str, bool] = {}
     examples: dict[str, list[str]] = defaultdict(list)
 
+    sequences: dict[str, list[str]] = {}
     for shape, rows in groups.items():
-        stable = _stable_fields(rows)
+        stable = _stable_fields(rows) if classification is None else classification.get(shape)
+        found = _sequence_fields(rows)
+        if found:
+            sequences[shape] = found
         for row in rows:
             signature, human = _signature(row, stable)
             counts[signature] += 1
@@ -251,7 +393,23 @@ def cluster(lines: list[str]) -> Clustering:
     # compared between windows and rendered into Evidence.
     templates.sort(key=lambda template: (-template.count, template.signature))
 
-    return Clustering(templates=templates, lines_seen=len(parsed), unparsed=unparsed)
+    return Clustering(
+        templates=templates,
+        lines_seen=len(parsed),
+        unparsed=unparsed,
+        sequence_fields=sequences,
+    )
+
+
+def compare(incident: list[str], reference: list[str]) -> tuple[Clustering, Clustering]:
+    """Cluster two windows under ONE field classification, so they are comparable.
+
+    The only correct way to reach `novel()`. Clustering each window on its own
+    and diffing the results measures how much of each event a window held as
+    much as it measures what appeared - see `learn()`.
+    """
+    shared = learn([*reference, *incident])
+    return cluster(incident, shared), cluster(reference, shared)
 
 
 def novel(incident: Clustering, reference: Clustering) -> list[Template]:
@@ -287,10 +445,19 @@ class StackTrace:
 def _embedded_traces(row: _Parsed) -> list[tuple[str, list[str]]]:
     """Multi-line values inside a line that look like a stack.
 
-    "Look like a stack" means several lines sharing a leading prefix, which is
-    true of `at com.acme...` and of `File "...", line N` alike. No language is
-    named: a matcher listing Java and Python would silently pass over Go, and
-    passing over is indistinguishable from finding nothing.
+    "Look like a stack" means several lines with the same PUNCTUATION SKELETON -
+    the non-alphanumeric characters in order, with the words and numbers removed.
+    Frames are structurally repetitive whatever language produced them; prose
+    wrapped across lines is not.
+
+    The first version of this asked for a shared leading *token*, which is true
+    of `at com.acme...` and of `File "...", line N` and false of Go's
+    `main.process(0x0)`. It was written with a docstring claiming to name no
+    language, and it named two by implication. Its own test caught it.
+
+    Not precise: a multi-line SQL statement has a repetitive skeleton too and
+    would be reported. Said plainly rather than dressed up - `header` is kept
+    verbatim so a reader can see what was matched.
     """
     found: list[tuple[str, list[str]]] = []
     for key, value in sorted(row.fields.items()):
@@ -299,9 +466,13 @@ def _embedded_traces(row: _Parsed) -> list[tuple[str, list[str]]]:
         pieces = [piece.strip() for piece in value.split("\n") if piece.strip()]
         if len(pieces) < MIN_TRACE_FRAMES:
             continue
-        leads = {piece.split()[0] for piece in pieces if piece.split()}
-        if len(leads) > max(1, len(pieces) // 2):
-            continue  # the lines do not share a frame prefix; not a stack
+        skeletons = [_skeleton(piece) for piece in pieces]
+        common, hits = Counter(skeletons).most_common(1)[0]
+        # A non-empty skeleton shared by at least half the lines. Non-empty
+        # matters: prose wrapped across lines has no punctuation at all, and
+        # every line of it shares that emptiness.
+        if not common or hits * 2 < len(pieces):
+            continue
         found.append((key, pieces))
     return found
 
@@ -323,7 +494,7 @@ def stack_traces(lines: list[str]) -> list[StackTrace]:
         for _key, pieces in _embedded_traces(row):
             header = _header_for(row, pieces)
             frames = tuple(pieces)
-            signature = "|".join(re.sub(r"\d+", "<n>", frame) for frame in frames)
+            signature = "|".join(_VARIANT.sub("<n>", frame) for frame in frames)
             existing = grouped.get(signature)
             grouped[signature] = (
                 existing[0] if existing else header,
@@ -337,6 +508,11 @@ def stack_traces(lines: list[str]) -> list[StackTrace]:
     ]
     traces.sort(key=lambda trace: (-trace.count, trace.signature))
     return traces
+
+
+def _skeleton(text: str) -> str:
+    """The punctuation of a line, with words and numbers removed."""
+    return "".join(char for char in text if not char.isalnum() and not char.isspace())
 
 
 def _header_for(row: _Parsed, pieces: list[str]) -> str:

@@ -16,7 +16,7 @@ rather than by name, so this one was under guard the moment it existed.
 
 | record | subject | result |
 |---|---|---|
-| [01-template-recovery.md](01-template-recovery.md) | Whether corpus-driven variability recovers a usable template set, and whether it is stable enough for novelty detection | **pending** |
+| [01-template-recovery.md](01-template-recovery.md) | Whether corpus-driven variability recovers a usable template set, and whether it is stable enough for novelty detection | 5 hit, 1 miss, 0 falsified — after six rounds of tuning that fixed nothing and one that fixed the simulator |
 
 ## Raw measurements
 
