@@ -17,6 +17,7 @@ rather than by name, so this one was under guard the moment it existed.
 | record | subject | result |
 |---|---|---|
 | [01-template-recovery.md](01-template-recovery.md) | Whether corpus-driven variability recovers a usable template set, and whether it is stable enough for novelty detection | 5 hit, 1 miss, 0 falsified — after six rounds of tuning that fixed nothing and one that fixed the simulator |
+| [02-surprise-and-surge.md](02-surprise-and-surge.md) | Whether testing an absence for surprise removes the noise without the signal, and whether a rate-increase test finds the fault novelty is blind to | **pending** |
 
 ## Raw measurements
 

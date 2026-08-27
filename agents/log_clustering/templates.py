@@ -41,6 +41,7 @@ Phase: 2 - Orchestrator & Investigation Flow
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -88,6 +89,16 @@ _TOKENS = re.compile(r"\s+")
 #: An embedded value needs at least this many lines to be considered a stack.
 #: What makes it one is the shared punctuation skeleton below, not a keyword.
 MIN_TRACE_FRAMES = 2
+
+#: The level at which an absence, or a rate increase, is called surprising.
+#: Conventional rather than measured - the point is that the COUNT it implies is
+#: derived from the window sizes instead of picked, so it scales when they change.
+SIGNIFICANCE = 0.05
+
+#: Above this expected count the exact Poisson tail is replaced by a normal
+#: approximation, because `exp(-expected)` underflows to zero well before the
+#: rates involved stop mattering.
+_EXACT_TAIL_BELOW = 20.0
 
 #: What varies between two throws of the same fault: line numbers, and pointers.
 #: Decimal runs and `0x`-prefixed hex, because a decimal-only rule left Go's
@@ -412,24 +423,118 @@ def compare(incident: list[str], reference: list[str]) -> tuple[Clustering, Clus
     return cluster(incident, shared), cluster(reference, shared)
 
 
-def novel(incident: Clustering, reference: Clustering) -> list[Template]:
-    """Templates present in the incident window and absent from the reference.
+def _upper_tail(observed: int, expected: float) -> float:
+    """P(X >= observed) for X ~ Poisson(expected).
 
-    Absence, not rarity. A rate-based rule needs a rate estimate for something
-    that occurred zero times, and every way of producing one is an assumption
-    about the distribution that nothing here has measured.
+    Poisson rather than binomial: the line counts are in the thousands and the
+    per-template rates in the thousandths, which is the regime where they agree
+    to more digits than anything here needs.
 
-    Shape-only templates are excluded. They carry no content, so "this shape is
-    new" would fire whenever a window happened to contain a handful of lines of
-    a kind the reference had many of - a statement about window size wearing the
-    costume of a finding.
+    Normal approximation above `_EXACT_TAIL_BELOW`, because the exact sum needs
+    `exp(-expected)` and that underflows to zero long before the rates involved
+    stop mattering.
+    """
+    if observed <= 0:
+        return 1.0
+    if expected <= 0.0:
+        return 0.0
+    if expected > _EXACT_TAIL_BELOW:
+        z = (observed - 0.5 - expected) / math.sqrt(expected)
+        return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+    term = math.exp(-expected)
+    total = term
+    for step in range(1, observed):
+        term *= expected / step
+        total += term
+    return max(0.0, 1.0 - total)
+
+
+def novel(
+    incident: Clustering, reference: Clustering, *, significance: float = SIGNIFICANCE
+) -> list[Template]:
+    """Templates whose absence from the reference is SURPRISING.
+
+    WHY ABSENCE ALONE IS NOT ENOUGH
+    ---------------------------------
+    "Present here, absent there" was the first rule, and measured it reported
+    nineteen novel templates for `disk_pressure`: one was `disk usage high` at
+    28 lines, and the rest were `request failed` variants occurring once or
+    twice. Those are not new events. They are combinations of method, path and
+    status that the reference window happened not to contain, and a longer
+    reference would have contained them.
+
+    So absence is tested rather than assumed to mean something. A template at
+    rate p in the incident should appear about `p * reference_lines` times in
+    the reference; seeing none of it is surprising only when that expectation
+    was large. At the conventional 5% level this filters a template needing
+    roughly four occurrences in equal windows - but it is DERIVED from the
+    window sizes rather than picked, so it scales when they change instead of
+    being a number tuned on one dataset.
+
+    A CAVEAT THIS CANNOT FIX
+    --------------------------
+    The rule was chosen after seeing that low-count novelty dominated. The form
+    is principled and 0.05 is conventional rather than fitted, but it has not
+    been validated out of sample, and until it is that is the honest status.
+
+    Shape-only templates are excluded: they carry no content, so "this shape is
+    new" would fire whenever a window held a handful of lines of a kind the
+    reference had many of - a statement about window size in the costume of a
+    finding.
     """
     known = reference.signatures
-    return [
-        template
-        for template in incident.templates
-        if template.signature not in known and template.inferred
-    ]
+    seen = max(incident.lines_seen, 1)
+    fresh: list[Template] = []
+
+    for template in incident.templates:
+        if template.signature in known or not template.inferred:
+            continue
+        expected_in_reference = (template.count / seen) * reference.lines_seen
+        if math.exp(-expected_in_reference) < significance:
+            fresh.append(template)
+    return fresh
+
+
+def surged(
+    incident: Clustering, reference: Clustering, *, significance: float = SIGNIFICANCE
+) -> list[tuple[Template, float]]:
+    """Templates the reference already had, at a rate that has risen since.
+
+    THE FAULT NOVELTY CANNOT SEE
+    ------------------------------
+    `bad_deploy_5xx` produced almost no novel templates, and that is not a
+    failure of the novelty rule - it is correct. The simulator emits a 500 in
+    normal traffic, so `request failed` is in every baseline window. A bad deploy
+    does not introduce the pattern; it multiplies it.
+
+    A detector that only reports new patterns is blind to every fault of that
+    shape, which is most of them: an error that never happens in normal
+    operation is the rare kind. So known templates are tested for a rate
+    increase against the same Poisson tail, and returned with the ratio.
+
+    Returns `(template, ratio)`. The ratio is descriptive - the decision is the
+    tail probability, because a 10x rise from one line to ten says much less
+    than a 2x rise from four hundred to eight hundred, and only the tail knows
+    the difference.
+    """
+    before = reference.by_signature()
+    seen = max(reference.lines_seen, 1)
+    risen: list[tuple[Template, float]] = []
+
+    for template in incident.templates:
+        previous = before.get(template.signature)
+        if previous is None or not template.inferred:
+            continue
+        rate = previous.count / seen
+        expected = rate * incident.lines_seen
+        if expected <= 0.0:
+            continue
+        if _upper_tail(template.count, expected) < significance:
+            risen.append((template, template.count / expected))
+
+    risen.sort(key=lambda pair: -pair[1])
+    return risen
 
 
 @dataclass(frozen=True)
