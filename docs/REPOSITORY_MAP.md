@@ -46,6 +46,7 @@ lets connectors be written in whichever language fits the client library best.
 | `core/llm/providers/chat_completions.py` | The reference dialect adapter. Refuses to guess: no `choices` raises rather than returning `""`, because an empty completion and a model that said nothing are different facts. | 2 |
 | `core/llm/gateway.py` | `consult()`. The fallback chain never widens the search - relaxing a declared capability under load produces the worst output exactly when the system is struggling. | 2 |
 | `core/llm/tracing.py` | A span per call carrying a prompt **digest**, not the text: redaction removes the secrets Cerberus knows about and cannot remove the ones nobody registered. | 2 |
+| `tests/integration/test_delphi_live.py` | Delphi against whatever provider is configured. **Skips** without a key rather than failing - a red gate meaning "you did not sign up for a service" trains people to ignore red gates. | 2 |
 | `tests/unit/test_llm_gateway.py` | The adapter, the chain, the cost stop and the span - all offline behind an injected transport. | 2 |
 | `tests/unit/test_llm_resolution.py` | The cascade rung by rung, both refusals, and the rejection record that explains why. | 2 |
 | **Argus** | [agents/anomaly/](../agents/anomaly/) | Detects metric anomalies and correlates them into findings | 1 |

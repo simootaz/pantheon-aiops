@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-delphi test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -73,6 +73,13 @@ test-sim:
 # this one exists to prove a real query reaches a real Prometheus.
 test-connectors:
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
+
+## test-delphi: prove the gateway reaches a real model, whichever one is configured
+# Skips rather than fails when no API key is set: a developer who has not signed
+# up for a third-party service has not broken anything, and a red gate that means
+# "you did not sign up" trains people to ignore red gates.
+test-delphi:
+	@uv run pytest tests/integration/test_delphi_live.py -m integration --no-cov -v
 
 ## test-flow-one: prove flow 1 end to end - alert, plan, dispatch, detect, verdict
 # The negative half is the point: a clean baseline must open NO investigation,
