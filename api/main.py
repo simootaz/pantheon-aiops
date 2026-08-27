@@ -16,11 +16,13 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api import __version__
-from api.routers import agents, alerts, health, investigations, webhooks
+from api.routers import agents, alerts, health, investigations, providers, webhooks
 from core.bus import EventBus, InMemoryEventBus
 from core.orchestrator import register_implemented
 from core.store.investigations import InvestigationStore
 from core.store.postgres import PostgresInvestigationStore
+from core.store.postgres_providers import PostgresProviderStore
+from core.store.providers import ProviderStore
 
 TITLE = "Pantheon API"
 DESCRIPTION = "Polyglot multi-agent AIOps platform."
@@ -30,6 +32,7 @@ def create_app(
     *,
     event_bus: EventBus | None = None,
     investigation_store: InvestigationStore | None = None,
+    provider_store: ProviderStore | None = None,
 ) -> FastAPI:
     """Build the Pantheon API application.
 
@@ -57,6 +60,9 @@ def create_app(
     )
     # Explicit, and before any request can dispatch. A registry populated as
     # an import side effect behaves differently depending on import order.
+    app.state.provider_store = (
+        provider_store if provider_store is not None else PostgresProviderStore()
+    )
     register_implemented()
 
     app.include_router(health.router)
@@ -64,6 +70,7 @@ def create_app(
     app.include_router(alerts.router)
     app.include_router(investigations.router)
     app.include_router(agents.router)
+    app.include_router(providers.router)
 
     return app
 

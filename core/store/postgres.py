@@ -45,6 +45,21 @@ CREATE INDEX IF NOT EXISTS investigations_created_at_idx
     ON investigations (created_at DESC);
 """
 
+#: Configured LLM providers. `sealed_key` is an envelope-encrypted record and
+#: never a plaintext key - see `core/cerberus/store/envelope.py`. It is nullable
+#: because a local provider needs no credential at all, and a NULL says that
+#: more honestly than an empty string.
+SCHEMA_PROVIDERS = """
+CREATE TABLE IF NOT EXISTS llm_providers (
+    id          UUID PRIMARY KEY,
+    config      JSONB       NOT NULL,
+    sealed_key  JSONB,
+    tiers       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"""
+
 
 class PostgresInvestigationStore:
     """The real one. Owns its pool, creates its table on first use."""
