@@ -13,10 +13,13 @@ import ast
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from connectors._base.python.base_server import BaseMCPServer, Tool, ToolError
 from connectors.alertmanager.tools import build_server as build_alertmanager
+from connectors.loki import tools as loki_tools
+from connectors.loki.tools import build_server as build_loki
 from connectors.prometheus import tools as prometheus_tools
 from connectors.prometheus.tools import build_server as build_prometheus
 from core.registry.loader import for_codename
@@ -25,8 +28,21 @@ from tests.mechanism import read_data
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONNECTORS = REPO_ROOT / "connectors"
 
-#: Every connector that ships a Python MCP server in Phase 1.
-SERVERS = {"prometheus": build_prometheus, "alertmanager": build_alertmanager}
+#: Every connector that ships a Python MCP server. Adding a connector here is
+#: what gives the guards below a subject - one that ships and is not listed is
+#: unguarded, and looks identical to one that passes.
+SERVERS = {
+    "prometheus": build_prometheus,
+    "alertmanager": build_alertmanager,
+    "loki": build_loki,
+}
+
+#: Where each connector's read-path allowlist is written.
+TOOL_MODULES = {
+    "prometheus": REPO_ROOT / "connectors/prometheus/tools.py",
+    "alertmanager": REPO_ROOT / "connectors/alertmanager/tools.py",
+    "loki": REPO_ROOT / "connectors/loki/tools.py",
+}
 
 
 # --- read-only, proven rather than trusted -----------------------------------
@@ -67,14 +83,11 @@ async def _noop(_arguments: dict[str, Any]) -> Any:  # pragma: no cover - never 
 def test_a_connector_reaches_only_its_declared_read_paths(name: str) -> None:
     """The HTTP paths are an allowlist, not a denylist.
 
-    Prometheus ships `/api/v1/admin/tsdb/delete_series`; a denylist would have
-    to know that in advance, and would not know about the next one.
+    Prometheus ships `/api/v1/admin/tsdb/delete_series` and Loki ships a delete
+    API that removes log lines permanently; a denylist would have to know both
+    in advance, and would not know about the next one.
     """
-    module = {
-        "prometheus": REPO_ROOT / "connectors/prometheus/tools.py",
-        "alertmanager": REPO_ROOT / "connectors/alertmanager/tools.py",
-    }[name]
-    source = read_data(module)
+    source = read_data(TOOL_MODULES[name])
     assert "READ_PATHS" in source, f"{name} has no read-path allowlist"
     for forbidden in ("admin", "delete", "/-/reload", "silences POST"):
         assert f'"{forbidden}"' not in source, f"{name} names {forbidden!r} as a path"
@@ -87,6 +100,28 @@ async def test_a_path_outside_the_allowlist_is_refused() -> None:
 
 
 # --- the manifest and the connector describe the same tools ------------------
+
+
+def test_every_connector_that_ships_tools_is_guarded() -> None:
+    """A connector that ships and is not in SERVERS looks exactly like a passing one.
+
+    The guards above are parametrised over SERVERS, so leaving one out removes
+    their subject rather than failing them - the suite stays green and the
+    connector is unchecked. This is what makes the omission visible.
+
+    "Ships" means `tools.py` defines `build_server`: the stubs under
+    connectors/ are TODO comments with no registry to guard.
+    """
+    shipping = {
+        path.parent.name
+        for path in CONNECTORS.rglob("tools.py")
+        if "def build_server(" in read_data(path)
+    }
+    assert shipping, "no connector defines build_server; the check would pass vacuously"
+    assert shipping <= set(SERVERS), (
+        "connectors with implemented tools that no guard covers: "
+        f"{sorted(shipping - set(SERVERS))}. Add them to SERVERS."
+    )
 
 
 def test_the_prometheus_tools_are_exactly_what_argus_declares() -> None:
@@ -103,6 +138,164 @@ def test_the_prometheus_tools_are_exactly_what_argus_declares() -> None:
         f"Argus declares {sorted(declared)}; the connector implements "
         f"{sorted(implemented)}. They have to be the same set."
     )
+
+
+def test_the_loki_tools_are_exactly_what_lethe_declares() -> None:
+    """Same rule as Argus and Prometheus, for the same two reasons.
+
+    A tool nobody declares is unreachable and therefore dead; a declaration
+    nothing implements makes `ToolNotBound` the normal case rather than the
+    exceptional one, which trains everyone to ignore it.
+    """
+    declared = set(for_codename("lethe").tools)
+    implemented = set(build_loki().tools)
+
+    assert declared == implemented, (
+        f"Lethe declares {sorted(declared)}; the connector implements "
+        f"{sorted(implemented)}. They have to be the same set."
+    )
+
+
+async def test_loki_refuses_a_path_outside_the_allowlist() -> None:
+    """The delete API is the one that matters: it removes log lines for good."""
+    with pytest.raises(ToolError, match="deliberately unreachable"):
+        await loki_tools._get("/loki/api/v1/delete", {"query": '{app="checkout"}'}, empty=[])
+
+    with pytest.raises(ToolError, match="deliberately unreachable"):
+        await loki_tools._get("/loki/api/v1/push", empty=[])
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["../../delete", "..%2F..%2Fdelete", "name/../../push", "app; DROP", "", "9lives"],
+)
+def test_a_label_name_that_could_escape_its_path_segment_is_refused(hostile: str) -> None:
+    """The template entry in the allowlist is the one place a path is built.
+
+    A prefix match would have admitted these. Validation happens before
+    substitution, not after: a name checked once it is already inside a URL is a
+    name checked too late.
+    """
+    with pytest.raises(ToolError, match="not a valid Loki label name"):
+        loki_tools._label_values_path(hostile)
+
+
+def test_a_real_label_name_still_builds_its_path() -> None:
+    """The control. A validator that refused everything would pass the test above."""
+    assert loki_tools._label_values_path("namespace") == "/loki/api/v1/label/namespace/values"
+
+
+async def test_a_built_label_values_path_is_inside_the_allowlist() -> None:
+    """The two halves have to agree, or valid input is refused at the second gate.
+
+    Asserted against the predicate, not by making a request. The first version
+    of this test issued a real GET to find out - which passes on a machine with
+    the stack up, for a reason CI cannot reproduce, and which is how the
+    `data`-less response below was found by accident rather than by design.
+    """
+    assert loki_tools._allowed(loki_tools._label_values_path("namespace"))
+    assert loki_tools._allowed("/loki/api/v1/labels")
+    assert not loki_tools._allowed("/loki/api/v1/label/../../push/values")
+    assert not loki_tools._allowed("/loki/api/v1/delete")
+
+
+def _loki_replying(
+    monkeypatch: pytest.MonkeyPatch, body: dict[str, Any], status: int = 200
+) -> None:
+    """Point the connector at a canned Loki response, without a socket.
+
+    The real class is captured BEFORE the patch. Binding it by name inside the
+    replacement resolves to the replacement, which recurses until the stack ends
+    - and a RecursionError in a connector test reads like a parser bug.
+    """
+    transport = httpx.MockTransport(lambda _request: httpx.Response(status, json=body))
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **_kwargs: real(transport=transport), raising=True
+    )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: loki_tools.labels({}),
+        lambda: loki_tools.labels({"name": "service"}),
+    ],
+)
+async def test_an_empty_label_response_is_empty_and_not_a_crash(
+    call: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loki's LABEL endpoints omit `data` entirely when they have nothing.
+
+    Not an empty list, not a null - the whole key is absent and the body is
+    `{"status":"success"}`. `body["data"]` raises KeyError there, which surfaces
+    as a broken connector when the truth is a quiet window.
+
+    Measured against a live Loki, and asserted again in the integration gate.
+    """
+    _loki_replying(monkeypatch, {"status": "success"})
+    assert await call() == []
+
+
+async def test_a_query_range_with_no_data_is_reported_not_smoothed_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """query_range always sends `data`, so absence there is not silence.
+
+    It sends `resultType`, an empty `result` and a full `stats` block even when
+    nothing matched - measured, not assumed. Returning a fabricated
+    `{"result": []}` would make new Loki behaviour indistinguishable from a
+    service that genuinely logged nothing, which is the reading an agent would
+    then act on.
+    """
+    _loki_replying(monkeypatch, {"status": "success"})
+    with pytest.raises(ToolError, match="no `data`"):
+        await loki_tools.query_range({"query": '{app="x"}', "start": "1", "end": "2"})
+
+
+async def test_an_empty_query_range_result_passes_through_as_loki_sent_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The empty case that actually happens: `data` present, `result` empty."""
+    data = {"resultType": "streams", "result": [], "stats": {"summary": {}}}
+    _loki_replying(monkeypatch, {"status": "success", "data": data})
+    assert await loki_tools.query_range({"query": '{app="x"}', "start": "1", "end": "2"}) == data
+
+
+async def test_a_populated_loki_result_is_passed_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The control. An adapter returning an empty form unconditionally would
+    pass every assertion above."""
+    data = {"resultType": "streams", "result": [{"stream": {"app": "x"}, "values": []}]}
+    _loki_replying(monkeypatch, {"status": "success", "data": data})
+    assert await loki_tools.query_range({"query": '{app="x"}', "start": "1", "end": "2"}) == data
+
+
+async def test_an_oversized_limit_is_refused_with_the_cap_named() -> None:
+    """Loki answers an oversized request with a 400 that reads like a bad query."""
+    with pytest.raises(ToolError, match=r"cap of 5000"):
+        await loki_tools.query_range(
+            {"query": '{app="x"}', "start": "1", "end": "2", "limit": 10_000}
+        )
+
+
+async def test_query_range_says_which_argument_is_missing() -> None:
+    for missing in ("query", "start", "end"):
+        arguments = {"query": '{app="x"}', "start": "1", "end": "2"}
+        del arguments[missing]
+        with pytest.raises(ToolError, match=f"needs a `{missing}`"):
+            await loki_tools.query_range(arguments)
+
+
+async def test_an_unknown_direction_is_refused_rather_than_defaulted() -> None:
+    """Silently defaulting would return the newest lines when the caller asked
+    for the oldest, and a log window read from the wrong end looks like a
+    different incident."""
+    with pytest.raises(ToolError, match=r"forward.*backward"):
+        await loki_tools.query_range(
+            {"query": '{app="x"}', "start": "1", "end": "2", "direction": "sideways"}
+        )
 
 
 def test_every_registered_tool_carries_a_schema_and_a_description() -> None:

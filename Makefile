@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-providers test-delphi test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-providers test-loki test-delphi test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -73,6 +73,14 @@ test-sim:
 # this one exists to prove a real query reaches a real Prometheus.
 test-connectors:
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
+
+## test-loki: prove the Loki connector against a real Loki, both directions
+# The negative direction is the reason it exists. Loki omits `data` entirely on an
+# empty result, which crashed the connector with a KeyError that read like a broken
+# adapter - a unit test with a hand-written body would have asserted the shape
+# someone expected rather than the shape Loki sends.
+test-loki:
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_loki_connector.py -m integration --no-cov -v
 
 ## test-delphi: prove the gateway reaches a real model, whichever one is configured
 # Skips rather than fails when no API key is set: a developer who has not signed
