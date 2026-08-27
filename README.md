@@ -15,10 +15,17 @@ write action gated, every credential brokered, and every run auditable.
 
 ## Status: Phase 1, in progress
 
-**One agent detects. Nothing orchestrates yet.** Argus produces real Findings
-against thresholds derived from measurement, gated in both directions on a live
-stack. Zeus does not dispatch, the other nine domain agents are stubs carrying a
-`# TODO: Phase N` marker, and no investigation runs from trigger to verdict.
+**Flow 1 runs end to end: alert to plan to dispatch to detect to verdict.**
+An Alertmanager notification opens an Investigation, Zeus plans one step,
+dispatches Argus, and aggregates what comes back into a Verdict that persists
+and is retrievable. Gated in both directions on a live stack.
+
+**The Verdict is an aggregation of one agent's findings, not a diagnosis.** It
+proposes **no hypotheses** and its confidence is 0.0, deliberately: Argus
+reports that a series crossed a threshold its peers did not, several metrics
+move during one incident, and nothing here ranks candidate causes. Nine domain
+agents are still stubs, and nothing acts on anything - there is no approval
+gate, no action execution, and no remediation.
 
 Here is the honest split.
 
@@ -32,8 +39,10 @@ Here is the honest split.
 | **Agent runtime** | `agents/_base/` gives a subclass one required coroutine; the manifest registry loads and validates all ten. Finding ids are deterministic, so a retry cannot duplicate a claim. |
 | **Argus** — detection | Peer-relative robust z against per-metric thresholds and scale floors, every one measured rather than chosen. `make test-argus` proves it in both directions: three clean baseline runs produce **zero** Findings, and all five fault scenarios are detected on the series that moved. It separates fault from clean baseline and nothing more — several Findings per incident, none of them a diagnosis. |
 | **A calibration record** | [13 prediction files](docs/argus-predictions/), each written before its measurement ran and scored after, with the raw data committed beside them. Four of them overturned a conclusion this project had already drawn. |
+| **Zeus** — flow 1 | Classifies the trigger, plans, dispatches through the registry under the manifest's budget, aggregates, and emits the lifecycle: `RunStarted`, `StepStarted`, `StepFinished`, `VerdictReady`, `RunFinished`. `make test-flow-one` proves it both ways: an alert produces a complete Investigation citing the series that moved, and a clean baseline produces **no Investigation at all**. |
+| **Investigation store** | Postgres, one JSONB document. The gate reads the result back on a **second connection**, because a test that reads through the object it wrote to cannot tell a dict from a database. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
-| **351 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
+| **376 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
 | **Deploy skeleton** | Helm lints and templates, Terraform validates, Compose brings the stack up. |
 | **Seven ADRs** | The decisions, and what was rejected. |
@@ -42,12 +51,12 @@ Here is the honest split.
 
 | | |
 |---|---|
-| **Zeus** | The orchestrator. Routing, classification, planning, dispatch and aggregation are Phase 2. |
+| **Zeus's judgement** | Routing reads Alertmanager's labels; it does not infer. Multi-step plans, dependencies, retries and hypothesis ranking are all still ahead. |
 | **The other nine agents** | Argus detects; Lethe, Hermes and the rest are stubs. |
 | **Delphi** | The LLM gateway is designed ([ADR 0004](docs/adr/0004-llm-provider-abstraction.md)) and unbuilt. |
 | **Cerberus behaviour** | Contracts and redaction exist; brokering, leases and revocation do not. |
 | **The remaining connectors** | Kubernetes, Loki, GitLab, GitHub and Litmus. |
-| **The AG-UI endpoint** | The dashboard renders A2UI surfaces; nothing streams into them yet. |
+| **The AG-UI endpoint** | The dashboard renders A2UI surfaces and nothing streams into them yet - but the lifecycle events now exist, so it can be built against real ones rather than mocks. |
 
 The interesting part right now is the **guards** and the **simulator**, not the
 features. [ROADMAP.md](ROADMAP.md) has the phase plan and every deferred

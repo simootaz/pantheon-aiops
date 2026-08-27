@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -73,6 +73,16 @@ test-sim:
 # this one exists to prove a real query reaches a real Prometheus.
 test-connectors:
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
+
+## test-flow-one: prove flow 1 end to end - alert, plan, dispatch, detect, verdict
+# The negative half is the point: a clean baseline must open NO investigation,
+# and the positive half reads the result back on a second connection, because a
+# test that reads through the object it wrote to cannot tell a dict from a database.
+# The database credential is sourced from deploy/compose/.env rather than
+# duplicated here: it is where the stack's own password is defined, and a second
+# copy is a second thing to keep in step.
+test-flow-one:
+	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_flow_one.py 	   -m integration --no-cov -v
 
 ## test-argus: prove Argus detects each scenario and stays silent on a clean baseline
 # The negative case runs three times. A detector that fires on everything passes

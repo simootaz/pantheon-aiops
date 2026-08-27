@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from typing import Any
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,7 @@ from api.main import create_app
 from core.bus import InMemoryEventBus
 from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
+from core.store.investigations import InMemoryInvestigationStore
 from tests.mechanism import read_data
 
 PIPELINE_PAYLOAD: dict[str, Any] = {
@@ -59,8 +61,27 @@ def bus() -> InMemoryEventBus:
 
 
 @pytest.fixture
-def client(bus: InMemoryEventBus) -> Iterator[TestClient]:
-    with TestClient(create_app(event_bus=bus)) as test_client:
+def scheduled() -> list[UUID]:
+    """Investigations the receiver handed off, without running any of them."""
+    return []
+
+
+@pytest.fixture
+def client(bus: InMemoryEventBus, scheduled: list[UUID]) -> Iterator[TestClient]:
+    """An app with nothing behind it that opens a socket.
+
+    The real runner reaches Prometheus and Postgres. `TestClient` executes
+    background tasks inline, so leaving it in place would have every alert test
+    quietly performing network I/O - and on this platform a closed loopback port
+    does not refuse promptly, so the failure mode is a hang rather than an error.
+    """
+
+    async def record(*, investigation_id: UUID, **_: object) -> None:
+        scheduled.append(investigation_id)
+
+    app = create_app(event_bus=bus, investigation_store=InMemoryInvestigationStore())
+    app.state.investigation_runner = record
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -329,3 +350,46 @@ def test_the_alertmanager_token_is_required_when_configured(
         headers={"X-Pantheon-Token": "s3cret-alert-token"},
     )
     assert accepted.status_code == 202
+
+
+def test_a_firing_alert_schedules_an_investigation(
+    client: TestClient, scheduled: list[UUID]
+) -> None:
+    """The 202 hands back the id Zeus will write, not one nothing creates."""
+    response = client.post(
+        "/webhooks/alertmanager",
+        json={
+            "status": "firing",
+            "alerts": [{"labels": {"alertname": "CheckoutErrorRateHigh"}}],
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    promised = UUID(response.json()["investigation_id"])
+    assert scheduled == [promised], (
+        "the receiver returned an investigation id it did not hand to anyone, so a "
+        "caller polling that id would wait forever"
+    )
+
+
+def test_a_resolved_alert_is_recorded_and_not_investigated(
+    client: TestClient, scheduled: list[UUID], bus: InMemoryEventBus
+) -> None:
+    """ "This stopped" is worth knowing and is not a reason to go looking.
+
+    Still published, so a run that is watching learns the thing it is looking at
+    has ended. Not investigated, because the fault is over.
+    """
+    response = client.post(
+        "/webhooks/alertmanager",
+        json={
+            "status": "resolved",
+            "alerts": [{"labels": {"alertname": "CheckoutErrorRateHigh"}}],
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    assert scheduled == [], "a resolved alert opened an investigation into a finished fault"
+    assert any(e.event.type == "trigger_received" for e in bus.published), (
+        "a resolved alert was dropped rather than recorded"
+    )
