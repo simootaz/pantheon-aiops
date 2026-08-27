@@ -17,7 +17,8 @@ failures are where the reasoning is.
 | `05-ties-excluded.json` | count only pairs where the value changes | worse, and honestly so: three or four clock changes in a simulated day is nothing to reason from |
 | `06-emission-order.json` | sort the corpus by Loki's own nanosecond stamps | still nothing - the `ts` FIELD was wall-clock and unrelated to Loki's stamp |
 | `07-simulated-timestamps.json` | **fixed the simulator**: log stamps follow simulated time | 62 templates, Jaccard **1.00** |
-| `08-untruncated-novelty.json` | stopped truncating scenario runs to a common N | the scoring run. Truncation had been cutting the fault period out of every scenario |
+| `08-untruncated-novelty.json` | stopped truncating scenario runs to a common N | record 01's scoring run. Truncation had been cutting the fault period out of every scenario |
+| `09-surprise-and-surge.json` | absence tested for surprise; `surged()` added | record 02's scoring run. The surprise test worked; `surged()` reported 1.29x on a CLEAN pair against 1.31-1.54x on faults and was deleted |
 
 Produced by a script under the session scratchpad, not committed: it drives
 `simulator.runner` and reads back through `connectors/loki`, so it needs the

@@ -103,6 +103,77 @@ FALSIFIED IF: the clean control's top ratio is within 2x of any scenario's. That
 would make `surged` unusable without a rate model that accounts for seasonality
 — which is the thing peer comparison gave Argus for free and logs do not have.
 
-## Result — PENDING
+## Result — 2 hit, 3 falsified, 1 wiring check. `surged()` is deleted.
 
-Not yet measured. Committed before the run.
+`data/09-surprise-and-surge.json`.
+
+| # | predicted | measured | verdict |
+|---|---|---|---|
+| 1 | 0 – 4 novel per scenario, survivors count ≥ 4 | **0, 0, 0, 1, 0, 2**; survivors at 24, 9, 6 | hit |
+| 2 | `disk usage high`, `GC pause`, `cpu throttled` all survive | disk ✓, throttled ✓, **GC pause gone** | falsified |
+| 3 | 0 false novel on a clean window | 0 | wiring check — not evidence |
+| 4 | `bad_deploy_5xx` surges, top is a `request failed` variant | 5 surges, top is `request completed status=204` | falsified |
+| 5 | 0 – 3 surges on the clean control | **2** | hit |
+| 6 | scenario top surge ≥ 2x the clean control's | control **1.289**, scenarios **1.311 – 1.541** | falsified |
+
+## P6 is the one that decides it, and `surged()` has been removed
+
+Two **clean** baseline windows reported surges at 1.289x. The five fault
+scenarios topped out between 1.311x and 1.541x. A bad deploy was not
+distinguishable from no fault at all — and every top surge in every run,
+faulty or clean, was an ordinary `request completed` line.
+
+The reason is the one Argus already paid for and wrote down. Log volume follows
+the diurnal curve, so two windows taken at different points of the simulated day
+have genuinely different rates. A Poisson tail assumes a constant rate, so it
+calls that difference significant. **Comparing a window against an earlier
+window measures the time of day.**
+
+I predicted this was the likeliest of the five to fail and said it was the one I
+most wanted to know about. It failed, and the honest response is to delete the
+function rather than tune the level: no significance threshold fixes a test
+whose null hypothesis is wrong. A working version needs the seasonality
+cancelled, which means a **peer axis** — this pod's rate for this template
+against its peers' rates for the same template at the same instant, the way
+`agents/anomaly` does it. That is not done.
+
+The consequence is stated in the code rather than left implied by an absence:
+`bad_deploy_5xx` introduces no new template, it multiplies an existing one, and
+**Lethe cannot detect it.**
+
+## P4 failed twice over
+
+Not only was the top surge not a `request failed` variant — nothing in the list
+was. The five surges reported for `bad_deploy_5xx` are three of the same
+`request completed` templates that surge in a clean baseline. P4 would have
+been scored a hit on its first clause alone (`≥ 1 surged`), which is why it
+carried a second one naming what the surge had to be.
+
+## P2 was falsified because my reading of round 8 was wrong
+
+`GC pause exceeded target` was one of the three templates I called signal. It is
+emitted in **normal** operation — it is in every baseline window — so it cannot
+be novel by absence at all.
+
+What made it look novel in round 8 was the shared classification splitting it by
+`heap_max_mb` (3000, 2937), a pod-specific constant. Those particular splits
+happened to be missing from the reference. The finding I was protecting was an
+artefact of a field split, and the surprise test removed it correctly.
+
+So P2 is a genuine falsification of the prediction and a vindication of the
+change. Worth separating: the prediction was wrong, not the code.
+
+## What P1 and P5 establish
+
+The low-count tail is gone. Nineteen novel templates for `disk_pressure` became
+one, and it is `disk usage high` at 24 lines. `noisy_neighbor` reports
+`cpu throttled` twice, split by hour, which is the known low-volume splitting
+from record 01 and is still not fixed.
+
+## A caveat on record 01's headline number
+
+This run measured baseline Jaccard **0.80**, not the **1.00** of record 01's
+round 8, with 74 templates against 61. Same code, same parameters, different
+runs. A single measurement of stability is itself a sample, and 1.00 was the
+better of two draws rather than the property. Neither record is entitled to
+claim the template set is perfectly stable.

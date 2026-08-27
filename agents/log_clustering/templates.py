@@ -95,11 +95,6 @@ MIN_TRACE_FRAMES = 2
 #: derived from the window sizes instead of picked, so it scales when they change.
 SIGNIFICANCE = 0.05
 
-#: Above this expected count the exact Poisson tail is replaced by a normal
-#: approximation, because `exp(-expected)` underflows to zero well before the
-#: rates involved stop mattering.
-_EXACT_TAIL_BELOW = 20.0
-
 #: What varies between two throws of the same fault: line numbers, and pointers.
 #: Decimal runs and `0x`-prefixed hex, because a decimal-only rule left Go's
 #: `main.process(0xa)` and `main.process(0xb)` as separate faults - forty throws
@@ -144,9 +139,6 @@ class Clustering:
     @property
     def signatures(self) -> set[str]:
         return {template.signature for template in self.templates}
-
-    def by_signature(self) -> dict[str, Template]:
-        return {template.signature: template for template in self.templates}
 
 
 @dataclass(frozen=True)
@@ -423,33 +415,6 @@ def compare(incident: list[str], reference: list[str]) -> tuple[Clustering, Clus
     return cluster(incident, shared), cluster(reference, shared)
 
 
-def _upper_tail(observed: int, expected: float) -> float:
-    """P(X >= observed) for X ~ Poisson(expected).
-
-    Poisson rather than binomial: the line counts are in the thousands and the
-    per-template rates in the thousandths, which is the regime where they agree
-    to more digits than anything here needs.
-
-    Normal approximation above `_EXACT_TAIL_BELOW`, because the exact sum needs
-    `exp(-expected)` and that underflows to zero long before the rates involved
-    stop mattering.
-    """
-    if observed <= 0:
-        return 1.0
-    if expected <= 0.0:
-        return 0.0
-    if expected > _EXACT_TAIL_BELOW:
-        z = (observed - 0.5 - expected) / math.sqrt(expected)
-        return 0.5 * math.erfc(z / math.sqrt(2.0))
-
-    term = math.exp(-expected)
-    total = term
-    for step in range(1, observed):
-        term *= expected / step
-        total += term
-    return max(0.0, 1.0 - total)
-
-
 def novel(
     incident: Clustering, reference: Clustering, *, significance: float = SIGNIFICANCE
 ) -> list[Template]:
@@ -496,45 +461,30 @@ def novel(
     return fresh
 
 
-def surged(
-    incident: Clustering, reference: Clustering, *, significance: float = SIGNIFICANCE
-) -> list[tuple[Template, float]]:
-    """Templates the reference already had, at a rate that has risen since.
-
-    THE FAULT NOVELTY CANNOT SEE
-    ------------------------------
-    `bad_deploy_5xx` produced almost no novel templates, and that is not a
-    failure of the novelty rule - it is correct. The simulator emits a 500 in
-    normal traffic, so `request failed` is in every baseline window. A bad deploy
-    does not introduce the pattern; it multiplies it.
-
-    A detector that only reports new patterns is blind to every fault of that
-    shape, which is most of them: an error that never happens in normal
-    operation is the rare kind. So known templates are tested for a rate
-    increase against the same Poisson tail, and returned with the ratio.
-
-    Returns `(template, ratio)`. The ratio is descriptive - the decision is the
-    tail probability, because a 10x rise from one line to ten says much less
-    than a 2x rise from four hundred to eight hundred, and only the tail knows
-    the difference.
-    """
-    before = reference.by_signature()
-    seen = max(reference.lines_seen, 1)
-    risen: list[tuple[Template, float]] = []
-
-    for template in incident.templates:
-        previous = before.get(template.signature)
-        if previous is None or not template.inferred:
-            continue
-        rate = previous.count / seen
-        expected = rate * incident.lines_seen
-        if expected <= 0.0:
-            continue
-        if _upper_tail(template.count, expected) < significance:
-            risen.append((template, template.count / expected))
-
-    risen.sort(key=lambda pair: -pair[1])
-    return risen
+#: `surged()` was here and has been REMOVED. It tested whether a known
+#: template's rate had risen, against a Poisson tail on the reference rate, and
+#: it does not work.
+#:
+#: Measured (docs/lethe-predictions/02-surprise-and-surge.md): on two CLEAN
+#: baseline windows it reported surges at 1.29x, and across all five fault
+#: scenarios the top surge was 1.31x - 1.54x. A fault was not distinguishable
+#: from no fault at all. Every one of them was an ordinary `request completed`
+#: line, in a clean baseline and in a bad deploy alike.
+#:
+#: The reason is the one Argus already paid for. Log volume follows the diurnal
+#: curve, so two windows taken at different points of the simulated day have
+#: genuinely different rates, and a Poisson test assuming a constant rate calls
+#: that difference significant. Comparing a window against an earlier window
+#: measures the time of day.
+#:
+#: A working version needs the seasonality cancelled, which means a PEER axis:
+#: this pod's rate for this template against its peers' rates for the same
+#: template at the same instant, the way agents/anomaly does it. That is real
+#: work and it is not done, so nothing here claims to detect a rate increase.
+#:
+#: This matters because the fault it was written for is still undetected:
+#: `bad_deploy_5xx` introduces no new template, it multiplies an existing one,
+#: and Lethe cannot see it. Said plainly rather than left implied by an absence.
 
 
 @dataclass(frozen=True)

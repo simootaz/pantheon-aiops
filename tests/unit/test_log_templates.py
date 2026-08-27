@@ -19,6 +19,8 @@ from agents.log_clustering.templates import (
     MIN_GROUP_FOR_VARIABILITY,
     Clustering,
     cluster,
+    compare,
+    learn,
     novel,
     stack_traces,
 )
@@ -285,3 +287,108 @@ def test_an_empty_or_useless_window_produces_nothing_rather_than_failing(
     result = cluster(lines)
     assert isinstance(result, Clustering)
     assert stack_traces(lines) == []
+
+
+# --- absence has to be surprising, not merely absent -----------------------------
+
+
+def _rare(count: int) -> list[str]:
+    """A group large enough to template, so the surprise test is what decides."""
+    return [json.dumps({"msg": "occasional", "n": index}) for index in range(count)]
+
+
+def test_a_template_too_rare_for_its_absence_to_mean_anything_is_not_novel() -> None:
+    """Measured: nineteen novel templates for one disk fault, eighteen of them
+    `request failed` variants at count one or two.
+
+    Those are not new events. They are combinations the reference happened not
+    to contain, and a longer reference would have contained them.
+    """
+    incident = cluster(_requests(4000) + _rare(MIN_GROUP_FOR_VARIABILITY))
+    reference = cluster(_requests(800))
+
+    assert any("occasional" in t.rendered for t in incident.templates), "fixture broken"
+    assert not any(t.shape_only for t in incident.templates), (
+        "the rare group fell under the shape-only floor, so the surprise test never ran"
+    )
+    assert novel(incident, reference) == []
+
+
+def test_a_template_common_enough_for_its_absence_to_be_surprising_is_novel() -> None:
+    """The control. A filter that rejected everything would pass the test above."""
+    reference = cluster(_requests(2000))
+    loud = [json.dumps({"msg": "disk usage high", "used_percent": p}) for p in range(60)]
+    incident = cluster(_requests(2000) + loud)
+
+    fresh = novel(incident, reference)
+    assert len(fresh) == 1
+    assert "disk usage high" in fresh[0].rendered
+
+
+def test_the_bar_scales_with_the_reference_rather_than_being_a_fixed_count() -> None:
+    """The reason this is a test and not a threshold.
+
+    The SAME template at the SAME count is surprising against a long reference
+    and unremarkable against a short one, because a short reference had little
+    opportunity to contain it. A fixed minimum count cannot express that, and
+    would be a number fitted to whatever window size it was chosen on.
+    """
+    incident = cluster(_requests(4000) + _rare(MIN_GROUP_FOR_VARIABILITY))
+
+    assert novel(incident, cluster(_requests(800))) == [], (
+        "12 lines in 4012 is not surprising in an 800-line reference"
+    )
+    assert len(novel(incident, cluster(_requests(4000)))) == 1, (
+        "12 lines in 4012 IS surprising in a 4000-line reference"
+    )
+
+
+# --- one classification, shared between the windows being compared ---------------
+
+
+def _coded(count: int) -> list[str]:
+    """An event whose `code` field has five values, so how MANY of it a window
+    holds decides whether that field survives the ratio rule."""
+    return [json.dumps({"msg": "err", "code": index % 5, "n": index}) for index in range(count)]
+
+
+def test_a_shared_classification_templates_the_same_event_the_same_way() -> None:
+    """Measured, and the reason `compare()` exists.
+
+    Variability is inferred from a group, so the group's SIZE changes the
+    inference. Five `code` values among 500 lines are a category and split the
+    event five ways; the same five among fifteen lines exceed the ratio and are
+    masked into one. Diffing those two decompositions measures how much of the
+    event each window held and reports it as novelty.
+    """
+    alone_many = cluster(_coded(500))
+    alone_few = cluster(_coded(15))
+    assert len(alone_many.templates) != len(alone_few.templates), (
+        "the fixture no longer demonstrates size-dependent templating"
+    )
+
+    shared_few, shared_many = compare(_coded(15), _coded(500))
+    err_few = {t.signature for t in shared_few.templates}
+    err_many = {t.signature for t in shared_many.templates}
+
+    assert err_few <= err_many, (
+        "under one classification the smaller window's templates must be a "
+        "subset of the larger's, not a different decomposition"
+    )
+
+
+def test_learning_on_one_corpus_and_applying_it_to_another_is_stable() -> None:
+    """Two windows of the same traffic, templated identically."""
+    classification = learn(_requests(400))
+    left = cluster(_requests(200), classification)
+    right = cluster(_requests(200), classification)
+
+    assert left.signatures == right.signatures
+    assert len(left.templates) == 1
+
+
+def test_a_clean_window_compared_with_itself_reports_nothing_novel() -> None:
+    """The zero case, through the whole `compare` path rather than by hand."""
+    lines = _requests(_enough())
+    incident, reference = compare(lines, lines)
+    assert novel(incident, reference) == []
