@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from api import __version__
 from api.routers import agents, alerts, health, investigations, providers, webhooks
 from core.bus import EventBus, InMemoryEventBus
+from core.observability.logging import configure as configure_logging
 from core.orchestrator import register_implemented
 from core.store.investigations import InvestigationStore
 from core.store.postgres import PostgresInvestigationStore
@@ -54,6 +55,11 @@ def create_app(
         version=__version__,
     )
 
+    # Before anything can log. A handler installed later would let every line
+    # emitted during construction out unredacted, and construction is where a
+    # misconfigured credential is most likely to be mentioned.
+    configure_logging()
+
     app.state.event_bus = event_bus if event_bus is not None else InMemoryEventBus()
     app.state.investigation_store = (
         investigation_store if investigation_store is not None else PostgresInvestigationStore()
@@ -75,5 +81,5 @@ def create_app(
     return app
 
 
-# TODO: Phase 2 - add lifespan (pool shutdown), middleware, and the agents and
-# approvals routers
+# TODO: Phase 3 - add lifespan (pool shutdown), middleware, and the approvals router.
+# The agents router landed in Phase 1 and logging is configured above.

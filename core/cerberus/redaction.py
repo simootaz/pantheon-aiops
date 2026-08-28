@@ -14,8 +14,9 @@ The third is the reason Cerberus exists. A secret that reaches a prompt has left
 the building: it is in a third party's logs, unauditable and unrevocable. See
 docs/adr/0005-credential-brokering.md.
 
-Wiring these into the actual sinks is Phase 2-3 work; the function itself is
-usable and tested now.
+All three sinks are wired: `core/llm/tracing.py` redacts a prompt before it
+reaches a span, `core/observability/logging.py` filters every log record, and
+prompts are digested rather than carried.
 
 Phase: 3 - Guardrails, Approvals & Write Actions
 """
