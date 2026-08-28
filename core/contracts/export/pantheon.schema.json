@@ -552,6 +552,58 @@
       "title": "ActionReceipt",
       "type": "object"
     },
+    "AgentAccounting": {
+      "additionalProperties": false,
+      "description": "What one agent's step consumed, beside what it was allowed.\n\nEVERY FIGURE CARRIES ITS CEILING\n----------------------------------\n\"spent 16000 tokens\" cannot answer the question anybody asks, which is\nwhether that was close to the limit. 16000 of 16384 and 16000 of 200000 are\ndifferent runs and the same number.\n\nThree resources because there are three ceilings on `AgentBudget`, and a\nbreakdown missing one cannot explain a DEGRADED step that hit it. A run\nstopped by its token budget and one stopped by its clock look identical from\nthe outside, and they are fixed differently.",
+      "properties": {
+        "agent": {
+          "description": "Codename, e.g. 'argus'.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "second_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Second Ceiling",
+          "type": "integer"
+        },
+        "seconds": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "token_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Token Ceiling",
+          "type": "integer"
+        },
+        "tokens_spent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Spent",
+          "type": "integer"
+        },
+        "tool_call_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Call Ceiling",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "AgentAccounting",
+      "type": "object"
+    },
     "AgentBudget": {
       "additionalProperties": false,
       "description": "Ceilings the dispatcher enforces for a single agent invocation.",
@@ -1535,6 +1587,14 @@
       "additionalProperties": false,
       "description": "One end-to-end run, from trigger to Verdict.",
       "properties": {
+        "accounting": {
+          "description": "What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.",
+          "items": {
+            "$ref": "#/$defs/AgentAccounting"
+          },
+          "title": "Accounting",
+          "type": "array"
+        },
         "audit": {
           "description": "Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.",
           "items": {

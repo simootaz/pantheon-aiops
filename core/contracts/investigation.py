@@ -61,6 +61,47 @@ class Trigger(ContractModel):
     payload: dict[str, Any] = Field(default_factory=dict, description="Verbatim, unparsed.")
 
 
+class AgentAccounting(ContractModel):
+    """What one agent's step consumed, beside what it was allowed.
+
+    EVERY FIGURE CARRIES ITS CEILING
+    ----------------------------------
+    "spent 16000 tokens" cannot answer the question anybody asks, which is
+    whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+    different runs and the same number.
+
+    Three resources because there are three ceilings on `AgentBudget`, and a
+    breakdown missing one cannot explain a DEGRADED step that hit it. A run
+    stopped by its token budget and one stopped by its clock look identical from
+    the outside, and they are fixed differently.
+    """
+
+    agent: str = Field(description="Codename, e.g. 'argus'.")
+
+    tokens_spent: int = Field(default=0, ge=0)
+    token_ceiling: int = Field(default=0, ge=0)
+    tool_calls: int = Field(default=0, ge=0)
+    tool_call_ceiling: int = Field(default=0, ge=0)
+    seconds: float = Field(default=0.0, ge=0.0)
+    second_ceiling: int = Field(default=0, ge=0)
+
+    @property
+    def hit_a_ceiling(self) -> str | None:
+        """Which ceiling this step reached, if any.
+
+        Computed rather than stored: a stored flag and the numbers beside it
+        would be two records of one fact, and the day they disagree is the day
+        somebody trusts the flag.
+        """
+        if self.token_ceiling and self.tokens_spent >= self.token_ceiling:
+            return "tokens"
+        if self.tool_call_ceiling and self.tool_calls >= self.tool_call_ceiling:
+            return "tool_calls"
+        if self.second_ceiling and self.seconds >= self.second_ceiling:
+            return "seconds"
+        return None
+
+
 class Investigation(ContractModel):
     """One end-to-end run, from trigger to Verdict."""
 
@@ -83,6 +124,14 @@ class Investigation(ContractModel):
     resolutions: list[ResolutionRecord] = Field(
         default_factory=list,
         description="Every Delphi model resolution made during this run, in order.",
+    )
+    accounting: list[AgentAccounting] = Field(
+        default_factory=list,
+        description=(
+            "What each agent consumed against what it was allowed. One entry per "
+            "dispatched step, including the steps that degraded - a run that "
+            "exhausted its budget is the one anybody asks about."
+        ),
     )
     audit: list[AuditEntry] = Field(
         default_factory=list,
@@ -116,4 +165,5 @@ class Investigation(ContractModel):
         return self
 
 
-# TODO: Phase 2 - add per-agent budget accounting and a timing breakdown
+# TODO: Phase 4 - link an Action back to the Finding that motivated it. Needs the
+# write path, which does not exist yet, so the field would have no writer.

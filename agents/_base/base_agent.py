@@ -79,7 +79,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from core.bus import EventBus
 from core.contracts.events import FindingProducedEvent
 from core.contracts.finding import Finding, FindingKind, Severity
-from core.contracts.investigation import Trigger
+from core.contracts.investigation import AgentAccounting, Trigger
 from core.contracts.llm import ResolutionRecord
 from core.contracts.manifest import AgentManifest
 from core.guardrails.budget import TokenBudgetExceeded, TokenMeter
@@ -166,6 +166,9 @@ class AgentOutcome:
     started_at: datetime
     finished_at: datetime
     tool_calls: int
+    #: What this run consumed, beside what it was allowed. Built by `run()` from
+    #: the meter and the manifest, so a caller does not have to reach into either.
+    accounting: AgentAccounting | None = None
     degraded_reason: str | None = None
     retryable: bool = True
     #: Which model answered, and why, for every consultation this run made.
@@ -323,13 +326,27 @@ class BaseAgent(ABC):
         stamped = self._collapse_duplicates(stamped)
         await self._publish(ctx, stamped)
 
+        finished = datetime.now(UTC)
+        budget = self.manifest.budget
         return AgentOutcome(
             agent=self.codename,
             status=status,
             findings=stamped,
             started_at=started,
-            finished_at=datetime.now(UTC),
+            finished_at=finished,
             tool_calls=tools.calls_made,
+            # Built on every exit path, degraded included. A run stopped by its
+            # budget is the one anybody asks about, and an accounting record
+            # that only survives success cannot answer for it.
+            accounting=AgentAccounting(
+                agent=self.codename,
+                tokens_spent=ctx.meter.spent if ctx.meter else 0,
+                token_ceiling=budget.max_tokens,
+                tool_calls=tools.calls_made,
+                tool_call_ceiling=budget.max_tool_calls,
+                seconds=(finished - started).total_seconds(),
+                second_ceiling=budget.max_seconds,
+            ),
             degraded_reason=reason,
             retryable=retryable,
             # Read off the context on every exit path, degraded included. An

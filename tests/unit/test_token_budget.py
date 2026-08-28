@@ -233,3 +233,67 @@ def test_the_meter_is_reported_in_a_readable_shape() -> None:
     meter.charge(requested_by="argus", prompt_tokens=30, completion_tokens=0)
 
     assert meter.as_dict() == {"ceiling": 100, "spent": 30, "remaining": 70, "calls": 1}
+
+
+# --- what a run consumed, recorded beside what it was allowed -------------------------
+
+
+def test_every_figure_carries_its_ceiling() -> None:
+    """ "spent 16000 tokens" cannot answer the question anybody asks, which is
+    whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+    different runs and the same number."""
+    agent = _Consulting(times=1, max_tokens=10, delphi=_Gateway())
+    outcome = asyncio.run(agent.run(a_context()))
+
+    accounting = outcome.accounting
+    assert accounting is not None
+    assert accounting.token_ceiling == agent.manifest.budget.max_tokens
+    assert accounting.tool_call_ceiling == agent.manifest.budget.max_tool_calls
+    assert accounting.second_ceiling == agent.manifest.budget.max_seconds
+
+
+def test_a_degraded_run_is_still_accounted_for() -> None:
+    """A run stopped by its budget is the one anybody asks about, and a record
+    that only survives success cannot answer for it."""
+    agent = _Consulting(times=1, max_tokens=1_000_000, delphi=_Gateway())
+
+    outcome = asyncio.run(agent.run(a_context()))
+
+    assert outcome.status is AgentStatus.DEGRADED
+    assert outcome.accounting is not None
+    assert outcome.accounting.agent == agent.codename
+
+
+def test_the_ceiling_that_was_hit_is_named() -> None:
+    """A run stopped by its token budget and one stopped by its clock look
+    identical from the outside, and they are fixed differently."""
+    from core.contracts.investigation import AgentAccounting
+
+    tokens = AgentAccounting(agent="a", tokens_spent=100, token_ceiling=100)
+    calls = AgentAccounting(agent="a", tool_calls=25, tool_call_ceiling=25)
+    clock = AgentAccounting(agent="a", seconds=180.0, second_ceiling=180)
+    fine = AgentAccounting(agent="a", tokens_spent=1, token_ceiling=100)
+
+    assert tokens.hit_a_ceiling == "tokens"
+    assert calls.hit_a_ceiling == "tool_calls"
+    assert clock.hit_a_ceiling == "seconds"
+    assert fine.hit_a_ceiling is None
+
+
+def test_an_unset_ceiling_is_never_reported_as_hit() -> None:
+    """Zero means "not declared", and `0 >= 0` would report every unset ceiling
+    as reached - turning a missing budget into a permanent alarm."""
+    from core.contracts.investigation import AgentAccounting
+
+    assert AgentAccounting(agent="a").hit_a_ceiling is None
+
+
+def test_seconds_are_measured_not_declared() -> None:
+    agent = _Consulting(times=1, max_tokens=10, delphi=_Gateway())
+    outcome = asyncio.run(agent.run(a_context()))
+
+    assert outcome.accounting is not None
+    assert outcome.accounting.seconds >= 0.0
+    assert outcome.accounting.seconds == pytest.approx(
+        (outcome.finished_at - outcome.started_at).total_seconds(), abs=0.01
+    )

@@ -8,12 +8,6 @@ import "fmt"
 import "reflect"
 import "time"
 
-type EvidenceSubject_0 = ResourceRef
-
-const BlastRadiusNamespace BlastRadius = "namespace"
-
-type A2UIActionFunctionCall_0 *string
-
 // A declared action on a component.
 //
 // A2UI carries either a server event or a local function call, both referenced
@@ -29,57 +23,23 @@ type A2UIAction struct {
 	FunctionCall interface{} `json:"function_call,omitempty,omitzero" yaml:"function_call,omitempty" mapstructure:"function_call,omitempty"`
 }
 
-type A2UIComponentType string
+// Values returned with the action.
+type A2UIActionContext map[string]interface{}
 
-var enumValues_A2UIComponentType = []interface{}{
-	"Row",
-	"Column",
-	"Card",
-	"List",
-	"Text",
-	"Image",
-	"Icon",
-	"Divider",
-	"TextField",
-	"CheckBox",
-	"ChoicePicker",
-	"DateTimeInput",
-	"Button",
-}
+type A2UIActionEventName_0 *string
+
+type A2UIActionFunctionCall_0 *string
 
 // UnmarshalJSON implements json.Unmarshaler.
-func (j *A2UIComponentType) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
+func (j *A2UIAction) UnmarshalJSON(value []byte) error {
+	type Plain A2UIAction
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
-	var ok bool
-	for _, expected := range enumValues_A2UIComponentType {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UIComponentType, v)
-	}
-	*j = A2UIComponentType(v)
+	*j = A2UIAction(plain)
 	return nil
 }
-
-const A2UIComponentTypeRow A2UIComponentType = "Row"
-const A2UIComponentTypeColumn A2UIComponentType = "Column"
-const A2UIComponentTypeCard A2UIComponentType = "Card"
-const A2UIComponentTypeList A2UIComponentType = "List"
-const A2UIComponentTypeText A2UIComponentType = "Text"
-const A2UIComponentTypeImage A2UIComponentType = "Image"
-const A2UIComponentTypeIcon A2UIComponentType = "Icon"
-const A2UIComponentTypeDivider A2UIComponentType = "Divider"
-const A2UIComponentTypeTextField A2UIComponentType = "TextField"
-const A2UIComponentTypeCheckBox A2UIComponentType = "CheckBox"
-const A2UIComponentTypeChoicePicker A2UIComponentType = "ChoicePicker"
-const A2UIComponentTypeDateTimeInput A2UIComponentType = "DateTimeInput"
-const A2UIComponentTypeButton A2UIComponentType = "Button"
 
 // What the client can render, declared once at run start.
 //
@@ -122,18 +82,37 @@ func (j *A2UIClientCapabilities) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *A2UIAction) UnmarshalJSON(value []byte) error {
-	type Plain A2UIAction
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = A2UIAction(plain)
-	return nil
-}
+// One component in a surface. Authored by an agent, rendered by the host.
+//
+// Note what is absent: no styling, no HTML, no script, and no identity fields.
+// “icon_url“ and “agent_display_name“ live on A2UISurface and are set by
+// the orchestrator, so an agent cannot present itself as another agent or as
+// Pantheon itself.
+type A2UIComponent struct {
+	// Action corresponds to the JSON schema field "action".
+	Action *A2UIComponentAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
 
-type A2UIComponentAction_0 = A2UIAction
+	// For Image. A reference Pantheon resolves; never a URL an agent supplies.
+	ArtifactRef *A2UIComponentArtifactRef `json:"artifact_ref,omitempty,omitzero" yaml:"artifact_ref,omitempty" mapstructure:"artifact_ref,omitempty"`
+
+	// Child component ids.
+	Children []string `json:"children,omitempty,omitzero" yaml:"children,omitempty" mapstructure:"children,omitempty"`
+
+	// Must be in the allowlist.
+	Component A2UIComponentType `json:"component" yaml:"component" mapstructure:"component"`
+
+	// RFC 6901 JSON Pointer into the surface data model.
+	DataPath interface{} `json:"data_path,omitempty,omitzero" yaml:"data_path,omitempty" mapstructure:"data_path,omitempty"`
+
+	// Unique within its surface.
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Input label, where the type takes one.
+	Label interface{} `json:"label,omitempty,omitzero" yaml:"label,omitempty" mapstructure:"label,omitempty"`
+
+	// Display text, where the type takes one.
+	Text interface{} `json:"text,omitempty,omitzero" yaml:"text,omitempty" mapstructure:"text,omitempty"`
+}
 
 // A declared action on a component.
 //
@@ -172,68 +151,6 @@ func (j *A2UIComponentAction) UnmarshalJSON(value []byte) error {
 	*j = A2UIComponentAction(plain)
 	return nil
 }
-
-type ArtifactKind string
-
-var enumValues_ArtifactKind = []interface{}{
-	"image",
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *ArtifactKind) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_ArtifactKind {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ArtifactKind, v)
-	}
-	*j = ArtifactKind(v)
-	return nil
-}
-
-const ArtifactKindImage ArtifactKind = "image"
-
-// A reference to an artifact Pantheon produced and stored. Never a URL.
-//
-// Same shape as CredentialRef, for the same reason: the agent names a thing it
-// is allowed to name, and the server resolves it. A URL field would let an
-// agent express an arbitrary destination, and the browser fetching it is a
-// data-exfiltration channel - the agent encodes what it learned into the URL
-// and the browser delivers it.
-//
-// A server-side URL proxy was considered and rejected. It still accepts an
-// agent-authored URL and defends by filtering, which is one bypass away from
-// failing. A reference has nothing to filter.
-//
-// Note what is absent: no URL, no host, no bucket. The bucket is fixed
-// server-side, so the agent cannot name one. Resolution happens only in
-// core.ui.artifact_resolution, which agents cannot import - the same boundary
-// as core.cerberus.redemption.
-type ArtifactRef struct {
-	// Accessible description. Rendered, not fetched.
-	AltText string `json:"alt_text,omitempty,omitzero" yaml:"alt_text,omitempty" mapstructure:"alt_text,omitempty"`
-
-	// Resolution rejects a reference from a different investigation.
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// Object key within Pantheon's own artifact bucket.
-	Key string `json:"key" yaml:"key" mapstructure:"key"`
-
-	// Kind corresponds to the JSON schema field "kind".
-	Kind ArtifactKind `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
-}
-
-type InvestigationVerdict_0 = Verdict
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
 
 // For Image. A reference Pantheon resolves; never a URL an agent supplies.
 type A2UIComponentArtifactRef struct {
@@ -279,36 +196,56 @@ type A2UIComponentLabel_0 *string
 
 type A2UIComponentText_0 *string
 
-// One component in a surface. Authored by an agent, rendered by the host.
-//
-// Note what is absent: no styling, no HTML, no script, and no identity fields.
-// “icon_url“ and “agent_display_name“ live on A2UISurface and are set by
-// the orchestrator, so an agent cannot present itself as another agent or as
-// Pantheon itself.
-type A2UIComponent struct {
-	// Action corresponds to the JSON schema field "action".
-	Action *A2UIComponentAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
+type A2UIComponentType string
 
-	// For Image. A reference Pantheon resolves; never a URL an agent supplies.
-	ArtifactRef *A2UIComponentArtifactRef `json:"artifact_ref,omitempty,omitzero" yaml:"artifact_ref,omitempty" mapstructure:"artifact_ref,omitempty"`
+const A2UIComponentTypeButton A2UIComponentType = "Button"
+const A2UIComponentTypeCard A2UIComponentType = "Card"
+const A2UIComponentTypeCheckBox A2UIComponentType = "CheckBox"
+const A2UIComponentTypeChoicePicker A2UIComponentType = "ChoicePicker"
+const A2UIComponentTypeColumn A2UIComponentType = "Column"
+const A2UIComponentTypeDateTimeInput A2UIComponentType = "DateTimeInput"
+const A2UIComponentTypeDivider A2UIComponentType = "Divider"
+const A2UIComponentTypeIcon A2UIComponentType = "Icon"
+const A2UIComponentTypeImage A2UIComponentType = "Image"
+const A2UIComponentTypeList A2UIComponentType = "List"
+const A2UIComponentTypeRow A2UIComponentType = "Row"
+const A2UIComponentTypeText A2UIComponentType = "Text"
+const A2UIComponentTypeTextField A2UIComponentType = "TextField"
 
-	// Child component ids.
-	Children []string `json:"children,omitempty,omitzero" yaml:"children,omitempty" mapstructure:"children,omitempty"`
+var enumValues_A2UIComponentType = []interface{}{
+	"Row",
+	"Column",
+	"Card",
+	"List",
+	"Text",
+	"Image",
+	"Icon",
+	"Divider",
+	"TextField",
+	"CheckBox",
+	"ChoicePicker",
+	"DateTimeInput",
+	"Button",
+}
 
-	// Must be in the allowlist.
-	Component A2UIComponentType `json:"component" yaml:"component" mapstructure:"component"`
-
-	// RFC 6901 JSON Pointer into the surface data model.
-	DataPath interface{} `json:"data_path,omitempty,omitzero" yaml:"data_path,omitempty" mapstructure:"data_path,omitempty"`
-
-	// Unique within its surface.
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// Input label, where the type takes one.
-	Label interface{} `json:"label,omitempty,omitzero" yaml:"label,omitempty" mapstructure:"label,omitempty"`
-
-	// Display text, where the type takes one.
-	Text interface{} `json:"text,omitempty,omitzero" yaml:"text,omitempty" mapstructure:"text,omitempty"`
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UIComponentType) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_A2UIComponentType {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UIComponentType, v)
+	}
+	*j = A2UIComponentType(v)
+	return nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -331,13 +268,6 @@ func (j *A2UIComponent) UnmarshalJSON(value []byte) error {
 	*j = A2UIComponent(plain)
 	return nil
 }
-
-// Initial values bound by JSON Pointer.
-type A2UISurfaceDataModel map[string]interface{}
-
-type A2UISurfaceIconUrl_0 *string
-
-type A2UISurfaceInvestigationId_0 *string
 
 // A renderable surface, assembled by Pantheon rather than by an agent.
 //
@@ -375,6 +305,47 @@ type A2UISurface struct {
 	Root string `json:"root" yaml:"root" mapstructure:"root"`
 }
 
+// Initial values bound by JSON Pointer.
+type A2UISurfaceDataModel map[string]interface{}
+
+type A2UISurfaceIconUrl_0 *string
+
+type A2UISurfaceInvestigationId_0 *string
+
+type A2UISurfaceKind string
+
+const A2UISurfaceKindAccessRequest A2UISurfaceKind = "access_request"
+const A2UISurfaceKindApproval A2UISurfaceKind = "approval"
+const A2UISurfaceKindNotice A2UISurfaceKind = "notice"
+const A2UISurfaceKindReport A2UISurfaceKind = "report"
+
+var enumValues_A2UISurfaceKind = []interface{}{
+	"approval",
+	"access_request",
+	"report",
+	"notice",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *A2UISurfaceKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_A2UISurfaceKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UISurfaceKind, v)
+	}
+	*j = A2UISurfaceKind(v)
+	return nil
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *A2UISurface) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
@@ -407,211 +378,6 @@ func (j *A2UISurface) UnmarshalJSON(value []byte) error {
 	*j = A2UISurface(plain)
 	return nil
 }
-
-type A2UISurfaceKind string
-
-var enumValues_A2UISurfaceKind = []interface{}{
-	"approval",
-	"access_request",
-	"report",
-	"notice",
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *A2UISurfaceKind) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_A2UISurfaceKind {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_A2UISurfaceKind, v)
-	}
-	*j = A2UISurfaceKind(v)
-	return nil
-}
-
-const A2UISurfaceKindApproval A2UISurfaceKind = "approval"
-const A2UISurfaceKindAccessRequest A2UISurfaceKind = "access_request"
-const A2UISurfaceKindReport A2UISurfaceKind = "report"
-const A2UISurfaceKindNotice A2UISurfaceKind = "notice"
-
-type FindingSubject_0 = ResourceRef
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *ArtifactRef) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in ArtifactRef: required")
-	}
-	if _, ok := raw["key"]; raw != nil && !ok {
-		return fmt.Errorf("field key in ArtifactRef: required")
-	}
-	type Plain ArtifactRef
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["alt_text"]; !ok || v == nil {
-		plain.AltText = ""
-	}
-	if v, ok := raw["kind"]; !ok || v == nil {
-		plain.Kind = "image"
-	}
-	*j = ArtifactRef(plain)
-	return nil
-}
-
-type A2UIActionEventName_0 *string
-
-type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
-
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
-const BaselineEstimatorNotApplicable BaselineEstimator = "not_applicable"
-const BaselineEstimatorMeanStddev BaselineEstimator = "mean_stddev"
-const BaselineEstimatorMedianMad BaselineEstimator = "median_mad"
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *BaselineEstimator) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_BaselineEstimator {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_BaselineEstimator, v)
-	}
-	*j = BaselineEstimator(v)
-	return nil
-}
-
-var enumValues_BaselineEstimator = []interface{}{
-	"median_mad",
-	"mean_stddev",
-	"not_applicable",
-}
-
-type BaselineEstimator string
-
-const AuthModeQueryParam AuthMode = "query_param"
-const AuthModeHeaderKey AuthMode = "header_key"
-const AuthModeBearer AuthMode = "bearer"
-const AuthModeNone AuthMode = "none"
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *AuthMode) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_AuthMode {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_AuthMode, v)
-	}
-	*j = AuthMode(v)
-	return nil
-}
-
-var enumValues_AuthMode = []interface{}{
-	"none",
-	"bearer",
-	"header_key",
-	"query_param",
-}
-
-type AuthMode string
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *AuditEntry) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["actor"]; raw != nil && !ok {
-		return fmt.Errorf("field actor in AuditEntry: required")
-	}
-	if _, ok := raw["at"]; raw != nil && !ok {
-		return fmt.Errorf("field at in AuditEntry: required")
-	}
-	if _, ok := raw["event"]; raw != nil && !ok {
-		return fmt.Errorf("field event in AuditEntry: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in AuditEntry: required")
-	}
-	type Plain AuditEntry
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["action"]; !ok || v == nil {
-		plain.Action = "not_applicable"
-	}
-	if v, ok := raw["detail"]; !ok || v == nil {
-		plain.Detail = ""
-	}
-	*j = AuditEntry(plain)
-	return nil
-}
-
-// One immutable line in the credential audit log.
-//
-// Attached to the Investigation, which agents can see - safe because every
-// reference here is a CredentialRef and never a value.
-type AuditEntry struct {
-	// NOT_APPLICABLE for events that concern no single access.
-	Action CredentialAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
-
-	// Agent codename, user, or 'system'.
-	Actor string `json:"actor" yaml:"actor" mapstructure:"actor"`
-
-	// At corresponds to the JSON schema field "at".
-	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
-
-	// CredentialRef corresponds to the JSON schema field "credential_ref".
-	CredentialRef *AuditEntryCredentialRef `json:"credential_ref,omitempty,omitzero" yaml:"credential_ref,omitempty" mapstructure:"credential_ref,omitempty"`
-
-	// Human-readable context. Never a credential.
-	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
-
-	// Event corresponds to the JSON schema field "event".
-	Event AuditEvent `json:"event" yaml:"event" mapstructure:"event"`
-
-	// Id corresponds to the JSON schema field "id".
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
-
-	// LeaseId corresponds to the JSON schema field "lease_id".
-	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
-}
-
-type AuditEntryLeaseId_0 *string
-
-type AuditEntryInvestigationId_0 *string
 
 // An agent asking for a capability, with the reason it is asking.
 //
@@ -724,194 +490,6 @@ func (j *AccessRequestedEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type ApprovalState string
-
-var enumValues_ApprovalState = []interface{}{
-	"not_required",
-	"pending",
-	"approved",
-	"rejected",
-	"expired",
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *ApprovalState) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_ApprovalState {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ApprovalState, v)
-	}
-	*j = ApprovalState(v)
-	return nil
-}
-
-const ApprovalStateNotRequired ApprovalState = "not_required"
-const ApprovalStatePending ApprovalState = "pending"
-const ApprovalStateApproved ApprovalState = "approved"
-const ApprovalStateRejected ApprovalState = "rejected"
-const ApprovalStateExpired ApprovalState = "expired"
-
-type BlastRadius string
-
-const AuditEventRotated AuditEvent = "rotated"
-const AuditEventBreakGlass AuditEvent = "break_glass"
-const AuditEventGrantRevoked AuditEvent = "grant_revoked"
-const AuditEventLeaseRevoked AuditEvent = "lease_revoked"
-const AuditEventLeaseExpired AuditEvent = "lease_expired"
-const BlastRadiusCluster BlastRadius = "cluster"
-const BlastRadiusMultiCluster BlastRadius = "multi_cluster"
-const AuditEventLeaseRenewed AuditEvent = "lease_renewed"
-const AuditEventLeaseUsed AuditEvent = "lease_used"
-const AuditEventLeaseMinted AuditEvent = "lease_minted"
-const AuditEventApprovalRequested AuditEvent = "approval_requested"
-const AuditEventDenied AuditEvent = "denied"
-const AuditEventGranted AuditEvent = "granted"
-const AuditEventRequested AuditEvent = "requested"
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *AuditEvent) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_AuditEvent {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_AuditEvent, v)
-	}
-	*j = AuditEvent(v)
-	return nil
-}
-
-var enumValues_AuditEvent = []interface{}{
-	"requested",
-	"granted",
-	"denied",
-	"approval_requested",
-	"lease_minted",
-	"lease_used",
-	"lease_renewed",
-	"lease_expired",
-	"lease_revoked",
-	"grant_revoked",
-	"break_glass",
-	"rotated",
-}
-
-type AuditEvent string
-
-// Operation arguments, e.g. {'replicas': 4}.
-type ActionParameters map[string]interface{}
-
-type ActionReceiptLeaseId_0 *string
-
-// What happened when an Action ran. Written once, never amended.
-type ActionReceipt struct {
-	// At corresponds to the JSON schema field "at".
-	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
-
-	// Which connector executed it.
-	Connector string `json:"connector" yaml:"connector" mapstructure:"connector"`
-
-	// Human-readable outcome. Never a credential.
-	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
-
-	// The lease it was executed under.
-	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
-
-	// State corresponds to the JSON schema field "state".
-	State ExecutionState `json:"state" yaml:"state" mapstructure:"state"`
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *ActionReceipt) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["at"]; raw != nil && !ok {
-		return fmt.Errorf("field at in ActionReceipt: required")
-	}
-	if _, ok := raw["connector"]; raw != nil && !ok {
-		return fmt.Errorf("field connector in ActionReceipt: required")
-	}
-	if _, ok := raw["state"]; raw != nil && !ok {
-		return fmt.Errorf("field state in ActionReceipt: required")
-	}
-	type Plain ActionReceipt
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["detail"]; !ok || v == nil {
-		plain.Detail = ""
-	}
-	*j = ActionReceipt(plain)
-	return nil
-}
-
-type ActionRollback_0 *string
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *AuditEntryCredentialRef) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	var auditEntryCredentialRef_0 AuditEntryCredentialRef_0
-	var errs []error
-	if err := auditEntryCredentialRef_0.UnmarshalJSON(value); err != nil {
-		errs = append(errs, err)
-	}
-	if len(errs) == 1 {
-		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
-	}
-	type Plain AuditEntryCredentialRef
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = AuditEntryCredentialRef(plain)
-	return nil
-}
-
-// A reference to a stored credential. Never the credential.
-//
-// Safe to persist, to attach to an Investigation and to render in the
-// dashboard, because it identifies without disclosing.
-type AuditEntryCredentialRef struct {
-	// Opaque identifier of the stored credential.
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// Human-readable label, e.g. 'prod-postgres'.
-	Name string `json:"name" yaml:"name" mapstructure:"name"`
-
-	// Scope corresponds to the JSON schema field "scope".
-	Scope *CredentialScope `json:"scope,omitempty,omitzero" yaml:"scope,omitempty" mapstructure:"scope,omitempty"`
-
-	// Type corresponds to the JSON schema field "type".
-	Type CredentialType `json:"type" yaml:"type" mapstructure:"type"`
-}
-
-// Values returned with the action.
-type A2UIActionContext map[string]interface{}
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
 // A remediation Pantheon proposes, and may later execute.
 type Action struct {
 	// ApprovalState corresponds to the JSON schema field "approval_state".
@@ -953,6 +531,58 @@ type Action struct {
 	// Target corresponds to the JSON schema field "target".
 	Target ResourceRef `json:"target" yaml:"target" mapstructure:"target"`
 }
+
+// Operation arguments, e.g. {'replicas': 4}.
+type ActionParameters map[string]interface{}
+
+// What happened when an Action ran. Written once, never amended.
+type ActionReceipt struct {
+	// At corresponds to the JSON schema field "at".
+	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
+
+	// Which connector executed it.
+	Connector string `json:"connector" yaml:"connector" mapstructure:"connector"`
+
+	// Human-readable outcome. Never a credential.
+	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
+
+	// The lease it was executed under.
+	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
+
+	// State corresponds to the JSON schema field "state".
+	State ExecutionState `json:"state" yaml:"state" mapstructure:"state"`
+}
+
+type ActionReceiptLeaseId_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ActionReceipt) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["at"]; raw != nil && !ok {
+		return fmt.Errorf("field at in ActionReceipt: required")
+	}
+	if _, ok := raw["connector"]; raw != nil && !ok {
+		return fmt.Errorf("field connector in ActionReceipt: required")
+	}
+	if _, ok := raw["state"]; raw != nil && !ok {
+		return fmt.Errorf("field state in ActionReceipt: required")
+	}
+	type Plain ActionReceipt
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["detail"]; !ok || v == nil {
+		plain.Detail = ""
+	}
+	*j = ActionReceipt(plain)
+	return nil
+}
+
+type ActionRollback_0 *string
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Action) UnmarshalJSON(value []byte) error {
@@ -996,6 +626,95 @@ func (j *Action) UnmarshalJSON(value []byte) error {
 		plain.ExecutionState = "proposed"
 	}
 	*j = Action(plain)
+	return nil
+}
+
+// What one agent's step consumed, beside what it was allowed.
+//
+// EVERY FIGURE CARRIES ITS CEILING
+// ----------------------------------
+// "spent 16000 tokens" cannot answer the question anybody asks, which is
+// whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+// different runs and the same number.
+//
+// Three resources because there are three ceilings on `AgentBudget`, and a
+// breakdown missing one cannot explain a DEGRADED step that hit it. A run
+// stopped by its token budget and one stopped by its clock look identical from
+// the outside, and they are fixed differently.
+type AgentAccounting struct {
+	// Codename, e.g. 'argus'.
+	Agent string `json:"agent" yaml:"agent" mapstructure:"agent"`
+
+	// SecondCeiling corresponds to the JSON schema field "second_ceiling".
+	SecondCeiling int `json:"second_ceiling,omitempty,omitzero" yaml:"second_ceiling,omitempty" mapstructure:"second_ceiling,omitempty"`
+
+	// Seconds corresponds to the JSON schema field "seconds".
+	Seconds float64 `json:"seconds,omitempty,omitzero" yaml:"seconds,omitempty" mapstructure:"seconds,omitempty"`
+
+	// TokenCeiling corresponds to the JSON schema field "token_ceiling".
+	TokenCeiling int `json:"token_ceiling,omitempty,omitzero" yaml:"token_ceiling,omitempty" mapstructure:"token_ceiling,omitempty"`
+
+	// TokensSpent corresponds to the JSON schema field "tokens_spent".
+	TokensSpent int `json:"tokens_spent,omitempty,omitzero" yaml:"tokens_spent,omitempty" mapstructure:"tokens_spent,omitempty"`
+
+	// ToolCallCeiling corresponds to the JSON schema field "tool_call_ceiling".
+	ToolCallCeiling int `json:"tool_call_ceiling,omitempty,omitzero" yaml:"tool_call_ceiling,omitempty" mapstructure:"tool_call_ceiling,omitempty"`
+
+	// ToolCalls corresponds to the JSON schema field "tool_calls".
+	ToolCalls int `json:"tool_calls,omitempty,omitzero" yaml:"tool_calls,omitempty" mapstructure:"tool_calls,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AgentAccounting) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["agent"]; raw != nil && !ok {
+		return fmt.Errorf("field agent in AgentAccounting: required")
+	}
+	type Plain AgentAccounting
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["second_ceiling"]; !ok || v == nil {
+		plain.SecondCeiling = 0
+	}
+	if 0 > plain.SecondCeiling {
+		return fmt.Errorf("field %s: must be >= %v", "second_ceiling", 0)
+	}
+	if v, ok := raw["seconds"]; !ok || v == nil {
+		plain.Seconds = 0.0
+	}
+	if 0 > plain.Seconds {
+		return fmt.Errorf("field %s: must be >= %v", "seconds", 0)
+	}
+	if v, ok := raw["token_ceiling"]; !ok || v == nil {
+		plain.TokenCeiling = 0
+	}
+	if 0 > plain.TokenCeiling {
+		return fmt.Errorf("field %s: must be >= %v", "token_ceiling", 0)
+	}
+	if v, ok := raw["tokens_spent"]; !ok || v == nil {
+		plain.TokensSpent = 0
+	}
+	if 0 > plain.TokensSpent {
+		return fmt.Errorf("field %s: must be >= %v", "tokens_spent", 0)
+	}
+	if v, ok := raw["tool_call_ceiling"]; !ok || v == nil {
+		plain.ToolCallCeiling = 0
+	}
+	if 0 > plain.ToolCallCeiling {
+		return fmt.Errorf("field %s: must be >= %v", "tool_call_ceiling", 0)
+	}
+	if v, ok := raw["tool_calls"]; !ok || v == nil {
+		plain.ToolCalls = 0
+	}
+	if 0 > plain.ToolCalls {
+		return fmt.Errorf("field %s: must be >= %v", "tool_calls", 0)
+	}
+	*j = AgentAccounting(plain)
 	return nil
 }
 
@@ -1161,6 +880,359 @@ func (j *ApprovalRequestedEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type ApprovalState string
+
+const ApprovalStateApproved ApprovalState = "approved"
+const ApprovalStateExpired ApprovalState = "expired"
+const ApprovalStateNotRequired ApprovalState = "not_required"
+const ApprovalStatePending ApprovalState = "pending"
+const ApprovalStateRejected ApprovalState = "rejected"
+
+var enumValues_ApprovalState = []interface{}{
+	"not_required",
+	"pending",
+	"approved",
+	"rejected",
+	"expired",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ApprovalState) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_ApprovalState {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ApprovalState, v)
+	}
+	*j = ApprovalState(v)
+	return nil
+}
+
+type ArtifactKind string
+
+const ArtifactKindImage ArtifactKind = "image"
+
+var enumValues_ArtifactKind = []interface{}{
+	"image",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ArtifactKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_ArtifactKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_ArtifactKind, v)
+	}
+	*j = ArtifactKind(v)
+	return nil
+}
+
+// A reference to an artifact Pantheon produced and stored. Never a URL.
+//
+// Same shape as CredentialRef, for the same reason: the agent names a thing it
+// is allowed to name, and the server resolves it. A URL field would let an
+// agent express an arbitrary destination, and the browser fetching it is a
+// data-exfiltration channel - the agent encodes what it learned into the URL
+// and the browser delivers it.
+//
+// A server-side URL proxy was considered and rejected. It still accepts an
+// agent-authored URL and defends by filtering, which is one bypass away from
+// failing. A reference has nothing to filter.
+//
+// Note what is absent: no URL, no host, no bucket. The bucket is fixed
+// server-side, so the agent cannot name one. Resolution happens only in
+// core.ui.artifact_resolution, which agents cannot import - the same boundary
+// as core.cerberus.redemption.
+type ArtifactRef struct {
+	// Accessible description. Rendered, not fetched.
+	AltText string `json:"alt_text,omitempty,omitzero" yaml:"alt_text,omitempty" mapstructure:"alt_text,omitempty"`
+
+	// Resolution rejects a reference from a different investigation.
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Object key within Pantheon's own artifact bucket.
+	Key string `json:"key" yaml:"key" mapstructure:"key"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind ArtifactKind `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *ArtifactRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in ArtifactRef: required")
+	}
+	if _, ok := raw["key"]; raw != nil && !ok {
+		return fmt.Errorf("field key in ArtifactRef: required")
+	}
+	type Plain ArtifactRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["alt_text"]; !ok || v == nil {
+		plain.AltText = ""
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "image"
+	}
+	*j = ArtifactRef(plain)
+	return nil
+}
+
+// One immutable line in the credential audit log.
+//
+// Attached to the Investigation, which agents can see - safe because every
+// reference here is a CredentialRef and never a value.
+type AuditEntry struct {
+	// NOT_APPLICABLE for events that concern no single access.
+	Action CredentialAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
+
+	// Agent codename, user, or 'system'.
+	Actor string `json:"actor" yaml:"actor" mapstructure:"actor"`
+
+	// At corresponds to the JSON schema field "at".
+	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
+
+	// CredentialRef corresponds to the JSON schema field "credential_ref".
+	CredentialRef *AuditEntryCredentialRef `json:"credential_ref,omitempty,omitzero" yaml:"credential_ref,omitempty" mapstructure:"credential_ref,omitempty"`
+
+	// Human-readable context. Never a credential.
+	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
+
+	// Event corresponds to the JSON schema field "event".
+	Event AuditEvent `json:"event" yaml:"event" mapstructure:"event"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// LeaseId corresponds to the JSON schema field "lease_id".
+	LeaseId interface{} `json:"lease_id,omitempty,omitzero" yaml:"lease_id,omitempty" mapstructure:"lease_id,omitempty"`
+}
+
+// A reference to a stored credential. Never the credential.
+//
+// Safe to persist, to attach to an Investigation and to render in the
+// dashboard, because it identifies without disclosing.
+type AuditEntryCredentialRef struct {
+	// Opaque identifier of the stored credential.
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// Human-readable label, e.g. 'prod-postgres'.
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// Scope corresponds to the JSON schema field "scope".
+	Scope *CredentialScope `json:"scope,omitempty,omitzero" yaml:"scope,omitempty" mapstructure:"scope,omitempty"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type CredentialType `json:"type" yaml:"type" mapstructure:"type"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AuditEntryCredentialRef) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	var auditEntryCredentialRef_0 AuditEntryCredentialRef_0
+	var errs []error
+	if err := auditEntryCredentialRef_0.UnmarshalJSON(value); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 1 {
+		return fmt.Errorf("all validators failed: %s", errors.Join(errs...))
+	}
+	type Plain AuditEntryCredentialRef
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = AuditEntryCredentialRef(plain)
+	return nil
+}
+
+type AuditEntryInvestigationId_0 *string
+
+type AuditEntryLeaseId_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AuditEntry) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["actor"]; raw != nil && !ok {
+		return fmt.Errorf("field actor in AuditEntry: required")
+	}
+	if _, ok := raw["at"]; raw != nil && !ok {
+		return fmt.Errorf("field at in AuditEntry: required")
+	}
+	if _, ok := raw["event"]; raw != nil && !ok {
+		return fmt.Errorf("field event in AuditEntry: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in AuditEntry: required")
+	}
+	type Plain AuditEntry
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["action"]; !ok || v == nil {
+		plain.Action = "not_applicable"
+	}
+	if v, ok := raw["detail"]; !ok || v == nil {
+		plain.Detail = ""
+	}
+	*j = AuditEntry(plain)
+	return nil
+}
+
+type AuditEvent string
+
+const AuditEventApprovalRequested AuditEvent = "approval_requested"
+const AuditEventBreakGlass AuditEvent = "break_glass"
+const AuditEventDenied AuditEvent = "denied"
+const AuditEventGrantRevoked AuditEvent = "grant_revoked"
+const AuditEventGranted AuditEvent = "granted"
+const AuditEventLeaseExpired AuditEvent = "lease_expired"
+const AuditEventLeaseMinted AuditEvent = "lease_minted"
+const AuditEventLeaseRenewed AuditEvent = "lease_renewed"
+const AuditEventLeaseRevoked AuditEvent = "lease_revoked"
+const AuditEventLeaseUsed AuditEvent = "lease_used"
+const AuditEventRequested AuditEvent = "requested"
+const AuditEventRotated AuditEvent = "rotated"
+
+var enumValues_AuditEvent = []interface{}{
+	"requested",
+	"granted",
+	"denied",
+	"approval_requested",
+	"lease_minted",
+	"lease_used",
+	"lease_renewed",
+	"lease_expired",
+	"lease_revoked",
+	"grant_revoked",
+	"break_glass",
+	"rotated",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AuditEvent) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_AuditEvent {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_AuditEvent, v)
+	}
+	*j = AuditEvent(v)
+	return nil
+}
+
+type AuthMode string
+
+const AuthModeBearer AuthMode = "bearer"
+const AuthModeHeaderKey AuthMode = "header_key"
+const AuthModeNone AuthMode = "none"
+const AuthModeQueryParam AuthMode = "query_param"
+
+var enumValues_AuthMode = []interface{}{
+	"none",
+	"bearer",
+	"header_key",
+	"query_param",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *AuthMode) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_AuthMode {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_AuthMode, v)
+	}
+	*j = AuthMode(v)
+	return nil
+}
+
+type BaselineEstimator string
+
+const BaselineEstimatorMeanStddev BaselineEstimator = "mean_stddev"
+const BaselineEstimatorMedianMad BaselineEstimator = "median_mad"
+const BaselineEstimatorNotApplicable BaselineEstimator = "not_applicable"
+
+var enumValues_BaselineEstimator = []interface{}{
+	"median_mad",
+	"mean_stddev",
+	"not_applicable",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *BaselineEstimator) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_BaselineEstimator {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_BaselineEstimator, v)
+	}
+	*j = BaselineEstimator(v)
+	return nil
+}
+
+type BlastRadius string
+
+const BlastRadiusCluster BlastRadius = "cluster"
+const BlastRadiusMultiCluster BlastRadius = "multi_cluster"
+const BlastRadiusNamespace BlastRadius = "namespace"
 const BlastRadiusNone BlastRadius = "none"
 const BlastRadiusSingleWorkload BlastRadius = "single_workload"
 
@@ -2102,6 +2174,11 @@ func (j *HypothesisStatus) UnmarshalJSON(value []byte) error {
 
 // One end-to-end run, from trigger to Verdict.
 type Investigation struct {
+	// What each agent consumed against what it was allowed. One entry per dispatched
+	// step, including the steps that degraded - a run that exhausted its budget is
+	// the one anybody asks about.
+	Accounting []AgentAccounting `json:"accounting,omitempty,omitzero" yaml:"accounting,omitempty" mapstructure:"accounting,omitempty"`
+
 	// Cerberus credential audit for this run. Safe to expose: every credential here
 	// is a CredentialRef, never a value.
 	Audit []AuditEntry `json:"audit,omitempty,omitzero" yaml:"audit,omitempty" mapstructure:"audit,omitempty"`
@@ -3772,82 +3849,7 @@ func (j *TriggerReceivedEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
-	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
-	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
-	}
-	type Plain Trigger
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["title"]; !ok || v == nil {
-		plain.Title = ""
-	}
-	*j = Trigger(plain)
-	return nil
-}
-
-// A user's response to an action, travelling back over AG-UI.
-//
-// Mirrors A2UI's client action message. Carries no decision authority of its
-// own: an approval reaching the Approval Gate, or an access decision reaching
-// Cerberus, is re-validated there against the request it claims to answer.
-type UIActionResponse struct {
-	// ActionName corresponds to the JSON schema field "action_name".
-	ActionName string `json:"action_name" yaml:"action_name" mapstructure:"action_name"`
-
-	// Context corresponds to the JSON schema field "context".
-	Context UIActionResponseContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
-
-	// SourceComponentId corresponds to the JSON schema field "source_component_id".
-	SourceComponentId string `json:"source_component_id" yaml:"source_component_id" mapstructure:"source_component_id"`
-
-	// SurfaceId corresponds to the JSON schema field "surface_id".
-	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
-}
-
-type UIActionResponseContext map[string]interface{}
-
-type UIActionResponseInvestigationId_0 *string
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["action_name"]; raw != nil && !ok {
-		return fmt.Errorf("field action_name in UIActionResponse: required")
-	}
-	if _, ok := raw["source_component_id"]; raw != nil && !ok {
-		return fmt.Errorf("field source_component_id in UIActionResponse: required")
-	}
-	if _, ok := raw["surface_id"]; raw != nil && !ok {
-		return fmt.Errorf("field surface_id in UIActionResponse: required")
-	}
-	type Plain UIActionResponse
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = UIActionResponse(plain)
-	return nil
-}
+type A2UIComponentAction_0 = A2UIAction
 
 // The orchestrator's ranked conclusion for one Investigation.
 type Verdict struct {
@@ -3881,6 +3883,134 @@ type Verdict struct {
 
 	// What happened, in one paragraph, for a human.
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
+}
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+type InvestigationVerdict_0 = Verdict
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["decided_at"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_at in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["steps"]; raw != nil && !ok {
+		return fmt.Errorf("field steps in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
+	return nil
+}
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
+
+type EvidenceSubject_0 = ResourceRef
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trigger) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
+	}
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
+	}
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
+	}
+	type Plain Trigger
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["title"]; !ok || v == nil {
+		plain.Title = ""
+	}
+	*j = Trigger(plain)
+	return nil
+}
+
+type FindingSubject_0 = ResourceRef
+
+type UIActionResponseContext map[string]interface{}
+
+type UIActionResponseInvestigationId_0 *string
+
+// A user's response to an action, travelling back over AG-UI.
+//
+// Mirrors A2UI's client action message. Carries no decision authority of its
+// own: an approval reaching the Approval Gate, or an access decision reaching
+// Cerberus, is re-validated there against the request it claims to answer.
+type UIActionResponse struct {
+	// ActionName corresponds to the JSON schema field "action_name".
+	ActionName string `json:"action_name" yaml:"action_name" mapstructure:"action_name"`
+
+	// Context corresponds to the JSON schema field "context".
+	Context UIActionResponseContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// SourceComponentId corresponds to the JSON schema field "source_component_id".
+	SourceComponentId string `json:"source_component_id" yaml:"source_component_id" mapstructure:"source_component_id"`
+
+	// SurfaceId corresponds to the JSON schema field "surface_id".
+	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["action_name"]; raw != nil && !ok {
+		return fmt.Errorf("field action_name in UIActionResponse: required")
+	}
+	if _, ok := raw["source_component_id"]; raw != nil && !ok {
+		return fmt.Errorf("field source_component_id in UIActionResponse: required")
+	}
+	if _, ok := raw["surface_id"]; raw != nil && !ok {
+		return fmt.Errorf("field surface_id in UIActionResponse: required")
+	}
+	type Plain UIActionResponse
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = UIActionResponse(plain)
+	return nil
 }
 
 // The aggregator reached a conclusion.
@@ -3922,41 +4052,4 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["decided_at"]; raw != nil && !ok {
-		return fmt.Errorf("field decided_at in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["steps"]; raw != nil && !ok {
-		return fmt.Errorf("field steps in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef

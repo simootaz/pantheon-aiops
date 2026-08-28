@@ -72,6 +72,11 @@ SAFE_NAMES = frozenset(
         "inputtokens",
         "outputtokens",
         "tokencount",
+        # LLM token ACCOUNTING, added with AgentAccounting. A count and a
+        # ceiling are integers; neither can carry a credential, and the guard
+        # matches the substring rather than the type.
+        "tokensspent",
+        "tokenceiling",
     }
 )
 
@@ -109,7 +114,15 @@ def test_the_heuristic_itself_behaves() -> None:
     """Pin the detector in both directions, so exemptions cannot creep."""
     for secret_shaped in ("password", "api_key", "SecretKey", "private_key", "authorization"):
         assert _is_secret_shaped(secret_shaped), f"{secret_shaped} should be flagged"
-    for safe in ("credential_ref", "secret_ref", "max_tokens", "lease_id", "granted_by"):
+    for safe in (
+        "credential_ref",
+        "secret_ref",
+        "max_tokens",
+        "tokens_spent",
+        "token_ceiling",
+        "lease_id",
+        "granted_by",
+    ):
         assert not _is_secret_shaped(safe), f"{safe} should not be flagged"
 
 

@@ -684,6 +684,20 @@ export type OverrideAskDefault = boolean;
  */
 export type RevokedAt = string | null;
 /**
+ * Codename, e.g. 'argus'.
+ */
+export type Agent7 = string;
+export type SecondCeiling = number;
+export type Seconds = number;
+export type TokenCeiling = number;
+export type TokensSpent = number;
+export type ToolCallCeiling = number;
+export type ToolCalls = number;
+/**
+ * What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.
+ */
+export type Accounting = AgentAccounting[];
+/**
  * Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.
  */
 export type Audit = AuditEntry[];
@@ -1410,6 +1424,7 @@ export interface Grant {
  * One end-to-end run, from trigger to Verdict.
  */
 export interface Investigation {
+  accounting?: Accounting;
   audit?: Audit;
   completed_at?: CompletedAt;
   created_at: CreatedAt;
@@ -1426,6 +1441,29 @@ export interface Investigation {
    * Absent until the run reaches a conclusion.
    */
   verdict?: Verdict | null;
+}
+/**
+ * What one agent's step consumed, beside what it was allowed.
+ *
+ * EVERY FIGURE CARRIES ITS CEILING
+ * ----------------------------------
+ * "spent 16000 tokens" cannot answer the question anybody asks, which is
+ * whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+ * different runs and the same number.
+ *
+ * Three resources because there are three ceilings on `AgentBudget`, and a
+ * breakdown missing one cannot explain a DEGRADED step that hit it. A run
+ * stopped by its token budget and one stopped by its clock look identical from
+ * the outside, and they are fixed differently.
+ */
+export interface AgentAccounting {
+  agent: Agent7;
+  second_ceiling?: SecondCeiling;
+  seconds?: Seconds;
+  token_ceiling?: TokenCeiling;
+  tokens_spent?: TokensSpent;
+  tool_call_ceiling?: ToolCallCeiling;
+  tool_calls?: ToolCalls;
 }
 /**
  * Why Delphi chose the model it chose, for one call.

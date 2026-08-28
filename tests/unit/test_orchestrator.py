@@ -233,6 +233,20 @@ class _Quiet(BaseAgent):
         return []
 
 
+class _QuietLethe(BaseAgent):
+    """A second agent in a DIFFERENT domain.
+
+    `_Quiet` is `anomaly`, so registering it twice makes every accounting entry
+    say `argus` and any per-agent assertion tests the fixture rather than the
+    attribution.
+    """
+
+    domain = "log_clustering"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []
+
+
 class _Noisy(BaseAgent):
     domain = "anomaly"
 
@@ -597,3 +611,22 @@ def test_the_skip_note_is_the_same_on_every_step() -> None:
     reasons = {step.reason for step in planner.build(mixed)}
 
     assert len(reasons) == 1, f"steps disagree about why: {reasons}"
+
+
+@pytest.mark.asyncio
+async def test_an_investigation_records_what_each_agent_consumed(registered: Any) -> None:
+    """One entry per dispatched step. Without it the token meter can stop a run
+    and leave nothing behind saying why it was expensive."""
+    dispatcher.register("argus", _Quiet)
+    dispatcher.register("lethe", _QuietLethe)
+
+    investigation = await investigate(
+        _trigger(scenario="memory_leak"),
+        store=InMemoryInvestigationStore(),
+        bus=InMemoryEventBus(),
+    )
+
+    assert [entry.agent for entry in investigation.accounting] == ["argus", "lethe"]
+    assert all(entry.token_ceiling > 0 for entry in investigation.accounting), (
+        "an accounting entry with no ceiling cannot answer whether the spend was close"
+    )
