@@ -17,7 +17,7 @@ import pytest
 
 from core.contracts.llm import Capability, ModelRequirements
 from core.llm.capability_matrix import STALE_AFTER, CapabilityMatrix, Probed
-from core.llm.catalog import from_settings
+from core.llm.catalog import Catalogue, from_settings
 from core.llm.probe import PROBEABLE, probe_into, probe_model
 from core.llm.provider import BASELINE_CAPABILITIES, ProviderError, RecordingProvider
 from core.llm.resolver import Unresolvable, resolve
@@ -337,3 +337,126 @@ async def test_a_probe_reaches_the_gateway_an_agent_builds_for_itself(
         "the gateway an agent builds does not see probed capabilities, so probing "
         "changes nothing it can act on"
     )
+
+
+# --- the fallback chain never widens the requirements --------------------------------
+
+
+def _catalogue_with(probed_models: dict[str, set[Capability]]) -> Catalogue:
+    """A catalogue where the named models have the named capabilities observed."""
+    matrix = CapabilityMatrix(clock=_Ticker())
+    base = from_settings()
+    for model_id, capabilities in probed_models.items():
+        matrix.record(
+            Probed(
+                provider_id=base.models[model_id].provider_id,
+                model_id=model_id,
+                at=NOW,
+                present=frozenset(capabilities),
+            )
+        )
+    return from_settings(matrix)
+
+
+def test_the_chain_only_offers_models_that_satisfy_the_same_requirements() -> None:
+    """The rule an optimisation would quietly break.
+
+    A chain that dropped a declared capability when the first choice was
+    unreachable would produce its worst output exactly when the system is
+    already struggling - and nothing in the result would say so. The agent asked
+    for JSON_MODE, got prose, and reports a parse error about a model it never
+    chose.
+    """
+    from core.contracts.llm import ModelRequirements, Tier
+    from core.llm.fallback import chain
+
+    base = from_settings()
+    everything = {model_id: {Capability.JSON_MODE} for model_id in base.models}
+    # One tier's model is deliberately left unprobed, so it cannot satisfy the
+    # requirement and must not appear anywhere in the chain.
+    without = base.by_tier[Tier.CHEAP]
+    everything.pop(without)
+
+    catalogue = _catalogue_with(everything)
+    requirements = ModelRequirements(capabilities=[Capability.JSON_MODE])
+    first = resolve(requirements, catalogue=catalogue, requested_by="hermes")
+
+    offered = [step.model.model_id for step in chain(first, requirements, catalogue=catalogue)]
+
+    assert without not in offered, (
+        f"{without} satisfies nothing and was offered as a fallback, so a failure "
+        "of the first choice would silently drop the declared capability"
+    )
+    assert all(
+        Capability.JSON_MODE in catalogue.models[model_id].capabilities for model_id in offered
+    )
+
+
+def test_the_chain_leads_with_the_resolved_choice() -> None:
+    """Not reordered by price or latency. A cheaper model that satisfies the
+    requirements is still a different model, and reordering would make the
+    fallback path prefer something the tier binding did not choose."""
+    from core.contracts.llm import ModelRequirements
+    from core.llm.fallback import chain
+
+    catalogue = _catalogue_with({m: {Capability.JSON_MODE} for m in from_settings().models})
+    requirements = ModelRequirements(capabilities=[Capability.JSON_MODE])
+    first = resolve(requirements, catalogue=catalogue, requested_by="hermes")
+
+    offered = chain(first, requirements, catalogue=catalogue)
+
+    assert offered[0].model.model_id == first.model.model_id
+
+
+def test_a_model_bound_to_two_tiers_appears_once() -> None:
+    """Retrying the same model twice is one wasted call and one misleading
+    `rejected` entry.
+
+    The catalogue is built here rather than from settings, because in the
+    configured one every tier points at a DIFFERENT model - so a test using it
+    asserts a property nothing could violate. Two tiers sharing a model is a
+    normal configuration and it is the only shape this rule applies to.
+    """
+    from core.contracts.llm import ModelRequirements, Tier
+    from core.llm.fallback import chain
+
+    base = from_settings()
+    shared = base.by_tier[Tier.BALANCED]
+    catalogue = Catalogue(
+        providers=base.providers,
+        models={
+            model_id: descriptor.model_copy(
+                update={"capabilities": [Capability.JSON_MODE], "last_probed_at": NOW}
+            )
+            for model_id, descriptor in base.models.items()
+        },
+        # Every tier on one model. Without a dedup, the chain would offer it three times.
+        by_tier=dict.fromkeys(Tier, shared),
+    )
+
+    requirements = ModelRequirements(capabilities=[Capability.JSON_MODE])
+    first = resolve(requirements, catalogue=catalogue, requested_by="hermes")
+
+    offered = [step.model.model_id for step in chain(first, requirements, catalogue=catalogue)]
+
+    assert offered == [shared], f"the same model was offered {len(offered)} times: {offered}"
+
+
+def test_the_cost_decision_is_the_one_guardrails_makes() -> None:
+    """Delphi supplies the price; guardrails decide. A gateway with its own copy
+    is a second policy nobody thinks to check when the first one changes."""
+    from core.guardrails.budget import within_cost_ceiling
+    from core.llm.gateway import within_budget
+
+    assert within_budget is within_cost_ceiling
+
+
+def test_an_unpriced_completion_is_not_treated_as_free_or_refused() -> None:
+    """Refusing would make every provider that does not price its responses
+    unusable; pretending zero would make them look free. Neither is honest."""
+    from core.guardrails.budget import within_cost_ceiling
+
+    assert within_cost_ceiling(None, 0.01) is True
+    assert within_cost_ceiling(0.005, 0.01) is True
+    assert within_cost_ceiling(0.02, 0.01) is False
+    assert within_cost_ceiling(0.02, None) is True

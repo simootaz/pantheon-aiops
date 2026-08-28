@@ -14,10 +14,14 @@ the requirements*. It never widens the search: a chain that relaxed a declared
 capability under load would produce its worst output exactly when the system is
 already struggling, and nobody would connect the two.
 
-Cost enforcement is a hook, not a policy. `core/guardrails/budget.py` is Phase 3
-and does not exist, so `max_cost_per_call` is checked here against what the
-provider reports and the check is one injectable function - which is what makes
-moving the decision later a substitution rather than a rewrite.
+Cost enforcement is a hook, and the policy now lives in
+`core/guardrails/budget.py`: Delphi supplies the price, guardrails make the
+decision. It stays injectable so a test can hand over a stricter one, but the
+default is the shared rule rather than a second copy of it.
+
+The fallback chain moved to `core/llm/fallback.py`. Its "never widen the
+requirements" rule is the one an optimisation would quietly break, and a rule
+buried in the fifth responsibility of this class is a rule nobody reviews.
 
 Phase: 2 - Orchestrator & Investigation Flow
 """
@@ -28,10 +32,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.contracts.llm import ModelRequirements, ResolutionRecord, Tier
+from core.contracts.llm import ModelRequirements, ResolutionRecord
+from core.guardrails.budget import within_cost_ceiling
 from core.llm.catalog import Catalogue, from_settings
+from core.llm.fallback import chain
 from core.llm.provider import Completion, Provider, ProviderError
-from core.llm.resolver import Bindings, Resolution, Unresolvable, resolve
+from core.llm.resolver import Bindings, Resolution, resolve
 from core.llm.tracing import ModelCallSpan, span_for
 from core.memory.cache import CacheKey, CompletionCache
 
@@ -60,18 +66,13 @@ class Consultation:
 CostGuard = Callable[[float | None, float | None], bool]
 
 
-def within_budget(cost: float | None, ceiling: float | None) -> bool:
-    """Whether a reported cost is acceptable.
-
-    An unreported cost passes. Refusing it would make every provider that does
-    not price its responses unusable, and pretending it is zero would make them
-    look free - the honest reading is that the ceiling cannot be enforced
-    against a number nobody supplied, and `Completion.cost` stays `None` so a
-    reader can see that.
-    """
-    if ceiling is None or cost is None:
-        return True
-    return cost <= ceiling
+#: The cost decision, re-exported from where it now lives.
+#:
+#: `core/guardrails/budget.within_cost_ceiling` owns it: Delphi supplies the
+#: price, guardrails make the decision, and budget policy stays in one place.
+#: The name stays importable here because callers and tests reference it, and a
+#: rename would be churn over a move.
+within_budget = within_cost_ceiling
 
 
 class Delphi:
@@ -153,7 +154,7 @@ class Delphi:
         attempted: list[str] = []
         last_error: ProviderError | None = None
 
-        for candidate in self._chain(resolution, requirements):
+        for candidate in chain(resolution, requirements, catalogue=self._catalogue):
             provider = self._providers.get(candidate.model.provider_id)
             if provider is None:
                 attempted.append(f"{candidate.model.model_id} (no adapter for its provider)")
@@ -226,29 +227,3 @@ class Delphi:
             f"no provider answered for {requested_by}; tried {attempted or ['nothing']}",
             retryable=False,
         )
-
-    def _chain(self, first: Resolution, requirements: ModelRequirements) -> list[Resolution]:
-        """The first choice, then every other tier that also satisfies the requirements.
-
-        Never widens the search. A chain that relaxed a declared capability under
-        load would produce its worst output exactly when the system is already
-        struggling.
-        """
-        chain = [first]
-        seen = {first.model.model_id}
-        for tier in Tier:
-            model = self._catalogue.for_tier(tier)
-            if model is None or model.model_id in seen:
-                continue
-            try:
-                alternative = resolve(
-                    requirements.model_copy(update={"tier": tier}),
-                    catalogue=self._catalogue,
-                    requested_by=first.record.requested_by,
-                )
-            except Unresolvable:
-                continue
-            if alternative.model.model_id not in seen:
-                seen.add(alternative.model.model_id)
-                chain.append(alternative)
-        return chain

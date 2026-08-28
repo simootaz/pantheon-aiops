@@ -107,3 +107,28 @@ class TokenMeter:
             "remaining": self.remaining,
             "calls": len(self.charges),
         }
+
+
+def within_cost_ceiling(cost: float | None, ceiling: float | None) -> bool:
+    """Whether a reported price is acceptable. The money half of the budget.
+
+    Here rather than in `core/llm/gateway.py`, where it started, so that budget
+    policy lives in ONE place: Delphi supplies the price, guardrails make the
+    decision. A gateway that decided this itself would be a second policy that
+    nobody thinks to check when the first one changes.
+
+    AN UNREPORTED COST PASSES
+    ---------------------------
+    Refusing it would make every provider that does not price its responses
+    unusable. Pretending it is zero would make them look free. Neither is
+    honest, so the ceiling simply cannot be enforced against a number nobody
+    supplied - and `Completion.cost` stays `None` where a reader can see that
+    is what happened.
+
+    That is a real hole and it is deliberate. Closing it means a price list per
+    provider, which is a table that goes stale exactly like the capability
+    table `core/llm/probe.py` refuses to keep.
+    """
+    if ceiling is None or cost is None:
+        return True
+    return cost <= ceiling
