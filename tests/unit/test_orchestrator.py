@@ -40,6 +40,17 @@ def _trigger(**labels: str) -> Trigger:
     )
 
 
+def _a_question(question: str) -> Trigger:
+    """What a human asking Pantheon something looks like."""
+    return Trigger(
+        kind=TriggerKind.HUMAN_QUESTION,
+        received_at=datetime.now(UTC),
+        source="dashboard",
+        title=question,
+        payload={"question": question},
+    )
+
+
 def _finding(agent: str = "argus", kind: FindingKind = FindingKind.ANOMALY) -> Finding:
     return Finding(
         id=uuid4(),
@@ -89,7 +100,7 @@ def _evidence() -> Any:
 
 def test_a_scenario_label_is_read_not_inferred() -> None:
     result = classify(_trigger(scenario="bad_deploy_5xx", severity="critical"))
-    assert result.domain == "anomaly"
+    assert result.domains == ("anomaly", "log_clustering")
     assert result.severity is Severity.CRITICAL
     assert result.certain is True
     assert "bad_deploy_5xx" in result.reason
@@ -140,7 +151,7 @@ def test_only_implemented_agents_are_planned() -> None:
 
     for domain in rostered - set(planner.IMPLEMENTED):
         with pytest.raises(planner.NoAgentForDomain, match="no implemented agent"):
-            planner.build(Classification(domain, Severity.MEDIUM, True, "test"))
+            planner.build(Classification((domain,), Severity.MEDIUM, True, "test"))
 
 
 def test_a_plan_step_says_why_it_exists() -> None:
@@ -247,13 +258,20 @@ def registered() -> Any:
 @pytest.mark.asyncio
 async def test_a_run_emits_its_lifecycle_in_order(registered: Any) -> None:
     dispatcher.register("argus", _Noisy)
+    dispatcher.register("lethe", _Quiet)
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(scenario="memory_leak"), store=store, bus=bus)
 
     emitted = [e.event.type for e in bus.published]
+    # Two step pairs: an alert is read with metrics AND logs, so the plan has
+    # two steps. Written out rather than counted, because the ORDER is what this
+    # asserts - a verdict emitted before a step finished would be a verdict over
+    # findings that had not arrived.
     assert emitted == [
         "investigation_started",
+        "step_started",
+        "step_finished",
         "step_started",
         "step_finished",
         "verdict_ready",
@@ -267,6 +285,7 @@ async def test_a_run_emits_its_lifecycle_in_order(registered: Any) -> None:
 async def test_the_investigation_is_saved_before_it_is_announced(registered: Any) -> None:
     """An event about a run nobody can fetch is worse than a late event."""
     dispatcher.register("argus", _Quiet)
+    dispatcher.register("lethe", _Quiet)
     store = InMemoryInvestigationStore()
 
     seen: list[bool] = []
@@ -285,6 +304,7 @@ async def test_the_investigation_is_saved_before_it_is_announced(registered: Any
 async def test_a_degraded_agent_produces_a_completed_partial_run(registered: Any) -> None:
     """Zeus completing and the agent failing are different facts."""
     dispatcher.register("argus", _Blind)
+    dispatcher.register("lethe", _Quiet)
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(), store=store, bus=bus)
@@ -300,6 +320,7 @@ async def test_a_degraded_agent_produces_a_completed_partial_run(registered: Any
 async def test_the_id_the_receiver_returned_is_the_id_that_persists(registered: Any) -> None:
     """A 202 that hands back an id nothing creates is a promise nobody keeps."""
     dispatcher.register("argus", _Quiet)
+    dispatcher.register("lethe", _Quiet)
     store = InMemoryInvestigationStore()
     promised = uuid4()
 
@@ -329,6 +350,7 @@ async def test_an_unroutable_trigger_is_recorded_as_failed_before_it_raises(
     one that never arrived.
     """
     dispatcher.register("argus", _Quiet)
+    dispatcher.register("lethe", _Quiet)
     monkeypatch.setattr(planner, "IMPLEMENTED", {})
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
@@ -353,6 +375,7 @@ async def test_an_unroutable_trigger_is_recorded_as_failed_before_it_raises(
 async def test_reading_one_back_returns_it_or_none(registered: Any) -> None:
     """`get` is the read side of the same store the API uses."""
     dispatcher.register("argus", _Quiet)
+    dispatcher.register("lethe", _Quiet)
     store = InMemoryInvestigationStore()
     investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
 
@@ -377,6 +400,7 @@ async def test_a_model_consultation_persists_on_the_investigation(registered: An
             return [_finding()]
 
     dispatcher.register("argus", _Consulting)
+    dispatcher.register("lethe", _Quiet)
     store = InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
@@ -406,6 +430,7 @@ async def test_a_degraded_run_still_records_what_it_spent(registered: Any) -> No
             raise AgentDegraded("prometheus went away after the model answered")
 
     dispatcher.register("argus", _ConsultsThenFails)
+    dispatcher.register("lethe", _Quiet)
     investigation = await investigate(
         _trigger(), store=InMemoryInvestigationStore(), bus=InMemoryEventBus()
     )
@@ -496,3 +521,79 @@ def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
             f"implementation, and implements {sorted(implemented - declared)} "
             "that its manifest does not declare."
         )
+
+
+def test_every_implemented_agent_is_reachable_by_some_trigger() -> None:
+    """Registered is not the same as reachable, and this is the difference.
+
+    Lethe and Hermes were implemented, registered and dispatchable for days
+    while `classify()` could only ever return `anomaly`. Every existing guard
+    passed: the manifests were valid, the tools matched, the registry was
+    complete. Nothing routed to them and nothing said so.
+
+    `test_every_implemented_agent_is_actually_registered` checks the planner
+    against the dispatcher. This checks the CLASSIFIER against the planner - the
+    step before, which is where the gap was.
+    """
+    reachable: set[str] = set()
+    for trigger in (
+        _trigger(alertname="NodeDiskFillingUp"),
+        _trigger(scenario="memory_leak"),
+        _trigger(),
+        _a_question("what is the error rate?"),
+    ):
+        reachable.update(classify(trigger).domains)
+
+    unreachable = sorted(set(planner.IMPLEMENTED) - reachable)
+    assert not unreachable, (
+        f"{unreachable} have implemented agents that no trigger can route to. They "
+        "are registered and dispatchable and nothing will ever dispatch them - which "
+        "reads, from every other guard, as working."
+    )
+
+
+def test_a_question_goes_to_hermes_and_not_to_a_window_scanner() -> None:
+    """Argus and Lethe scan a window and report what moved. Neither answers
+    "what is the error rate right now", and pointing them at a question produces
+    findings nobody asked for."""
+    classification = classify(_a_question("what is the error rate?"))
+
+    assert classification.domains == ("nl_query",)
+    assert classification.certain
+
+
+def test_an_alert_carrying_a_question_shaped_field_is_still_an_alert() -> None:
+    """Read from the trigger KIND, not from a payload key.
+
+    Alertmanager annotations are operator-supplied text. A payload key alone
+    would let anyone route an alert to Hermes by naming a field `question`.
+    """
+    trigger = _trigger(alertname="NodeDiskFillingUp")
+    trigger.payload["question"] = "what is the error rate?"
+
+    assert classify(trigger).domains == ("anomaly", "log_clustering")
+
+
+def test_a_domain_with_no_agent_is_skipped_rather_than_failing_the_plan() -> None:
+    """An unimplemented agent must not block the implemented ones."""
+    mixed = Classification(("anomaly", "knowledge"), Severity.MEDIUM, True, "test")
+
+    steps = planner.build(mixed)
+
+    assert [step.agent for step in steps] == ["argus"]
+    assert "knowledge" in steps[0].reason, (
+        "the skipped domain is not named on the plan, so a reader cannot see what was not looked at"
+    )
+
+
+def test_the_skip_note_is_the_same_on_every_step() -> None:
+    """Accumulating skips inside the loop put a different reason on each step
+    depending on where the stub fell in the order - a plan that reads as though
+    the omission happened partway through."""
+    mixed = Classification(
+        ("anomaly", "knowledge", "log_clustering"), Severity.MEDIUM, True, "test"
+    )
+
+    reasons = {step.reason for step in planner.build(mixed)}
+
+    assert len(reasons) == 1, f"steps disagree about why: {reasons}"

@@ -3,4 +3,5 @@
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
-# TODO: Phase 2 - test Hermes Finding construction against golden fixtures
+# Hermes's tests are in tests/unit/test_hermes_nl_query.py. See
+# agents/anomaly/tests/test_agent.py for why this directory is empty.

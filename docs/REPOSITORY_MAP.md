@@ -299,7 +299,7 @@ pantheon-aiops/
 | `docs/argus-threshold-matrix.md` | How every number in `calibration.py` was derived: floors from one half of a ten-run set, thresholds from the other, and what the configuration cannot do. | 1 |
 | `tests/unit/test_argus_detection.py` | What Argus emits, refuses and never claims - the properties that need no live stack. | 1 |
 | `tests/integration/test_argus_detection_flow.py` | The live gate, both directions: a clean baseline three times over produces no anomalies, and each scenario is detected on the series that moved. | 1 |
-| `core/orchestrator/` | Zeus: classify, plan, dispatch, aggregate. One step, because one agent is implemented; the verdict proposes no hypotheses, because nothing ranks candidate causes. | 2 |
+| `core/orchestrator/` | Zeus: classify, plan, dispatch, aggregate. An alert plans **two** steps - metrics and logs both cover it - and a human question plans one, to Hermes. The verdict still proposes no hypotheses, because nothing ranks candidate causes. | 2 |
 | `core/store/investigations.py` | Where an Investigation lives between the run that made it and the read that wants it. Postgres, one JSONB document, table created on first use. | 2 |
 | `core/store/postgres.py` | The driver half, split off because it is **exempt from the coverage floor** - every line needs a live database and every line runs under `make test-flow-one`. | 2 |
 | `connectors/loki/` | Read-only MCP server: `loki.query_range`, `loki.labels` - exactly the two Lethe declares, asserted in both directions. HTTP paths are an allowlist, so Loki's delete API (which removes log lines permanently) cannot become reachable by accident. | 2 |

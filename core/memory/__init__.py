@@ -3,4 +3,6 @@
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
-# TODO: Phase 2 - expose the memory public API
+# Nothing to expose yet: cache.py is imported directly by core/llm/gateway.py, and
+# vector_store.py is deferred (ADR 0008). repository.py was DELETED - core/store/
+# already persists Investigations.
