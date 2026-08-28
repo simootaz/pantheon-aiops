@@ -77,4 +77,8 @@ class ReadinessResponse(BaseModel):
     checks: list[ReadinessCheck] = Field(default_factory=list)
 
 
-# TODO: Phase 2 - add pagination and error envelopes
+# TODO: Phase 4 - add pagination and error envelopes.
+#
+# `GET /investigations` takes a `limit` and returns newest-first, which is the
+# whole of what a `recent()` store offers. Pagination needs a caller that scrolls,
+# and that is the dashboard's investigation list.

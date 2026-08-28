@@ -69,4 +69,11 @@ class InMemoryEventBus:
         self._sequences.clear()
 
 
-# TODO: Phase 2 - replace the in-memory implementation with a durable bus
+# TODO: Phase 5 - replace the in-memory implementation with a durable bus.
+#
+# The Protocol is the seam, so this is a substitution rather than a rewrite.
+#
+# Durability buys nothing until a run OUTLIVES A PROCESS, and none does: every
+# investigation completes inside one `investigate()` call. ADR 0007's deferred
+# actions are the first thing that changes that - a chaos experiment or a CI
+# bisect runs for tens of minutes - and that is Phase 5 with Temporal.

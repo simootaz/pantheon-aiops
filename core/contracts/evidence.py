@@ -259,4 +259,10 @@ class Evidence(ContractModel):
         return EvidenceKind(self.payload.kind)
 
 
-# TODO: Phase 2 - add a provenance chain linking derived Evidence to its source
+# TODO: Phase 5 - add a provenance chain linking derived Evidence to its source.
+#
+# BLOCKED ON A WRITER. Nothing derives Evidence from other Evidence today: Argus
+# and Lethe each read a connector and report what they saw. The agents that
+# would derive - Mnemosyne recalling a prior incident, Moira projecting forward -
+# are Phase 5, and a provenance field nothing populates is a field that reads as
+# absent provenance rather than as an unbuilt feature.

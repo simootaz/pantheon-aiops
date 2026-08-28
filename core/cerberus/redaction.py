@@ -148,5 +148,4 @@ def contains_secret(value: Any, secrets: Iterable[str]) -> bool:
     return any(literal in haystack for literal in literals)
 
 
-# TODO: Phase 2 - wire into core.observability.logging and core.llm.tracing
 # TODO: Phase 3 - source known literals from the Cerberus store for live leases

@@ -86,4 +86,10 @@ class RootCauseHypothesis(ContractModel):
     reasoning: str | None = Field(default=None, description="Why the evidence implies this.")
 
 
-# TODO: Phase 2 - add per-category structured detail once agents populate them
+# TODO: Phase 2 - add per-category structured detail once agents populate them.
+#
+# "Once agents populate them" has not happened and is the whole dependency: no
+# agent emits a RootCauseCategory, because nothing proposes a hypothesis. Adding
+# per-category fields now means designing the shape of a detail nobody has
+# produced - and the categories are what simulator/scenarios/*.yaml scores
+# against, so a guessed shape would be scored as though it were reasoning.

@@ -91,4 +91,13 @@ class Finding(ContractModel):
         return self
 
 
-# TODO: Phase 2 - add cross-agent correlation ids so Findings can reference each other
+# TODO: Phase 2 - add cross-agent correlation ids so Findings can reference each other.
+#
+# STILL PHASE 2, and newly meaningful: since the classifier learned to plan more
+# than one domain, an alert dispatches BOTH Argus and Lethe, so two agents now
+# report about the same window and the same pods. "memory crossed on pod-3" and
+# "an OOMKilled pattern appeared on pod-3" are the same event seen twice.
+#
+# What is missing is the thing that decides they are related. That is the same
+# gap as core/orchestrator/aggregator.py's empty hypotheses, and it should be
+# built once rather than twice.

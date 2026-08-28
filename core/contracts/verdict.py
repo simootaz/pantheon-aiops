@@ -105,4 +105,9 @@ class Verdict(ContractModel):
         return self
 
 
-# TODO: Phase 2 - record dissent when agents disagree about the leading hypothesis
+# TODO: Phase 2 - record dissent when agents disagree about the leading hypothesis.
+#
+# BLOCKED ON THE HYPOTHESIS ITSELF. Agents cannot disagree about a leading
+# hypothesis while there is no leading hypothesis - `Verdict.hypotheses` is
+# deliberately empty and `confidence` is 0.0 for that reason. Dissent lands with
+# whatever first proposes one, not before.

@@ -83,14 +83,19 @@ one. A Verdict aggregates and proposes no hypotheses — see Phase 2.
 
 ## Phase 2 — Orchestrator & Investigation Flow 🚧 in progress
 
-**One of six.** Zeus runs flow 1 end to end. Everything that would let an
-investigation *reason* rather than aggregate is still ahead — Delphi is the
-large one, and until it exists a Verdict proposes no hypotheses by design rather
-than by omission.
+**One of six.** Zeus runs flow 1 end to end. **Delphi has landed** — resolution,
+capability probing, a fallback chain and a completion cache — so it is no longer
+what stands between aggregating and reasoning.
 
-- ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. Plans one
-  step because one agent is implemented, and the plan is built from what is
-  implemented rather than what is rostered. No Temporal: a single step with no
+What remains is correlation: the step that decides two findings describe one
+event and ranks the candidates. Until it exists a Verdict proposes no hypotheses
+by design rather than by omission, and `confidence` stays 0.0 because it is
+defined as confidence in a leading hypothesis there is none of.
+
+- ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. An alert
+  plans **two** steps — metrics and logs both cover it — and a human question
+  plans one, to Hermes. The plan is built from what is implemented rather than
+  what is rostered. No Temporal: a single step with no
   waits needs no durable execution, and `dispatcher.run_step` is the one
   function that would change — see ADR 0007 for what forces it.
 - `core/memory/` — vector store, repository, cache

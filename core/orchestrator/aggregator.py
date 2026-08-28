@@ -11,11 +11,18 @@ says what that means:
 Argus detects. It reports that a series crossed a threshold its peers did not,
 and it says so several times per incident because several metrics move - during
 `bad_deploy_5xx` both `error_ratio` and `latency` cross, and both are correct.
-Choosing between them is a root-cause judgement, and nothing in this repository
-makes one yet: Delphi is unbuilt and the correlation that would rank candidates
-is Phase 2 work that has not landed.
+Lethe now runs on the same alert and reports what appeared in the logs, so a
+single incident produces findings from two agents about the same window.
 
-So a Verdict here is **an aggregation of one agent's findings, not a diagnosis.**
+Choosing between them is a root-cause judgement, and nothing in this repository
+makes one yet. **Delphi is no longer the blocker** - it landed, with resolution,
+probing and a fallback chain. What is still missing is the step that decides two
+findings describe one event and ranks the candidates, and that is the same gap
+`core/contracts/finding.py` names for cross-agent correlation ids. It should be
+built once.
+
+So a Verdict here is **an aggregation of what the agents found, not a
+diagnosis.**
 Synthesising a hypothesis from a detector's output would mean inventing the
 step between "this moved" and "this is why", and inventing it in a field that
 `simulator/scenarios/*.yaml` provides ground truth for - so the invention would
