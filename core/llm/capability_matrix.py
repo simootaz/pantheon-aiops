@@ -156,3 +156,24 @@ class CapabilityMatrix:
 
     def __len__(self) -> int:
         return len(self._entries)
+
+
+#: The matrix this process uses when nobody passes one.
+#:
+#: A module-level singleton, which is a real cost and is stated rather than
+#: hidden. Agents build their gateway lazily through
+#: `core/llm/assembly.delphi_from_settings()`, and there is no path from the
+#: API's app state into an agent's gateway - so a probe recorded by the API
+#: would otherwise never reach the agent that needed it, and Hermes would stay
+#: unresolvable while the settings page showed a green tick.
+#:
+#: PER PROCESS. Two API replicas probe separately and disagree until both have.
+#: That is tolerable because a probe is cheap to repeat and its answer is the
+#: same, and it is what persistence would fix - which arrives with the settings
+#: UI in Phase 3, not by guessing at a schema here.
+_DEFAULT = CapabilityMatrix()
+
+
+def default() -> CapabilityMatrix:
+    """The process-wide matrix. Injectable everywhere it is used; this is the fallback."""
+    return _DEFAULT

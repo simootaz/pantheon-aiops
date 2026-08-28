@@ -27,7 +27,7 @@ from core.cerberus.store.envelope import (
     seal,
 )
 from core.cerberus.store.master_key import MasterKeyMalformed, MasterKeyUnavailable, resolve
-from core.contracts.llm import AuthMode, Dialect, Tier
+from core.contracts.llm import AuthMode, Capability, Dialect, Tier
 from core.llm.provider import ProviderError
 from core.llm.providers.chat_completions import ChatCompletionsProvider
 from core.store.investigations import InMemoryInvestigationStore
@@ -545,3 +545,130 @@ def test_binding_against_an_unreachable_provider_falls_back_to_the_manual_list(
         client.put(f"/providers/{identifier}/tiers", json={"cheap": "written-down"}).status_code
         == 200
     )
+
+
+# --- probing, which is what makes a declared capability resolvable ------------------
+
+
+def _probing(monkeypatch: pytest.MonkeyPatch, reply: str = '{"ok": true}') -> None:
+    """Answer the probe's completions without a socket."""
+
+    async def complete(self: Any, **kwargs: Any) -> Any:
+        from core.llm.provider import Completion
+
+        return Completion(text=reply, model_id=str(kwargs.get("model_id", "m")))
+
+    monkeypatch.setattr(ChatCompletionsProvider, "complete", complete, raising=True)
+
+
+def test_probing_records_what_the_models_can_do(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The loop the provider CRUD started: add a provider, probe it, and an
+    agent that declares JSON_MODE can finally resolve a model."""
+    _stub_models(monkeypatch, ["m-1", "m-2"])
+    _probing(monkeypatch)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    body = client.post(f"/providers/{identifier}/probe").json()
+
+    assert body["reachable"] == ["m-1"]
+    assert body["unreachable"] == []
+    probed = body["probed"][0]
+    assert "json_mode" in probed["present"]
+    assert "tool_use" in probed["unprobed"], (
+        "tool_use was reported as present or absent, but nothing can probe it - "
+        "Provider.complete has nowhere to put a tool schema"
+    )
+
+
+def test_a_probe_reaches_the_matrix_an_agent_actually_reads(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wiring that matters. Without it, probing updates a settings page and
+    changes nothing an agent can see - the model stays unresolvable while the
+    UI shows a green tick."""
+    from core.llm.capability_matrix import default as default_matrix
+
+    _stub_models(monkeypatch, ["m-1"])
+    _probing(monkeypatch)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    client.post(f"/providers/{identifier}/probe")
+
+    assert Capability.JSON_MODE in default_matrix().capabilities_for("groq", "m-1")
+
+
+def test_an_unreachable_model_is_reported_rather_than_raising(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A provider that is down is an observation. Raising would lose the results
+    for every model probed before it."""
+
+    async def refuse(self: Any, **kwargs: Any) -> Any:
+        raise ProviderError("401 invalid key", retryable=False)
+
+    _stub_models(monkeypatch, ["m-1"])
+    monkeypatch.setattr(ChatCompletionsProvider, "complete", refuse, raising=True)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    body = client.post(f"/providers/{identifier}/probe").json()
+
+    assert body["unreachable"] == ["m-1"]
+    assert "401" in body["probed"][0]["error"]
+
+
+def test_probing_nothing_is_refused_rather_than_reported_as_success(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty probe run returning 200 reads as "everything checked out"."""
+    _stub_models(monkeypatch, ["m-1"])
+    identifier = client.post("/providers", json=_payload()).json()["id"]
+
+    response = client.post(f"/providers/{identifier}/probe")
+
+    assert response.status_code == 422
+    assert "no models to probe" in response.text
+
+
+def test_probing_does_not_default_to_every_model_a_provider_lists(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dozens of paid requests is not a sensible default for a button.
+
+    The default is what this deployment actually uses - the bound tiers, or the
+    manual list - not everything the vendor serves.
+    """
+    _stub_models(monkeypatch, [f"m-{index}" for index in range(30)])
+    _probing(monkeypatch)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    body = client.post(f"/providers/{identifier}/probe").json()
+
+    assert len(body["probed"]) == 1, (
+        f"probed {len(body['probed'])} models; the default must be what is configured"
+    )
+
+
+def test_an_explicit_model_list_is_honoured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control. A default that ignored the argument would pass the test above."""
+    _stub_models(monkeypatch, ["m-1", "m-2", "m-3"])
+    _probing(monkeypatch)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    body = client.post(f"/providers/{identifier}/probe", json={"models": ["m-2", "m-3"]}).json()
+
+    assert body["reachable"] == ["m-2", "m-3"]
+
+
+def test_probing_never_returns_the_key(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_models(monkeypatch, ["m-1"])
+    _probing(monkeypatch)
+    identifier = client.post("/providers", json=_payload(manual_models=["m-1"])).json()["id"]
+
+    text = client.post(f"/providers/{identifier}/probe").text
+
+    assert SECRET not in text
+    assert "gsk_" not in text

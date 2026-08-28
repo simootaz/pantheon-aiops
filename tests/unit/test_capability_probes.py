@@ -280,3 +280,60 @@ def test_every_capability_an_implemented_agent_requires_can_be_probed() -> None:
 def test_the_probeable_set_is_not_empty() -> None:
     """The guard above passes vacuously if nothing is probeable."""
     assert PROBEABLE, "no capability can be probed, so the guard above proves nothing"
+
+
+# --- the wiring, without which probing changes nothing an agent can see -------------
+
+
+@pytest.mark.asyncio
+async def test_a_probe_reaches_the_gateway_an_agent_builds_for_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The link that makes probing worth anything.
+
+    Agents build their gateway lazily through `delphi_from_settings()`, and
+    there is no path from the API's app state into an agent's gateway. Without
+    the process-wide matrix, a probe recorded by the API would update a settings
+    page and leave the agent exactly as unresolvable as before - with a green
+    tick over it.
+
+    A plant removing that fallback passed every other test in this repository.
+    """
+    from core.contracts.llm import ModelRequirements
+    from core.llm import assembly
+    from core.llm.capability_matrix import default as default_matrix
+    from core.llm.resolver import resolve
+
+    monkeypatch.setattr(assembly, "providers_from_settings", lambda: {})
+
+    from core.contracts.llm import Tier
+
+    matrix = default_matrix()
+    catalogue = from_settings()
+    # The model bound to the tier the requirements default to. Seeding any other
+    # would leave the resolver looking at an unprobed one and the test would
+    # fail for a reason unrelated to the wiring it is about.
+    model_id = catalogue.by_tier[Tier.BALANCED]
+    provider_id = catalogue.models[model_id].provider_id
+    monkeypatch.setitem(
+        matrix._entries,
+        (provider_id, model_id),
+        Probed(
+            provider_id=provider_id,
+            model_id=model_id,
+            at=datetime.now(tz=UTC),
+            present=frozenset({Capability.JSON_MODE}),
+        ),
+    )
+
+    delphi = assembly.delphi_from_settings()
+    resolution = resolve(
+        ModelRequirements(capabilities=[Capability.JSON_MODE]),
+        catalogue=delphi._catalogue,
+        requested_by="hermes",
+    )
+
+    assert Capability.JSON_MODE in resolution.model.capabilities, (
+        "the gateway an agent builds does not see probed capabilities, so probing "
+        "changes nothing it can act on"
+    )

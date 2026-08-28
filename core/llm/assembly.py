@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from core.config import get_settings
 from core.contracts.llm import Dialect
+from core.llm.capability_matrix import CapabilityMatrix
+from core.llm.capability_matrix import default as default_matrix
 from core.llm.catalog import from_settings as catalogue_from_settings
 from core.llm.gateway import Delphi
 from core.llm.provider import Provider
@@ -70,6 +72,13 @@ def providers_from_settings() -> dict[str, Provider]:
     return {llm.provider_id: ChatCompletionsProvider(config, api_key=key)}
 
 
-def delphi_from_settings() -> Delphi:
-    """The gateway an agent gets when nobody injected one."""
-    return Delphi(providers=providers_from_settings(), catalogue=catalogue_from_settings())
+def delphi_from_settings(matrix: CapabilityMatrix | None = None) -> Delphi:
+    """The gateway an agent gets when nobody injected one.
+
+    The catalogue is built from the capability matrix, so a model probed through
+    `POST /providers/{id}/probe` is resolvable by the next agent that needs it.
+    Without that, probing would update a settings page and change nothing an
+    agent could see.
+    """
+    observed = matrix if matrix is not None else default_matrix()
+    return Delphi(providers=providers_from_settings(), catalogue=catalogue_from_settings(observed))
