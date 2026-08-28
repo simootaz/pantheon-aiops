@@ -60,7 +60,7 @@ from core.contracts.evidence import (
 )
 from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.llm import Capability, ModelRequirements, Tier
-from core.llm.gateway import Delphi
+from core.guardrails.budget import TokenBudgetExceeded
 from core.llm.provider import ProviderError
 
 _EVIDENCE_NAMESPACE = uuid5(NAMESPACE_URL, "https://pantheon.local/hermes/evidence")
@@ -122,26 +122,8 @@ class Hermes(BaseAgent):
 
     domain = "nl_query"
 
-    def __init__(self, delphi: Delphi | None = None, **kwargs: Any) -> None:
-        """`delphi` is injected so a test can hand over a recording fake.
-
-        Defaulted lazily rather than here: building one reads configuration, and
-        an agent that could not be constructed without a configured LLM could
-        not be constructed in a unit test either.
-        """
-        super().__init__(**kwargs)
-        self._delphi = delphi
-
     def bind_tools(self, tools: Any) -> None:
         attach(tools)
-
-    @property
-    def delphi(self) -> Delphi:
-        if self._delphi is None:
-            from core.llm.assembly import delphi_from_settings
-
-            self._delphi = delphi_from_settings()
-        return self._delphi
 
     async def investigate(self, ctx: AgentContext) -> list[Finding]:
         """Answer the question in `ctx.params`, or say why it cannot be answered."""
@@ -172,13 +154,22 @@ class Hermes(BaseAgent):
                 prompt += f"\n\nYour previous reply was rejected: {complaint}"
 
             try:
-                consultation = await self.delphi.consult(
+                # `self.consult`, not the gateway directly: the runtime meters
+                # it against the manifest's token budget, and a second path
+                # would make that enforcement decorative.
+                consultation = await self.consult(
+                    ctx,
                     PLANNING_REQUIREMENTS,
                     prompt=prompt,
-                    requested_by=self.codename,
                     system=_PLAN_SYSTEM,
                     json_mode=True,
                 )
+            except TokenBudgetExceeded:
+                # Not a model failure and not retryable. It belongs to the
+                # runtime, which reports budget exhaustion in its own words -
+                # wrapping it here would report a spent budget as a flaky
+                # provider and invite a retry that cannot succeed.
+                raise
             except Exception as failure:
                 raise AgentDegraded(
                     f"the model could not be consulted: {failure}. No query was run.",
@@ -234,12 +225,14 @@ class Hermes(BaseAgent):
         """Render the result. Only reached when there IS a result."""
         rendered = json.dumps(result)[:4000]
         try:
-            consultation = await self.delphi.consult(
+            consultation = await self.consult(
+                ctx,
                 ANSWER_REQUIREMENTS,
                 prompt=f"Question: {question}\n\nQuery: {plan.query}\n\nResult:\n{rendered}",
-                requested_by=self.codename,
                 system=_ANSWER_SYSTEM,
             )
+        except TokenBudgetExceeded:
+            raise
         except Exception as failure:
             raise AgentDegraded(
                 f"the query ran but its result could not be summarised: {failure}",
@@ -248,7 +241,7 @@ class Hermes(BaseAgent):
             ) from failure
 
         ctx.resolutions.append(consultation.record)
-        return consultation.completion.text.strip()
+        return str(consultation.completion.text).strip()
 
     def _evidence(self, ctx: AgentContext, plan: _Plan, result: Any, tag: str) -> Evidence:
         """The raw result, so the answer can be checked rather than trusted."""

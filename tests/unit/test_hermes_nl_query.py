@@ -37,6 +37,7 @@ from core.contracts.evidence import LogClusterPayload, MetricWindowPayload
 from core.contracts.finding import FindingKind
 from core.contracts.investigation import Trigger, TriggerKind
 from core.contracts.llm import Tier
+from core.guardrails.budget import TokenMeter
 from core.llm.provider import ProviderError
 from core.registry.loader import for_codename
 
@@ -114,7 +115,7 @@ def _hermes(
     delphi: _Scripted, tools: _Tools | None = None, *, question: str = "what is the error rate?"
 ) -> tuple[Hermes, AgentContext, _Tools]:
     surface = tools or _Tools()
-    agent = Hermes(delphi=delphi)  # type: ignore[arg-type]
+    agent = Hermes(delphi=delphi)
     ctx = AgentContext(
         investigation_id=uuid4(),
         trigger=Trigger(kind=TriggerKind.SIMULATION, received_at=END, source="test"),
@@ -123,6 +124,10 @@ def _hermes(
         params={"question": question} if question else {},
     )
     ctx.tools = surface
+    # `run()` sets this; these tests call `investigate` directly, so they set it
+    # here. A generous ceiling, because these assert what Hermes does with a
+    # reply - the budget itself is tested in test_token_budget.py.
+    ctx.meter = TokenMeter(ceiling=1_000_000)
     return agent, ctx, surface
 
 
