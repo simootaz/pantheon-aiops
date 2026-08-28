@@ -33,6 +33,7 @@ from core.llm.catalog import Catalogue, from_settings
 from core.llm.provider import Completion, Provider, ProviderError
 from core.llm.resolver import Bindings, Resolution, Unresolvable, resolve
 from core.llm.tracing import ModelCallSpan, span_for
+from core.memory.cache import CacheKey, CompletionCache
 
 
 class BudgetExceeded(RuntimeError):
@@ -84,12 +85,48 @@ class Delphi:
         bindings: Bindings | None = None,
         cost_guard: CostGuard = within_budget,
         include_prompt_in_span: bool = False,
+        cache: CompletionCache | None = None,
     ) -> None:
         self._providers = providers
         self._catalogue = catalogue or from_settings()
         self._bindings = bindings or Bindings()
         self._cost_guard = cost_guard
         self._include_prompt = include_prompt_in_span
+        # Off unless supplied. A gateway that cached by default would change the
+        # behaviour of every existing caller without any of them asking.
+        self._cache = cache
+
+    def _from_cache(
+        self,
+        completion: Completion,
+        candidate: Resolution,
+        span: ModelCallSpan,
+        attempted: list[str],
+    ) -> Consultation:
+        """A hit, reported as one.
+
+        `estimated_cost` is ZERO, not the cost the original call reported.
+        `ResolutionRecord` feeds "what did this investigation spend", and
+        replaying the original would make that total climb while no money moved
+        - an investigation that answered its second identical question for free
+        must be visibly cheaper, not invisibly the same.
+
+        The span is marked too, so a trace does not show a model call that never
+        happened taking zero milliseconds.
+        """
+        span.duration_ms = 0
+        span.cached = True
+        span.prompt_tokens = 0
+        span.completion_tokens = 0
+        span.cost = 0.0
+        record = candidate.record.model_copy(
+            update={
+                "fallback_used": candidate.record.fallback_used or bool(attempted),
+                "rejected": list(candidate.record.rejected) + attempted,
+                "estimated_cost": 0.0,
+            }
+        )
+        return Consultation(completion=completion, record=record, span=span)
 
     async def consult(
         self,
@@ -130,6 +167,18 @@ class Delphi:
                 fallback_used=bool(attempted),
                 include_prompt=self._include_prompt,
             )
+            key = CacheKey(
+                model_id=candidate.model.model_id,
+                prompt=prompt,
+                system=system,
+                token_ceiling=max_tokens,
+                json_mode=json_mode,
+            )
+            if self._cache is not None:
+                cached = self._cache.get(key)
+                if isinstance(cached, Completion):
+                    return self._from_cache(cached, candidate, span, attempted)
+
             started = time.perf_counter()
             try:
                 completion = await provider.complete(
@@ -169,6 +218,8 @@ class Delphi:
                     "estimated_cost": completion.cost,
                 }
             )
+            if self._cache is not None:
+                self._cache.put(key, completion)
             return Consultation(completion=completion, record=record, span=span)
 
         raise last_error or ProviderError(

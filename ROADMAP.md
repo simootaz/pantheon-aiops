@@ -30,7 +30,7 @@ keep all of it honest. **No business logic.**
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |
-| Docs | 7 ADRs, repository map, architecture, this file |
+| Docs | 8 ADRs, repository map, architecture, this file |
 | **Guards** | **78, each verified against a planted violation** |
 
 Shipped as ten branches, two unplanned: `feature/go-base-relocation` and

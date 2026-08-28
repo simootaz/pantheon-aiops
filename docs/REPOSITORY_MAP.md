@@ -202,7 +202,7 @@ pantheon-aiops/
 | `core/cerberus/store/` | ⛔ **Plaintext.** Agents must not import anything here. `master_key` and `envelope` are live; `vault`, `kinds` and `rotation` are Phase 3. | 3 |
 | `core/cerberus/redemption.py` | ⛔ **The only producer of plaintext.** Connector-side only. | 3 |
 | `core/workflows/` | Temporal `workflow`, `activities`, `worker` for long-running investigations. | 5 |
-| `core/memory/` | `vector_store`, `repository`, `cache`. | 2 |
+| `core/memory/` | `cache` (live) and `vector_store` (deferred). **`repository.py` was deleted**: it duplicated `core/store/`, which already persists Investigations and is gated. See [ADR 0008](adr/0008-memory-layer-scope.md). | 2 |
 | `core/llm/` | **Delphi** — the LLM gateway. Resolution cascade, capability probing, dialect adapters, shared `prompts/`. Not an agent. Credentials come from Cerberus. | 2 |
 | `core/llm/providers/` | Dialect adapters, named by wire format not vendor: `chat_completions` ★, `messages`, `generate_content`, `raw`, `custom`. | 2 |
 | `core/observability/` | OTel setup, platform metrics, structured logging. | 1 |
@@ -215,6 +215,8 @@ pantheon-aiops/
 | `connectors/kubernetes/python_ref/` | Temporary Python implementation. **Deleted in Phase 6.** | 1 |
 | `connectors/prometheus/` | Python. Range/instant queries, series and label discovery. | 1 |
 | `agents/nl_query/agent.py` | **Hermes.** A question in, a connector query and a checkable answer out. The first agent to consult Delphi, so the first place ADR 0004 is exercised end to end. The model proposes a tool and a query; **Hermes supplies the time range and validates the tool before calling it**, and an empty result is reported without consulting a model at all - handing one an absence is how "no error rows" becomes "the service is healthy". | 2 |
+| `core/memory/cache.py` | A TTL cache for **model completions only**. A cached Prometheus read answers with the past, and during an incident that is exactly when it matters - so connector responses are deliberately not cached. A hit is recorded at **zero cost**, because replaying the original would make "what did this investigation spend" climb while no money moved. | 2 |
+| `core/memory/vector_store.py` | ⏸ **Deferred to Phase 5**, with the trigger named in [ADR 0008](adr/0008-memory-layer-scope.md). Its only consumer is Mnemosyne, which declares no memory tool yet - and building a store with no reader means guessing the query shape two phases early. | 5 |
 | `core/llm/assembly.py` | The default wiring for a `Delphi`, kept out of `gateway.py` so the injection point stays injectable. Refuses to build a gateway with no usable provider: an empty one fails deep in the fallback chain with "no adapter", which reads as a broken catalogue rather than a missing key. | 2 |
 | `tests/unit/test_hermes_nl_query.py` | What Hermes runs, refuses and never claims, against a scripted model rather than a live one. Every case is about refusing to act on the part of a model's reply there is no reason to trust. | 2 |
 | `agents/log_clustering/agent.py` | **Lethe.** Reports log patterns whose absence from the preceding window is *surprising*, plus exception traces. Detects **three of five** simulator scenarios and says which two it cannot: a fault that multiplies an existing pattern is invisible, because the rate test that would catch it could not tell a fault from the time of day and was deleted. | 2 |
@@ -310,7 +312,7 @@ pantheon-aiops/
 | `tests/integration/test_flow_one.py` | The live gate for flow 1, both directions, reading the result back on a second connection. | 2 |
 | `tests/unit/test_prediction_records.py` | Asserts every prediction record is **tracked by git**, not merely present on disk, carries a scoring, and cites measurements that exist. `55b0360` was one branch deletion from gone. | 1 |
 | `tests/unit/test_simulator_tables_are_read.py` | For every metric and every per-metric table, asserts that perturbing the entry changes what the **exporter** emits. `require_every_metric` proves a table is complete; this proves it is read. | 1 |
-| `docs/adr/` | Seven Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
+| `docs/adr/` | Eight Architecture Decision Records, indexed in `docs/adr/README.md`. One (0007) is **Proposed**, not implemented. | 0 |
 | `docs/guard-verification.md` | How every guard was verified against a planted violation — including three that turned out not to work. | 0 |
 
 ---
@@ -659,7 +661,7 @@ ruff-format, mypy, gitleaks and the codegen drift check — are live and passing
 |---|---|---|
 | **0** | **Scaffold & Tooling** ← **current** | Repo structure, Python/Go/TS tooling, codegen pipeline, deploy skeleton, CI, docs |
 | 1 | Contracts & First Agent Path | `core/contracts/` filled, registry, `agents/_base/`, **Argus**, Prometheus + Alertmanager connectors, API skeleton, metric/log simulator |
-| 2 | Orchestrator & Investigation Flow | **Zeus** end to end, memory, LLM provider, **Lethe** + **Hermes**, Loki connector |
+| 2 | Orchestrator & Investigation Flow | **Zeus** end to end, completion cache ([ADR 0008](adr/0008-memory-layer-scope.md) — the vector store is deferred), LLM provider, **Lethe** + **Hermes**, Loki connector |
 | 3 | Guardrails, Approvals & Write Actions | `core/guardrails/`, **Aegis**, write tools, approvals API + WebSocket stream, auth |
 | 4 | Delivery Flow | **Hephaestus** + **Themis**, GitLab + GitHub connectors, pipeline simulator, dashboard investigation UI |
 | 5 | Proactive Flow | **Moira**, **Mnemosyne**, **Clio**, **Eris**, Litmus connector, Temporal workflows, e2e tests |
