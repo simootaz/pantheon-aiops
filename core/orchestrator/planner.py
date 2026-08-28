@@ -24,7 +24,11 @@ from core.registry import loader
 #: Agents whose `investigate` does something. Deliberately a separate set from
 #: the manifest roster: a manifest declares intent, and dispatching on intent is
 #: how a stub ends up in a plan and fails a run for the wrong reason.
-IMPLEMENTED: dict[str, str] = {"anomaly": "argus", "log_clustering": "lethe"}
+IMPLEMENTED: dict[str, str] = {
+    "anomaly": "argus",
+    "log_clustering": "lethe",
+    "nl_query": "hermes",
+}
 
 
 class NoAgentForDomain(RuntimeError):

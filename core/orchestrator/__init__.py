@@ -30,9 +30,11 @@ def register_implemented() -> None:
     """
     from agents.anomaly.agent import Argus
     from agents.log_clustering.agent import Lethe
+    from agents.nl_query.agent import Hermes
 
     register("argus", Argus)
     register("lethe", Lethe)
+    register("hermes", Hermes)
 
 
 __all__ = [

@@ -9,6 +9,7 @@ Phase: 2 - Orchestrator & Investigation Flow
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from importlib import import_module
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -459,4 +460,39 @@ def test_every_implemented_domain_has_a_manifest_declaring_that_domain() -> None
         assert manifest.domain == domain, (
             f"IMPLEMENTED maps {domain!r} to {codename!r}, but that manifest "
             f"declares domain {manifest.domain!r}"
+        )
+
+
+def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
+    """A declared tool with no implementation makes ToolNotBound the NORMAL case.
+
+    The connector guards check this per connector; nothing checked it per
+    dispatchable agent. Hermes declared `kubernetes.list` and `kubernetes.get`,
+    which exist in no language - the Go connector's read-only tool list is
+    scaffolding and its python_ref is a six-line stub - and the whole suite was
+    green. An agent would have planned, dispatched, and failed at call time.
+
+    Only agents in IMPLEMENTED are checked. A stub agent's manifest is a
+    statement of intent, and holding intent to this standard would mean
+    deleting the roadmap.
+    """
+    adapters = {
+        "argus": "agents.anomaly.tools",
+        "lethe": "agents.log_clustering.tools",
+        "hermes": "agents.nl_query.tools",
+    }
+
+    for codename in sorted(planner.IMPLEMENTED.values()):
+        assert codename in adapters, (
+            f"{codename} is dispatchable and this check does not know where its "
+            "tool implementations live. Add it, or the agent is unchecked."
+        )
+        module = import_module(adapters[codename])
+        declared = set(loader.for_codename(codename).tools)
+        implemented = set(module.IMPLEMENTATIONS)
+
+        assert declared == implemented, (
+            f"{codename} declares {sorted(declared - implemented)} with no "
+            f"implementation, and implements {sorted(implemented - declared)} "
+            "that its manifest does not declare."
         )
