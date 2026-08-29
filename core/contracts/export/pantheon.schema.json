@@ -1347,6 +1347,15 @@
           "description": "Why the Evidence supports the claim.",
           "title": "Rationale"
         },
+        "related": {
+          "description": "Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Related",
+          "type": "array"
+        },
         "severity": {
           "$ref": "#/$defs/Severity"
         },

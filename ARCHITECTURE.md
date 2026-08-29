@@ -223,7 +223,7 @@ password on each sync and orphan the data.
 
 ## What holds this together
 
-Not documentation. **597 tests**, the structural and security guards among
+Not documentation. **612 tests**, the structural and security guards among
 them each verified against a planted violation in both directions — see
 [docs/guard-verification.md](docs/guard-verification.md), including the ones that
 turned out not to work and how that was found.

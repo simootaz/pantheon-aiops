@@ -1846,6 +1846,11 @@ type Finding struct {
 	// Why the Evidence supports the claim.
 	Rationale interface{} `json:"rationale,omitempty,omitzero" yaml:"rationale,omitempty" mapstructure:"rationale,omitempty"`
 
+	// Other Findings this one connects. Populated on a CORRELATION; empty elsewhere,
+	// because a detector states what it saw and does not decide what else it belongs
+	// with.
+	Related []string `json:"related,omitempty,omitzero" yaml:"related,omitempty" mapstructure:"related,omitempty"`
+
 	// Severity corresponds to the JSON schema field "severity".
 	Severity Severity `json:"severity" yaml:"severity" mapstructure:"severity"`
 

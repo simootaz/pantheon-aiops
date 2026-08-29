@@ -72,6 +72,14 @@ class Finding(ContractModel):
         default_factory=list,
         description="Evidence supporting the claim. A Finding with none is inadmissible.",
     )
+    related: list[UUID] = Field(
+        default_factory=list,
+        description=(
+            "Other Findings this one connects. Populated on a CORRELATION; empty "
+            "elsewhere, because a detector states what it saw and does not decide "
+            "what else it belongs with."
+        ),
+    )
     rationale: str | None = Field(default=None, description="Why the Evidence supports the claim.")
     tags: list[str] = Field(default_factory=list, description="Free-form, for grouping.")
 
@@ -91,13 +99,10 @@ class Finding(ContractModel):
         return self
 
 
-# TODO: Phase 2 - add cross-agent correlation ids so Findings can reference each other.
+# `related` above is what core/orchestrator/correlation.py populates. It says
+# these Findings are about ONE RESOURCE IN ONE WINDOW - a fact - and deliberately
+# not that they share a cause, which is the judgement nothing here makes yet.
 #
-# STILL PHASE 2, and newly meaningful: since the classifier learned to plan more
-# than one domain, an alert dispatches BOTH Argus and Lethe, so two agents now
-# report about the same window and the same pods. "memory crossed on pod-3" and
-# "an OOMKilled pattern appeared on pod-3" are the same event seen twice.
-#
-# What is missing is the thing that decides they are related. That is the same
-# gap as core/orchestrator/aggregator.py's empty hypotheses, and it should be
-# built once rather than twice.
+# TODO: Phase 5 - rank correlated groups into hypotheses. Needs something that
+# can weigh "the memory anomaly caused the OOM" against the reverse, and that is
+# a reasoning step scored against simulator/scenarios/*.yaml ground truth.

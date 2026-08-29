@@ -198,6 +198,7 @@ pantheon-aiops/
 | `core/contracts/` | ★ **Source of truth.** Pydantic v2 models for every cross-language shape, with validators. | 1 |
 | `core/contracts/root_cause.py` | `RootCauseCategory` — the closed vocabulary agents, verdicts **and scenario ground truth** all draw from. | 1 |
 | `core/contracts/export/` | ⚙️ **Generated.** JSON Schema emitted from the models. | 0 |
+| `core/orchestrator/correlation.py` | Groups Findings that describe **one resource in one window** - a fact, checkable from the Findings themselves. It does **not** claim they share a cause: "the memory anomaly caused the OOM" and the reverse are both consistent with co-occurrence, and the scenarios carry ground truth for that field, so an invented ordering would be scored as though it were reasoning. Subjects must match exactly - `ResourceRef` has no parent link, so a pod and its service cannot be joined without topology. | 2 |
 | `core/orchestrator/` | **Zeus.** `router`, `classifier`, `planner`, `dispatcher`, `aggregator`. | 2 |
 | `core/registry/` | Agent manifest discovery and capability matching. | 1 |
 | `core/guardrails/` | `policy`, `approval_gate`, `budget` — every write action passes here. Cerberus reuses this Approval Gate; there is no second inbox. | 3 |

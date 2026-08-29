@@ -517,6 +517,10 @@ export type FindingKind = "observation" | "anomaly" | "correlation" | "risk" | "
  */
 export type Rationale = string | null;
 /**
+ * Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.
+ */
+export type Related = string[];
+/**
  * How much a Finding should worry the on-call engineer.
  */
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
@@ -1180,6 +1184,7 @@ export interface Finding {
   id: Id7;
   kind?: FindingKind;
   rationale?: Rationale;
+  related?: Related;
   severity: Severity;
   /**
    * What the claim is about.
