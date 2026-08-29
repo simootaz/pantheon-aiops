@@ -526,3 +526,126 @@ async def test_the_range_adapter_defaults_direction_and_nothing_else(
 
     assert seen["direction"] == "backward"
     assert seen["limit"] is None
+
+
+# --- a finding nobody can attribute cannot be correlated -----------------------------
+
+
+class _Labelled(_Loki):
+    """A Loki that returns its lines split across labelled streams.
+
+    The default fake returns one unlabelled stream, which is what let Lethe
+    discard labels for as long as it did: every test passed against an agent
+    that knew nothing about which pod a line came from.
+    """
+
+    def __init__(
+        self, incident: list[str], reference: list[str], labels: list[dict[str, str]]
+    ) -> None:
+        super().__init__(incident, reference)
+        self.stream_labels = labels
+
+    async def call(self, name: str, /, **kwargs: Any) -> Any:
+        body = await super().call(name, **kwargs)
+        flat = body["result"][0]["values"]
+        streams = len(self.stream_labels)
+        body["result"] = [
+            {"stream": labels, "values": flat[group::streams]}
+            for group, labels in enumerate(self.stream_labels)
+        ]
+        return body
+
+
+@pytest.mark.asyncio
+async def test_a_pattern_on_one_pod_is_attributed_to_that_pod() -> None:
+    """ "the log stream" is true and useless. A novel pattern nobody can pin to a
+    pod cannot be correlated with a metric anomaly on that pod, and correlation
+    is the whole of what Zeus is still missing."""
+    tools = _Labelled(
+        _requests(_enough()) + _disk(60),
+        _requests(_enough()),
+        [{"pod": "checkout-7f9", "service": "checkout"}],
+    )
+    agent, ctx = _lethe(tools)
+
+    finding = (await agent.investigate(ctx))[0]
+
+    assert finding.subject is not None
+    assert finding.subject.kind == "pod"
+    assert finding.subject.name == "checkout-7f9"
+
+
+@pytest.mark.asyncio
+async def test_a_pattern_across_a_service_is_attributed_to_the_service() -> None:
+    """Naming one pod here would attribute a service-wide fault to whichever pod
+    sorted first."""
+    tools = _Labelled(
+        _requests(_enough()) + _disk(60),
+        _requests(_enough()),
+        [
+            {"pod": "checkout-7f9", "service": "checkout"},
+            {"pod": "checkout-a12", "service": "checkout"},
+        ],
+    )
+    agent, ctx = _lethe(tools)
+
+    finding = (await agent.investigate(ctx))[0]
+
+    assert finding.subject is not None
+    assert finding.subject.kind == "service"
+    assert finding.subject.name == "checkout"
+
+
+@pytest.mark.asyncio
+async def test_a_pattern_spanning_services_stays_the_stream() -> None:
+    """Honest rather than unhelpful. A fleet-wide pattern attributed to one pod
+    sends an operator to the wrong place."""
+    tools = _Labelled(
+        _requests(_enough()) + _disk(60),
+        _requests(_enough()),
+        [
+            {"pod": "checkout-7f9", "service": "checkout"},
+            {"pod": "payments-b31", "service": "payments"},
+        ],
+    )
+    agent, ctx = _lethe(tools)
+
+    finding = (await agent.investigate(ctx))[0]
+
+    assert finding.subject is not None
+    assert finding.subject.kind == "log_stream"
+
+
+@pytest.mark.asyncio
+async def test_unlabelled_streams_read_as_not_attributed() -> None:
+    """The case a caller that discarded the labels produces. It must read as
+    "not attributed" rather than as an arbitrary pod."""
+    agent, ctx = _lethe(_Loki(_requests(_enough()) + _disk(60), _requests(_enough())))
+
+    finding = (await agent.investigate(ctx))[0]
+
+    assert finding.subject is not None
+    assert finding.subject.kind == "log_stream"
+
+
+def test_the_narrowing_order_is_narrowest_first() -> None:
+    """Not alphabetical. Attribution stops at the first label every occurrence
+    agrees on, so a wrong order attributes a pod-local fault to a cluster."""
+    from agents.log_clustering.agent import _NARROWING
+
+    assert _NARROWING.index("pod") < _NARROWING.index("service")
+    assert _NARROWING.index("service") < _NARROWING.index("node")
+    assert _NARROWING.index("namespace") < _NARROWING.index("cluster")
+
+
+def test_a_template_whose_lines_are_only_partly_labelled_is_not_attributed() -> None:
+    """Half the occurrences on `checkout` says nothing about the other half.
+
+    Attributing on a majority would name a pod for a pattern that also appeared
+    somewhere the label does not cover.
+    """
+    from agents.log_clustering.agent import _narrowest_shared
+
+    mixed = [{"pod": "checkout-7f9"}, {}]
+
+    assert _narrowest_shared(mixed).kind == "log_stream"

@@ -392,3 +392,42 @@ def test_a_clean_window_compared_with_itself_reports_nothing_novel() -> None:
     lines = _requests(_enough())
     incident, reference = compare(lines, lines)
     assert novel(incident, reference) == []
+
+
+# --- members index the INPUT, so a caller can line labels up ------------------------
+
+
+def test_member_indices_point_at_the_input_lines_not_the_parsed_ones() -> None:
+    """The shift that would misattribute a finding to the wrong pod.
+
+    A caller holds something parallel to the lines it passed in - the Loki
+    stream labels each came from - and looks it up by index. Indexing the
+    PARSED subset instead shifts by however many lines were unparsable, and the
+    failure is an attribution to the wrong pod rather than an error.
+
+    Blank lines are unparsable, so this fixture makes the two indexings differ.
+    """
+    noise = ["", "   ", ""]
+    wanted = [json.dumps({"msg": "disk usage high", "used_percent": p}) for p in range(_enough())]
+    lines = noise + _requests(_enough()) + wanted
+
+    result = cluster(lines)
+
+    assert result.unparsed == len(noise), "the fixture stopped exercising the shift"
+    disk = next(t for t in result.templates if "disk usage high" in t.rendered)
+    indices = result.members[disk.signature]
+
+    assert all(lines[index] in wanted for index in indices), (
+        "member indices do not point at the lines they describe; a caller "
+        "looking up labels by these would attribute the finding to the wrong source"
+    )
+
+
+def test_every_line_that_matched_is_a_member() -> None:
+    """The control. Indices that happened to be right for a subset would pass
+    the test above."""
+    lines = _requests(_enough())
+
+    result = cluster(lines)
+
+    assert sum(len(indices) for indices in result.members.values()) == len(lines)

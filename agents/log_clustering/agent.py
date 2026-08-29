@@ -134,8 +134,8 @@ class Lethe(BaseAgent):
             )
 
         started, ended = ctx.window_start.timestamp(), ctx.window_end.timestamp()
-        incident_lines = await self._read(ctx, started, ended)
-        reference_lines = await self._read(ctx, started - span, started)
+        incident_lines, incident_labels = await self._read(ctx, started, ended)
+        reference_lines, _ = await self._read(ctx, started - span, started)
 
         traces = stack_traces(incident_lines)
         findings: list[Finding] = [self._trace_finding(ctx, trace) for trace in traces]
@@ -163,11 +163,16 @@ class Lethe(BaseAgent):
 
         incident, reference = compare(incident_lines, reference_lines)
         for template in novel(incident, reference):
-            findings.append(self._novel_finding(ctx, template, incident, reference))
+            where = _narrowest_shared(
+                [incident_labels[index] for index in incident.members.get(template.signature, [])]
+            )
+            findings.append(self._novel_finding(ctx, template, incident, reference, where))
 
         return findings
 
-    async def _read(self, ctx: AgentContext, start: float, end: float) -> list[str]:
+    async def _read(
+        self, ctx: AgentContext, start: float, end: float
+    ) -> tuple[list[str], list[dict[str, str]]]:
         """One window of lines, in EMISSION ORDER.
 
         Sorting is not tidiness. `templates.py` decides whether a field is a
@@ -197,12 +202,19 @@ class Lethe(BaseAgent):
             ) from error
 
         entries = [
-            (int(entry[0]), str(entry[1]))
+            (int(entry[0]), str(entry[1]), dict(stream.get("stream", {})))
             for stream in raw.get("result", [])
             for entry in stream.get("values", [])
         ]
-        entries.sort()
-        return [line for _stamp, line in entries]
+        entries.sort(key=lambda entry: entry[0])
+        # Labels kept, not discarded. The first version threw them away and
+        # every Lethe finding was about "the log stream" - which is true and
+        # useless: a novel pattern nobody can attribute to a pod cannot be
+        # correlated with a metric anomaly on that pod, and correlation is the
+        # whole of what Zeus is missing.
+        return [line for _stamp, line, _labels in entries], [
+            labels for _stamp, _line, labels in entries
+        ]
 
     def _novel_finding(
         self,
@@ -210,6 +222,7 @@ class Lethe(BaseAgent):
         template: Template,
         incident: Clustering,
         reference: Clustering,
+        subject: ResourceRef,
     ) -> Finding:
         """One template whose absence from the reference was surprising."""
         expected = (template.count / max(incident.lines_seen, 1)) * reference.lines_seen
@@ -217,7 +230,6 @@ class Lethe(BaseAgent):
         # 1.0 means "could not plausibly have been missed" rather than a label.
         chance_of_absence = math.exp(-expected)
 
-        subject = ResourceRef(kind="log_stream", name=SELECTOR)
         payload = LogClusterPayload(
             template=template.rendered,
             sample_lines=list(template.examples),
@@ -264,6 +276,7 @@ class Lethe(BaseAgent):
             evidence=[evidence],
             tags=[
                 "novel-template",
+                f"subject:{subject.kind}/{subject.name}",
                 f"occurrences:{template.count}",
                 f"reference-lines:{reference.lines_seen}",
                 f"incident-lines:{incident.lines_seen}",
@@ -319,3 +332,35 @@ class Lethe(BaseAgent):
             evidence=[evidence],
             tags=["stack-trace", f"throws:{trace.count}", "confidence:extraction-is-not-inference"],
         )
+
+
+#: Stream labels from narrowest to widest. A pod is more specific than the
+#: service it belongs to, which is more specific than the node it runs on.
+#:
+#: Order matters and is not alphabetical: attribution walks this list and stops
+#: at the first label every occurrence agrees on, so getting it wrong would
+#: attribute a pod-local fault to a whole cluster.
+_NARROWING = ("pod", "service", "node", "namespace", "cluster")
+
+
+def _narrowest_shared(labels: list[dict[str, str]]) -> ResourceRef:
+    """The most specific resource EVERY occurrence of a template shares.
+
+    A template seen only on `checkout-7f9` is about that pod. One seen across
+    six pods of one service is about the service. One spanning services is about
+    the stream, and saying so is honest rather than unhelpful - naming a single
+    pod there would attribute a fleet-wide pattern to whichever pod sorted first.
+
+    Falls back to the selector when the labels agree on nothing, or when there
+    are none at all - which is the case a caller that discarded them produces,
+    and it must read as "not attributed" rather than as an arbitrary pod.
+    """
+    if not labels:
+        return ResourceRef(kind="log_stream", name=SELECTOR)
+
+    for label in _NARROWING:
+        values = {found[label] for found in labels if found.get(label)}
+        if len(values) == 1 and len(labels) == sum(1 for f in labels if f.get(label)):
+            return ResourceRef(kind=label, name=values.pop())
+
+    return ResourceRef(kind="log_stream", name=SELECTOR)

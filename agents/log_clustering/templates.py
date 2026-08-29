@@ -124,6 +124,14 @@ class Clustering:
     templates: list[Template] = field(default_factory=list)
     lines_seen: int = 0
     unparsed: int = 0
+    #: Signature -> the indices, into the INPUT list, of the lines that matched.
+    #:
+    #: Into the input rather than the parsed subset, because a caller holding
+    #: something parallel to the lines - the stream labels each came from - has
+    #: to be able to line them up. Indexing the parsed subset would silently
+    #: shift by however many lines were unparsable, and the failure would be an
+    #: attribution to the wrong pod rather than an error.
+    members: dict[str, list[int]] = field(default_factory=dict)
     #: Fields the ordering rule identified as clocks or counters, per shape.
     #: Empty across the board is a signal in itself: either these logs carry no
     #: timestamp, or the caller did not pass the lines in emission order.
@@ -329,17 +337,19 @@ def cluster(lines: list[str], classification: Classification | None = None) -> C
     differently.
     """
     parsed: list[_Parsed] = []
+    origin: dict[int, int] = {}
     unparsed = 0
-    for line in lines:
+    for index, line in enumerate(lines):
         row = _parse(line)
         if row is None:
             unparsed += 1
             continue
+        origin[len(parsed)] = index
         parsed.append(row)
 
-    groups: dict[str, list[_Parsed]] = defaultdict(list)
-    for row in parsed:
-        groups[row.shape].append(row)
+    groups: dict[str, list[int]] = defaultdict(list)
+    for position, row in enumerate(parsed):
+        groups[row.shape].append(position)
 
     counts: dict[str, int] = defaultdict(int)
     rendered: dict[str, str] = {}
@@ -347,14 +357,18 @@ def cluster(lines: list[str], classification: Classification | None = None) -> C
     examples: dict[str, list[str]] = defaultdict(list)
 
     sequences: dict[str, list[str]] = {}
-    for shape, rows in groups.items():
+    members: dict[str, list[int]] = defaultdict(list)
+    for shape, positions in groups.items():
+        rows = [parsed[position] for position in positions]
         stable = _stable_fields(rows) if classification is None else classification.get(shape)
         found = _sequence_fields(rows)
         if found:
             sequences[shape] = found
-        for row in rows:
+        for position in positions:
+            row = parsed[position]
             signature, human = _signature(row, stable)
             counts[signature] += 1
+            members[signature].append(origin[position])
             rendered.setdefault(signature, human)
             inferred.setdefault(signature, stable is not None)
             if len(examples[signature]) < EXAMPLES_KEPT:
@@ -380,6 +394,7 @@ def cluster(lines: list[str], classification: Classification | None = None) -> C
         lines_seen=len(parsed),
         unparsed=unparsed,
         sequence_fields=sequences,
+        members={signature: sorted(indices) for signature, indices in members.items()},
     )
 
 
