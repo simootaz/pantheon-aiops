@@ -101,7 +101,13 @@ def redeem(
         )
 
     try:
-        sealed = vault.get(lease.credential_ref)
+        # By the lease's ISSUE time, not by asking for the current value. A
+        # lease minted before a rotation must resolve to the value that was
+        # current when it was minted, or a rotation breaks every investigation
+        # already holding a lease - see store/rotation.py.
+        sealed = vault.version_for(
+            lease.credential_ref, issued_at=lease.issued_at, now=leases.clock()
+        )
     except CredentialNotFound as missing:
         _refuse(audit, lease, investigation_id, str(missing))
         raise AssertionError("unreachable") from missing  # pragma: no cover
