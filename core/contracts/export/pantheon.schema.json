@@ -780,7 +780,7 @@
     },
     "AuditEntry": {
       "additionalProperties": false,
-      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.",
+      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.\n\nFROZEN, and that is the whole of \"immutable\" above. The docstring said it\nfor two phases while assignment worked fine, so an append-only log rested on\na promise nothing enforced - and a trail that can be rewritten answers\nnothing. `tests/unit/test_audit_trail.py` plants the assignment.",
       "properties": {
         "action": {
           "$ref": "#/$defs/CredentialAction",

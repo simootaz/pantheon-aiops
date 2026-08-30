@@ -1005,6 +1005,11 @@ func (j *ArtifactRef) UnmarshalJSON(value []byte) error {
 //
 // Attached to the Investigation, which agents can see - safe because every
 // reference here is a CredentialRef and never a value.
+//
+// FROZEN, and that is the whole of "immutable" above. The docstring said it
+// for two phases while assignment worked fine, so an append-only log rested on
+// a promise nothing enforced - and a trail that can be rewritten answers
+// nothing. `tests/unit/test_audit_trail.py` plants the assignment.
 type AuditEntry struct {
 	// NOT_APPLICABLE for events that concern no single access.
 	Action CredentialAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`
@@ -1290,6 +1295,11 @@ type BreakGlassEvent struct {
 //
 // Attached to the Investigation, which agents can see - safe because every
 // reference here is a CredentialRef and never a value.
+//
+// FROZEN, and that is the whole of "immutable" above. The docstring said it
+// for two phases while assignment worked fine, so an append-only log rested on
+// a promise nothing enforced - and a trail that can be rewritten answers
+// nothing. `tests/unit/test_audit_trail.py` plants the assignment.
 type BreakGlassEventAuditEntry struct {
 	// NOT_APPLICABLE for events that concern no single access.
 	Action CredentialAction `json:"action,omitempty,omitzero" yaml:"action,omitempty" mapstructure:"action,omitempty"`

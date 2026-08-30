@@ -28,7 +28,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from core.contracts.base import ContractModel
 
@@ -186,7 +186,14 @@ class AuditEntry(ContractModel):
 
     Attached to the Investigation, which agents can see - safe because every
     reference here is a CredentialRef and never a value.
+
+    FROZEN, and that is the whole of "immutable" above. The docstring said it
+    for two phases while assignment worked fine, so an append-only log rested on
+    a promise nothing enforced - and a trail that can be rewritten answers
+    nothing. `tests/unit/test_audit_trail.py` plants the assignment.
     """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID
     at: datetime
