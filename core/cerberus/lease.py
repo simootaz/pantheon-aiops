@@ -95,12 +95,17 @@ class LeaseBook:
         action: CredentialAction,
         request_id: UUID,
         renewable: bool = True,
+        ttl: timedelta | None = None,
     ) -> Lease:
         """Issue a lease against a live grant, for one connector and one run.
 
         The grant is checked first. Minting from an expired or revoked grant
         would create permission nobody currently holds - and the lease would
         look identical to a valid one for its whole life.
+
+        `ttl` shortens this one lease and can never lengthen it - it is capped
+        at the book's own. A caller asking for eight hours is asking to widen
+        the setting that bounds every lease in the system, one lease at a time.
         """
         now = self.clock()
         self._refuse_dead_grant(grant, now=now)
@@ -131,7 +136,7 @@ class LeaseBook:
             issued_at=now,
             # Never past the grant. A lease that outlived its grant would be
             # permission nobody gave, arrived at by arithmetic.
-            expires_at=_bounded(now + self.ttl, grant.expires_at),
+            expires_at=_bounded(now + min(ttl or self.ttl, self.ttl), grant.expires_at),
             renewable=renewable,
         )
         self._leases[lease.id] = lease
@@ -205,6 +210,63 @@ class LeaseBook:
             return False
         self._leases[lease_id] = known.model_copy(update={"expires_at": self.clock()})
         return True
+
+    def current(self, lease_id: UUID) -> Lease | None:
+        """The book's own copy of a lease, or `None`.
+
+        Callers hold the lease they were handed, and `revoke` and `renew`
+        replace the record rather than mutate it - a `Lease` is frozen. So a
+        caller asking "is the one I hold still good" must ask about the id, not
+        about the object, or it will be told about a snapshot.
+        """
+        return self._leases.get(lease_id)
+
+    def live_leases(self) -> list[Lease]:
+        """Every lease still usable, judged now."""
+        return [lease for lease in self._leases.values() if self.live(lease)]
+
+    def minted_from(self, grant_id: UUID) -> list[Lease]:
+        """Every lease this book minted from one grant, live or not."""
+        return [
+            self._leases[lease_id]
+            for lease_id, grant in self._grants.items()
+            if grant.id == grant_id
+        ]
+
+    def revoke_from_grant(self, grant_id: UUID) -> int:
+        """End every live lease minted from one grant. Returns how many died.
+
+        Revoking a grant stops the NEXT lease and nothing else: redemption
+        checks the lease, deliberately, so that producing a credential does not
+        depend on a policy lookup being reachable. Without this, a revocation
+        takes effect in one TTL rather than now.
+        """
+        return sum(
+            1
+            for lease_id, grant in self._grants.items()
+            if grant.id == grant_id and self.revoke_if_live(lease_id)
+        )
+
+    def revoke_all(self) -> int:
+        """End every live lease in the book. Returns how many died.
+
+        Break-glass. Not filtered by grant, because a lease whose grant this
+        process never saw - minted before a restart, or from a grant since
+        deleted - is exactly the one the handle is being pulled for.
+        """
+        return sum(1 for lease_id in list(self._leases) if self.revoke_if_live(lease_id))
+
+    def revoke_if_live(self, lease_id: UUID) -> bool:
+        """Revoke, but report nothing for a lease that had already expired.
+
+        The count is what somebody reads to decide whether the system stopped,
+        and counting leases that were already dead inflates it in the direction
+        of reassurance.
+        """
+        known = self._leases.get(lease_id)
+        if known is None or not self.live(known):
+            return False
+        return self.revoke(lease_id)
 
     def _refuse_dead_grant(self, grant: Grant, *, now: datetime) -> None:
         """The one check both minting and renewal share."""
