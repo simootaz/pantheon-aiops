@@ -93,6 +93,11 @@ class AuditLog:
             investigation_id=investigation_id,
             credential_ref=credential_ref,
             action=action,
+            # Accepted and passed. It was accepted and DROPPED - the parameter
+            # existed, the field existed, and nothing carried one to the other,
+            # so every lease event recorded a null lease. A redemption trail
+            # that cannot say which lease was used answers half the question.
+            lease_id=lease_id,
             # Redacted on the way IN, not on the way out. A value that reached
             # storage is a value in a memory dump and in whatever persists this
             # later, whatever a reader is shown.
