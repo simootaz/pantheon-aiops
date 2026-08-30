@@ -16,8 +16,17 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api import __version__
-from api.routers import agents, alerts, health, investigations, providers, webhooks
+from api.routers import (
+    agents,
+    alerts,
+    approvals,
+    health,
+    investigations,
+    providers,
+    webhooks,
+)
 from core.bus import EventBus, InMemoryEventBus
+from core.guardrails.approval_gate import ApprovalGate
 from core.observability.logging import configure as configure_logging
 from core.orchestrator import register_implemented
 from core.store.investigations import InvestigationStore
@@ -34,6 +43,7 @@ def create_app(
     event_bus: EventBus | None = None,
     investigation_store: InvestigationStore | None = None,
     provider_store: ProviderStore | None = None,
+    approval_gate: ApprovalGate | None = None,
 ) -> FastAPI:
     """Build the Pantheon API application.
 
@@ -69,6 +79,13 @@ def create_app(
     app.state.provider_store = (
         provider_store if provider_store is not None else PostgresProviderStore()
     )
+    # One gate per process, like the capability matrix and for the same reason:
+    # an approval opened by one request must be answerable by the next, and
+    # there is no persistence yet. Two replicas do NOT share it - stated here
+    # rather than discovered by an approval that vanishes behind a load
+    # balancer.
+    app.state.approval_gate = approval_gate if approval_gate is not None else ApprovalGate()
+
     register_implemented()
 
     app.include_router(health.router)
@@ -77,6 +94,7 @@ def create_app(
     app.include_router(investigations.router)
     app.include_router(agents.router)
     app.include_router(providers.router)
+    app.include_router(approvals.router)
 
     return app
 
