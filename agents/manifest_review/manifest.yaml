@@ -17,11 +17,11 @@ capabilities:
     description: Assess a manifest change for operational risk.
   - name: assess_blast_radius
     description: Estimate what a change can affect if it is wrong.
-tools:
-  - kubernetes.get
-  - kubernetes.list
-  - gitlab.diff
-  - github.diff
+# Empty, deliberately. Aegis reviews a change it is handed on ctx.params and
+# calls no connector: nothing about the cluster changes what a diff removed.
+# gitlab.diff and github.diff are what would let it FETCH a change instead of
+# being handed one, and both connectors are Phase 4 stubs - see tools.py.
+tools: []
 budget:
   max_tokens: 16384
   max_seconds: 120
