@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from core.config import get_settings
 from core.contracts.llm import Capability, ModelRequirements
 from core.llm.capability_matrix import STALE_AFTER, CapabilityMatrix, Probed
 from core.llm.catalog import Catalogue, from_settings
@@ -33,9 +34,22 @@ class _Ticker:
         return self.now
 
 
+#: The provider the catalogue is actually built from. Read rather than written
+#: out, because `from_settings` looks probe results up by `(provider_id,
+#: model_id)` and a literal here only matches when the developer's own .env
+#: happens to name the same provider.
+#:
+#: It did. `LLM_PROVIDER_ID=groq` locally, `local-ollama` by default, so
+#: `test_probing_is_what_makes_a_json_mode_agent_resolvable` passed on a laptop
+#: and failed in CI - the probe recorded under one key and the catalogue read
+#: another, and the resolver reported the model as unprobed. An
+#: environment-dependent test that reports a real defect only somewhere else.
+CONFIGURED_PROVIDER = get_settings().delphi.provider_id
+
+
 def _provider(reply: str = '{"ok": true}', **kwargs: object) -> RecordingProvider:
     provider = RecordingProvider(reply=reply, **kwargs)  # type: ignore[arg-type]
-    provider.provider_id = "groq"
+    provider.provider_id = CONFIGURED_PROVIDER
     return provider
 
 
@@ -205,6 +219,14 @@ async def test_probing_is_what_makes_a_json_mode_agent_resolvable() -> None:
     matrix = CapabilityMatrix(clock=_Ticker())
     catalogue = from_settings()
     await probe_into(matrix, _provider(), list(catalogue.models))
+
+    # The probe must have recorded under the key the catalogue reads back. A
+    # mismatch leaves every model looking unprobed and the resolver reporting
+    # a broken catalogue - which is the shape of the original bug, arrived at
+    # from the other side.
+    assert all(matrix.fresh(CONFIGURED_PROVIDER, model_id) for model_id in catalogue.models), (
+        "probe results were recorded under a provider id the catalogue does not read"
+    )
 
     resolution = resolve(requirements, catalogue=from_settings(matrix), requested_by="hermes")
     assert Capability.JSON_MODE in resolution.model.capabilities

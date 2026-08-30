@@ -1729,6 +1729,61 @@ separate plants because a single rule satisfying one silently breaks the other.
 > A guard that checks a name exists has verified spelling. Ask what the name
 > points at, and whether the thing it points at does what the claim says.
 
+## A test that passes because of the developer's own .env, 2026-08-31
+
+`test_probing_is_what_makes_a_json_mode_agent_resolvable` is the guard for the
+bug Delphi was built to fix: Hermes declares `JSON_MODE`, nothing probed for it,
+and every run hard-stopped with `Unresolvable`.
+
+It passed on this machine for a year of commits and failed the moment CI ran it.
+
+The fake provider set `provider.provider_id = "groq"`. `from_settings` looks a
+probe result up by `(provider_id, model_id)`, and the configured provider id
+comes from `LLM_PROVIDER_ID` - which is `groq` in the local `.env` and
+`local-ollama` by default. So the probe recorded under one key, the catalogue
+read another, every model came back unprobed, and the resolver reported exactly
+the failure the test claims to have fixed.
+
+### The two ways to read that
+
+The narrow reading is that a literal was wrong. The useful one is that **the
+test asserted a property of the developer's environment while claiming to assert
+a property of the code**, and nothing in a local run can tell those apart -
+which is why it survived. `make test` reads `.env`; CI does not.
+
+### What made it visible
+
+Only running it somewhere else. That is worth stating plainly, because the
+project's usual method did not catch this one: the guard was planted, went red,
+and the plant was as environment-dependent as the guard. A planted violation
+verifies a guard *in the conditions the plant runs in*, and both were run in the
+same wrong conditions.
+
+The plant is now recorded in both configurations:
+
+```
+--- PLANT: hardcoded provider id, under the CI configuration ---
+FAILED test_probing_is_what_makes_a_json_mode_agent_resolvable      1 failed, 21 passed
+--- same plant, under the local .env ---
+                                                                    22 passed
+```
+
+### The fix
+
+The fake impersonates the *configured* provider, read from settings, and the
+test asserts the probe landed under the key the catalogue reads back - so a
+future divergence fails with "recorded under a provider id the catalogue does
+not read" rather than as an unrelated resolution error.
+
+The other file that hardcodes a provider id, `test_delphi_assembly.py`, does not
+have this shape: it monkeypatches settings with its own fake, so the literal is
+a value it supplies rather than a claim about the environment. The distinction
+is the rule - **a test may hardcode what it configures, and never what it
+reads.**
+
+> If a test reads real configuration, it must not also hardcode a value that
+> configuration determines. Run it under a different one before believing it.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
