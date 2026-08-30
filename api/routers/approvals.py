@@ -4,6 +4,16 @@ The gate has held approvals since `core/guardrails/approval_gate.py` landed, and
 nothing could reach it: an Action needing a person waited for one who had no way
 to answer. This is that way.
 
+THE APPROVER IS NOT IN THE BODY
+---------------------------------
+It was. `approver` was a request field, and the gate then checked that the
+approver was not the proposer - against a string the caller had just chosen. So
+"the proposer cannot approve" held for exactly as long as the proposer was
+willing to say who they were.
+
+It comes from the verified `Principal` now. A body field is a claim; a token is
+something the server established, and only one of those can be checked.
+
 THE ENDPOINT CARRIES NO DECISION AUTHORITY
 --------------------------------------------
 `core/contracts/ui.py` states the rule and the gate enforces it: a response
@@ -35,6 +45,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from api.auth.dependencies import Principal, Role, require
 from core.contracts.action import Action
 from core.guardrails.approval_gate import ApprovalError, ApprovalGate
 
@@ -42,9 +53,14 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
 class Response(BaseModel):
-    """A person answering one request."""
+    """A person answering one request.
 
-    approver: str = Field(description="Who is answering. Never the proposer.")
+    No `approver` field. Who is answering comes from the bearer token, and
+    accepting it here as well would give a caller two ways to say who they are
+    - one of them unverified, and nothing downstream able to tell which was
+    used.
+    """
+
     approve: bool
     reason: str = Field(
         default="",
@@ -97,6 +113,7 @@ async def get_request(
 async def respond(
     request_id: UUID,
     response: Response,
+    principal: Annotated[Principal, require(Role.APPROVER)],
     gate: Annotated[ApprovalGate, Depends(get_gate)],
 ) -> dict[str, object]:
     """Record an answer. The gate decides whether it can be honoured.
@@ -105,12 +122,16 @@ async def respond(
     state that says no - already answered, expired, self-approved, or for an
     Action that has changed. A 400 would read as "fix your payload", and the fix
     is never the payload.
+
+    APPROVER and not OPERATOR. The separation between proposing and approving
+    is the whole point of the gate, and one role holding both makes it a
+    formality that logs itself.
     """
     try:
         answered = gate.respond(
             request_id,
             response.action,
-            approver=response.approver,
+            approver=principal.subject,
             approve=response.approve,
             reason=response.reason,
         )

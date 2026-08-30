@@ -21,8 +21,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from api.auth.dependencies import _principals
 from api.main import create_app
-from core.config import Environment
+from core.config import Environment, get_settings
 from core.contracts.action import Action, BlastRadius
 from core.contracts.evidence import ResourceRef
 from core.guardrails.approval_gate import ApprovalGate
@@ -31,6 +32,49 @@ from core.store.investigations import InMemoryInvestigationStore
 from core.store.providers import InMemoryProviderStore
 
 NOW = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+
+#: Three principals, because the interesting tests need to tell them apart:
+#: the proposer, a different approver, and somebody who authenticates fine and
+#: is not allowed to approve anything.
+TOKENS = {
+    "alex": "token-alex",
+    "sam": "token-sam",
+    "zeus": "token-zeus",
+    "morgan": "token-morgan",
+}
+TOKEN_CONFIG = (
+    "alex:approver=token-alex;"
+    "sam:approver=token-sam;"
+    "zeus:approver=token-zeus;"
+    "morgan:operator=token-morgan"
+)
+
+
+def _as(subject: str) -> dict[str, str]:
+    """The header that makes the server believe who the caller is.
+
+    A helper rather than a literal at each call, because the point of the whole
+    change is that the identity is no longer something a test can type into a
+    payload - it has to travel the same path a real caller's does.
+    """
+    return {"Authorization": f"Bearer {TOKENS[subject]}"}
+
+
+@pytest.fixture(autouse=True)
+def _configured_tokens(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Auth configured for the whole module, and both caches cleared around it.
+
+    `get_settings` and `_principals` are both `lru_cache`d, so a test that set
+    the variable without clearing them would run against whatever the first
+    test in the session happened to load - which is an order-dependent test,
+    and this file has been bitten by one before.
+    """
+    monkeypatch.setenv("PANTHEON_API_TOKENS", TOKEN_CONFIG)
+    get_settings.cache_clear()
+    _principals.cache_clear()
+    yield
+    get_settings.cache_clear()
+    _principals.cache_clear()
 
 
 class _Ticker:
@@ -97,7 +141,6 @@ def _waiting(gate: ApprovalGate, action: Action) -> Any:
 
 def _body(action: Action, **overrides: Any) -> dict[str, Any]:
     payload = {
-        "approver": "alex",
         "approve": True,
         "reason": "checked",
         "action": action.model_dump(mode="json"),
@@ -152,7 +195,7 @@ def test_an_approval_is_recorded(client: TestClient, gate: ApprovalGate) -> None
     action = _action()
     request = _waiting(gate, action)
 
-    body = client.post(f"/approvals/{request.id}", json=_body(action)).json()
+    body = client.post(f"/approvals/{request.id}", json=_body(action), headers=_as("alex")).json()
 
     assert body["state"] == "approved"
     assert body["answered_by"] == "alex"
@@ -165,7 +208,9 @@ def test_a_rejection_is_recorded_with_its_reason(client: TestClient, gate: Appro
     request = _waiting(gate, action)
 
     body = client.post(
-        f"/approvals/{request.id}", json=_body(action, approve=False, reason="too wide")
+        f"/approvals/{request.id}",
+        json=_body(action, approve=False, reason="too wide"),
+        headers=_as("alex"),
     ).json()
 
     assert body["state"] == "rejected"
@@ -180,9 +225,9 @@ def test_a_refusal_is_a_conflict_not_a_bad_request(client: TestClient, gate: App
     "fix your payload", and the fix is never the payload."""
     action = _action()
     request = _waiting(gate, action)
-    client.post(f"/approvals/{request.id}", json=_body(action))
+    client.post(f"/approvals/{request.id}", json=_body(action), headers=_as("alex"))
 
-    again = client.post(f"/approvals/{request.id}", json=_body(action, approver="sam"))
+    again = client.post(f"/approvals/{request.id}", json=_body(action), headers=_as("sam"))
 
     assert again.status_code == 409
     assert "already approved" in again.text
@@ -196,7 +241,7 @@ def test_self_approval_is_refused_through_the_endpoint(
     action = _action()
     request = _waiting(gate, action)
 
-    refused = client.post(f"/approvals/{request.id}", json=_body(action, approver="zeus"))
+    refused = client.post(f"/approvals/{request.id}", json=_body(action), headers=_as("zeus"))
 
     assert refused.status_code == 409
     assert "cannot approve it" in refused.text
@@ -212,7 +257,7 @@ def test_an_approval_for_a_changed_action_is_refused(
     request = _waiting(gate, action)
     widened = action.model_copy(update={"parameters": {"hours": 24}})
 
-    refused = client.post(f"/approvals/{request.id}", json=_body(widened))
+    refused = client.post(f"/approvals/{request.id}", json=_body(widened), headers=_as("alex"))
 
     assert refused.status_code == 409
     assert "has changed since approval was requested" in refused.text
@@ -225,7 +270,7 @@ def test_answering_an_expired_request_is_refused(
     request = _waiting(gate, action)
 
     clock.now = NOW + timedelta(hours=2)
-    refused = client.post(f"/approvals/{request.id}", json=_body(action))
+    refused = client.post(f"/approvals/{request.id}", json=_body(action), headers=_as("alex"))
 
     assert refused.status_code == 409
     assert "already expired" in refused.text
@@ -233,7 +278,7 @@ def test_answering_an_expired_request_is_refused(
 
 def test_answering_an_unknown_request_is_a_404_not_a_conflict(client: TestClient) -> None:
     """A typo and a rejected answer are different problems with different fixes."""
-    response = client.post(f"/approvals/{uuid4()}", json=_body(_action()))
+    response = client.post(f"/approvals/{uuid4()}", json=_body(_action()), headers=_as("alex"))
 
     assert response.status_code == 404
 

@@ -113,6 +113,16 @@ class ApiSettings(BaseSettings):
     host: str = "0.0.0.0"  # nosec B104
     port: int = Field(default=8000, ge=1, le=65535)
 
+    #: `subject:role,role=token;subject:role=token`. Parsed by
+    #: `api/auth/dependencies.py`, which refuses a malformed entry rather than
+    #: skipping it - an ignored entry silently reduces the set of people who can
+    #: approve, and the symptom reads as one person's problem.
+    #:
+    #: Empty authenticates nobody. It does NOT authenticate everybody, which is
+    #: the bug this shape invites: an empty credential matching an unset
+    #: expectation. Production refuses to start without one.
+    tokens: SecretStr | None = None
+
 
 class PrometheusSettings(BaseSettings):
     model_config = _group("PROMETHEUS_")
@@ -342,6 +352,14 @@ REQUIRED_IN_PRODUCTION: tuple[tuple[str, str, str], ...] = (
     ("object_storage", "secret_key", "S3_SECRET_KEY"),
     ("cerberus", "master_key", "CERBERUS_MASTER_KEY"),
     ("gitlab", "webhook_token", "GITLAB_WEBHOOK_TOKEN"),
+    # Unset means no principal can authenticate, so every gated endpoint is a
+    # 401 and the approvals queue is unanswerable. Refused here rather than
+    # discovered when somebody tries to approve something at 03:00.
+    #
+    # Not the same check as `api/auth/dependencies.py`, which refuses an empty
+    # TABLE. `PANTHEON_API_TOKENS=";;"` is not None and parses to no
+    # principals, and only that one catches it.
+    ("api", "tokens", "PANTHEON_API_TOKENS"),
 )
 
 
