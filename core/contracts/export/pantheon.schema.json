@@ -1096,6 +1096,45 @@
       "title": "Dialect",
       "type": "string"
     },
+    "Dissent": {
+      "additionalProperties": false,
+      "description": "Evidence from this run that pointed somewhere other than the leading claim.\n\nWHAT DISSENT CAN HONESTLY MEAN HERE\n-------------------------------------\nNo agent votes. Argus reports that a series moved; Lethe reports what\nappeared in the logs. Neither states an opinion about a root cause, so\n\"the agents disagreed\" cannot be read off anything they said.\n\nWhat IS observable is that the run produced more than one candidate and the\nleading one does not account for all the evidence. A reader told \"memory\nleak, confidence 0.65\" has no way to know that two of the five findings\npointed at disk exhaustion - and that omission is the difference between a\nconclusion and a summary of the majority.\n\nSo a Dissent is a competing hypothesis, named, with **who reported the\nevidence for it**. \"Somebody disagreed\" is not actionable; \"Argus's disk\nsignal pointed elsewhere\" is.",
+      "properties": {
+        "agents": {
+          "description": "Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "category": {
+          "$ref": "#/$defs/RootCauseCategory",
+          "description": "What the dissenting evidence pointed at."
+        },
+        "confidence": {
+          "description": "The competing hypothesis's own confidence.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "finding_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Finding Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category",
+        "confidence"
+      ],
+      "title": "Dissent",
+      "type": "object"
+    },
     "EventEnvelope": {
       "additionalProperties": false,
       "description": "Transport wrapper carrying one event plus its correlation metadata.",
@@ -3049,6 +3088,14 @@
           "format": "date-time",
           "title": "Decided At",
           "type": "string"
+        },
+        "dissent": {
+          "description": "Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.",
+          "items": {
+            "$ref": "#/$defs/Dissent"
+          },
+          "title": "Dissent",
+          "type": "array"
         },
         "hypotheses": {
           "description": "Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.",

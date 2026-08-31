@@ -34,7 +34,7 @@ Here is the honest split.
 | | |
 |---|---|
 | **Simulator** | Five YAML scenarios generating real metrics, logs and pipeline events into Prometheus, Loki and a pushgateway. `make sim` and you can watch a fault develop. |
-| **Contracts** — 53 Pydantic v2 models | The single source of truth. Go structs and TypeScript types are generated from them, and drift fails the build. |
+| **Contracts** — 54 Pydantic v2 models | The single source of truth. Go structs and TypeScript types are generated from them, and drift fails the build. |
 | **Connectors** | Prometheus and Alertmanager speak MCP, read-only, with the tool allowlist enforced at bind **and** at call. |
 | **Agent runtime** | `agents/_base/` gives a subclass one required coroutine; the manifest registry loads and validates all ten. Finding ids are deterministic, so a retry cannot duplicate a claim. |
 | **Argus** — detection | Peer-relative robust z against per-metric thresholds and scale floors, every one measured rather than chosen. `make test-argus` proves it in both directions: three clean baseline runs produce **zero** Findings, and all five fault scenarios are detected on the series that moved. It separates fault from clean baseline and nothing more — several Findings per incident, none of them a diagnosis. |
@@ -42,7 +42,7 @@ Here is the honest split.
 | **Zeus** — flow 1 | Classifies the trigger, plans, dispatches through the registry under the manifest's budget, aggregates, and emits the lifecycle: `RunStarted`, `StepStarted`, `StepFinished`, `VerdictReady`, `RunFinished`. `make test-flow-one` proves it both ways: an alert produces a complete Investigation citing the series that moved, and a clean baseline produces **no Investigation at all**. |
 | **Investigation store** | Postgres, one JSONB document. The gate reads the result back on a **second connection**, because a test that reads through the object it wrote to cannot tell a dict from a database. |
 | **Alertmanager receiver** | `POST /webhooks/alertmanager` stores the payload verbatim and publishes a `TriggerReceivedEvent`. |
-| **837 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
+| **842 tests** | Structural, security and type-level guards among them, each guard verified against a planted violation in both directions. |
 | **CI** — 9 workflows | SHA-pinned, one required check, green on `develop`. |
 | **Deploy skeleton** | Helm lints and templates, Terraform validates, Compose brings the stack up. |
 | **Eight ADRs** | The decisions, and what was rejected. |

@@ -373,3 +373,88 @@ def test_the_two_unreachable_categories_are_named_by_nothing() -> None:
 
     assert RootCauseCategory.BAD_DEPLOYMENT not in named
     assert RootCauseCategory.RESOURCE_CONTENTION not in named
+
+
+# --- dissent: what the leading claim does not account for -----------------------------------
+
+
+def _verdict(findings: list[Finding]):  # type: ignore[no-untyped-def]
+    from core.contracts.plan import PlanStep, StepStatus
+    from core.orchestrator import aggregator
+
+    step = PlanStep(
+        agent="argus",
+        reason="an alert names metrics",
+        status=StepStatus.COMPLETE,
+    )
+    return aggregator.aggregate(uuid4(), findings, [step])
+
+
+def test_a_unanimous_run_records_no_dissent() -> None:
+    """A dissent that fired on a run with one candidate would be noise, and
+    noise on every verdict is how a field stops being read."""
+    verdict = _verdict([_metric_finding(MEMORY), _log_finding()])
+
+    assert len(verdict.hypotheses) == 1
+    assert verdict.dissent == []
+
+
+def test_a_competing_candidate_is_recorded_with_the_agents_behind_it() -> None:
+    """A reader told "memory leak, 0.65" has no way to know two of the five
+    findings pointed at disk. That omission is the difference between a
+    conclusion and a summary of the majority.
+    """
+    disk = _metric_finding(DISK, agent="argus", subject=_ref("node", "node-1"))
+    verdict = _verdict([_metric_finding(MEMORY), _log_finding(), disk])
+
+    (objection,) = verdict.dissent
+    assert objection.category is RootCauseCategory.DISK_EXHAUSTION
+    assert objection.agents == ["argus"]
+    assert objection.finding_ids == [disk.id]
+    assert objection.confidence == BASE_CONFIDENCE
+
+
+def test_a_tie_records_no_dissent_because_nothing_leads() -> None:
+    """Two tied candidates are a run that reached no conclusion, not a majority
+    with objectors. Calling one of two equals "the leader" would be the
+    aggregator inventing the judgement `leading` deliberately refused."""
+    verdict = _verdict(
+        [_metric_finding(MEMORY), _metric_finding(DISK, subject=_ref("node", "node-1"))]
+    )
+
+    assert len(verdict.hypotheses) == 2
+    assert verdict.confidence == 0.0
+    assert verdict.dissent == [], "a tie has no leader, so there is nothing to dissent from"
+
+
+def test_the_contract_refuses_dissent_with_nothing_leading() -> None:
+    """Asserted on the contract, not only on the aggregator. A second producer
+    of Verdicts would otherwise be free to write the shape this one refuses."""
+    import pytest
+    from pydantic import ValidationError
+
+    from core.contracts.verdict import Dissent, Verdict
+
+    with pytest.raises(ValidationError, match="nothing to dissent from"):
+        Verdict(
+            id=uuid4(),
+            investigation_id=uuid4(),
+            summary="two candidates, neither leading",
+            hypotheses=[],
+            confidence=0.0,
+            dissent=[Dissent(category=RootCauseCategory.MEMORY_LEAK, confidence=0.55)],
+            decided_at=NOW,
+            steps=[],
+        )
+
+
+def test_dissent_names_every_agent_that_contributed_to_it() -> None:
+    """Unattributed disagreement is disagreement nobody can follow up."""
+    disk = _metric_finding(DISK, agent="argus", subject=_ref("node", "node-1"))
+    corroborating = _log_finding(subject=_ref("node", "node-1"))
+    leader = [_metric_finding(MEMORY), _log_finding(), _metric_finding(MEMORY, agent="hermes")]
+
+    verdict = _verdict([*leader, disk, corroborating])
+
+    (objection,) = verdict.dissent
+    assert objection.agents == ["argus", "lethe"]

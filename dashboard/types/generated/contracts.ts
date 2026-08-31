@@ -606,6 +606,40 @@ export type Confidence2 = number;
 export type ContributingFindings = Finding[];
 export type DecidedAt = string;
 /**
+ * Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.
+ */
+export type Agents = string[];
+/**
+ * The closed vocabulary shared by agents, verdicts and scenario ground truth.
+ *
+ * Adding a member is a deliberate act: it widens what an agent may conclude
+ * and what a scenario may assert. `UNKNOWN` exists so that "we do not know" is
+ * a statable conclusion rather than an absent one - an investigation that
+ * cannot say it will invent something instead.
+ */
+export type RootCauseCategory1 =
+  | "memory_leak"
+  | "resource_contention"
+  | "bad_deployment"
+  | "config_error"
+  | "disk_exhaustion"
+  | "capacity_saturation"
+  | "dependency_failure"
+  | "network_partition"
+  | "flaky_test"
+  | "data_corruption"
+  | "external_incident"
+  | "unknown";
+/**
+ * The competing hypothesis's own confidence.
+ */
+export type Confidence3 = number;
+export type FindingIds = string[];
+/**
+ * Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.
+ */
+export type Dissent = Dissent1[];
+/**
  * Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.
  */
 export type Hypotheses = RootCauseHypothesis[];
@@ -1375,12 +1409,38 @@ export interface Verdict {
   confidence: Confidence2;
   contributing_findings?: ContributingFindings;
   decided_at: DecidedAt;
+  dissent?: Dissent;
   hypotheses?: Hypotheses;
   id: Id9;
   investigation_id: InvestigationId12;
   recommended_actions?: RecommendedActions;
   steps: Steps;
   summary: Summary1;
+}
+/**
+ * Evidence from this run that pointed somewhere other than the leading claim.
+ *
+ * WHAT DISSENT CAN HONESTLY MEAN HERE
+ * -------------------------------------
+ * No agent votes. Argus reports that a series moved; Lethe reports what
+ * appeared in the logs. Neither states an opinion about a root cause, so
+ * "the agents disagreed" cannot be read off anything they said.
+ *
+ * What IS observable is that the run produced more than one candidate and the
+ * leading one does not account for all the evidence. A reader told "memory
+ * leak, confidence 0.65" has no way to know that two of the five findings
+ * pointed at disk exhaustion - and that omission is the difference between a
+ * conclusion and a summary of the majority.
+ *
+ * So a Dissent is a competing hypothesis, named, with **who reported the
+ * evidence for it**. "Somebody disagreed" is not actionable; "Argus's disk
+ * signal pointed elsewhere" is.
+ */
+export interface Dissent1 {
+  agents?: Agents;
+  category: RootCauseCategory1;
+  confidence: Confidence3;
+  finding_ids?: FindingIds;
 }
 /**
  * One agent consultation Zeus intends to make.

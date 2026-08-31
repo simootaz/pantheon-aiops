@@ -26,7 +26,7 @@ keep all of it honest. **No business logic.**
 | Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
 | Go | workspace over 5 modules, golangci-lint, compiling stubs |
 | TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
-| Contracts | 53 models, closed, exported to Go + TS |
+| Contracts | 54 models, closed, exported to Go + TS |
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |
@@ -87,12 +87,16 @@ one. A Verdict aggregates and proposes no hypotheses — see Phase 2.
 has landed — resolution, capability probing, a fallback chain and a completion
 cache — and `ResolutionRecord`s are written onto the Investigation.
 
-Correlation exists and groups findings by co-occurrence. What remains is
-**ranking those groups into hypotheses**, and it is one capability rather than
-three loose ends: the two open TODOs in `core/contracts/` — per-category
-root-cause detail and recorded dissent — are both blocked on it, because a
-Verdict cannot record disagreement about a leading hypothesis it does not have.
-Until then `confidence` stays 0.0 by design rather than by omission.
+Correlation groups findings by co-occurrence and `core/orchestrator/
+hypotheses.py` ranks them, narrowly: a hypothesis is proposed only from a signal
+whose metric **is** the thing the category describes. Errors, latency and CPU
+corroborate and name nothing, so two of the five scenarios come back `UNKNOWN`
+with their evidence attached — predicted as misses before the ranker was
+written. `Verdict.dissent` records what the leading claim does not account for.
+
+Per-category root-cause detail moved to **Phase 4**. Half its blocker lifted —
+categories are produced now — and half did not: nothing computes a growth rate
+or a time-to-full, so the detail would be a shape nobody fills.
 
 Also outstanding: a **live gate against a real model**. Every Delphi test to
 date runs against `RecordingProvider` or a scripted fake, so "the adapter works"

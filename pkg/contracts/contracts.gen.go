@@ -1651,6 +1651,65 @@ func (j *Dialect) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// Evidence from this run that pointed somewhere other than the leading claim.
+//
+// WHAT DISSENT CAN HONESTLY MEAN HERE
+// -------------------------------------
+// No agent votes. Argus reports that a series moved; Lethe reports what
+// appeared in the logs. Neither states an opinion about a root cause, so
+// "the agents disagreed" cannot be read off anything they said.
+//
+// What IS observable is that the run produced more than one candidate and the
+// leading one does not account for all the evidence. A reader told "memory
+// leak, confidence 0.65" has no way to know that two of the five findings
+// pointed at disk exhaustion - and that omission is the difference between a
+// conclusion and a summary of the majority.
+//
+// So a Dissent is a competing hypothesis, named, with **who reported the
+// evidence for it**. "Somebody disagreed" is not actionable; "Argus's disk
+// signal pointed elsewhere" is.
+type Dissent struct {
+	// Codenames whose Findings support it. Named, because an unattributed
+	// disagreement is one nobody can follow up.
+	Agents []string `json:"agents,omitempty,omitzero" yaml:"agents,omitempty" mapstructure:"agents,omitempty"`
+
+	// What the dissenting evidence pointed at.
+	Category RootCauseCategory `json:"category" yaml:"category" mapstructure:"category"`
+
+	// The competing hypothesis's own confidence.
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// FindingIds corresponds to the JSON schema field "finding_ids".
+	FindingIds []string `json:"finding_ids,omitempty,omitzero" yaml:"finding_ids,omitempty" mapstructure:"finding_ids,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Dissent) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["category"]; raw != nil && !ok {
+		return fmt.Errorf("field category in Dissent: required")
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Dissent: required")
+	}
+	type Plain Dissent
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Dissent(plain)
+	return nil
+}
+
 // Transport wrapper carrying one event plus its correlation metadata.
 type EventEnvelope struct {
 	// EmittedAt corresponds to the JSON schema field "emitted_at".
@@ -2395,6 +2454,10 @@ type InvestigationVerdict struct {
 
 	// DecidedAt corresponds to the JSON schema field "decided_at".
 	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Candidates the leading hypothesis does not account for. Empty when the run was
+	// unanimous OR when nothing led - see the validator below.
+	Dissent []Dissent `json:"dissent,omitempty,omitzero" yaml:"dissent,omitempty" mapstructure:"dissent,omitempty"`
 
 	// Ranked most-likely first. Empty means no explanation was reached, which is a
 	// legitimate outcome and must not be dressed up as one.
@@ -3738,38 +3801,13 @@ const StepStatusPending StepStatus = "pending"
 const StepStatusRunning StepStatus = "running"
 const StepStatusSkipped StepStatus = "skipped"
 
-type AuditEntryCredentialRef_0 = CredentialRef
-
-type A2UIComponentAction_0 = A2UIAction
-
-type EvidenceSubject_0 = ResourceRef
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
-
-// Verbatim, unparsed.
-type TriggerPayload map[string]interface{}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Tier) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_Tier {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Tier, v)
-	}
-	*j = Tier(v)
-	return nil
+var enumValues_StepStatus = []interface{}{
+	"pending",
+	"running",
+	"complete",
+	"degraded",
+	"skipped",
 }
-
-type InvestigationVerdict_0 = Verdict
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *StepStatus) UnmarshalJSON(value []byte) error {
@@ -3791,13 +3829,118 @@ func (j *StepStatus) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type Tier string
+
+const TierBalanced Tier = "balanced"
+const TierCheap Tier = "cheap"
+const TierFrontier Tier = "frontier"
+
 var enumValues_Tier = []interface{}{
 	"cheap",
 	"balanced",
 	"frontier",
 }
 
-type Tier string
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Tier) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_Tier {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_Tier, v)
+	}
+	*j = Tier(v)
+	return nil
+}
+
+// The inbound event that started everything.
+type Trigger struct {
+	// Kind corresponds to the JSON schema field "kind".
+	Kind TriggerKind `json:"kind" yaml:"kind" mapstructure:"kind"`
+
+	// Verbatim, unparsed.
+	Payload TriggerPayload `json:"payload,omitempty,omitzero" yaml:"payload,omitempty" mapstructure:"payload,omitempty"`
+
+	// ReceivedAt corresponds to the JSON schema field "received_at".
+	ReceivedAt time.Time `json:"received_at" yaml:"received_at" mapstructure:"received_at"`
+
+	// Who sent it, e.g. 'alertmanager'.
+	Source string `json:"source" yaml:"source" mapstructure:"source"`
+
+	// One line, as the source described it.
+	Title string `json:"title,omitempty,omitzero" yaml:"title,omitempty" mapstructure:"title,omitempty"`
+}
+
+type TriggerKind string
+
+const TriggerKindAlert TriggerKind = "alert"
+const TriggerKindHumanQuestion TriggerKind = "human_question"
+const TriggerKindSchedule TriggerKind = "schedule"
+const TriggerKindSimulation TriggerKind = "simulation"
+const TriggerKindWebhook TriggerKind = "webhook"
+
+var enumValues_TriggerKind = []interface{}{
+	"alert",
+	"webhook",
+	"schedule",
+	"human_question",
+	"simulation",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *TriggerKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_TriggerKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_TriggerKind, v)
+	}
+	*j = TriggerKind(v)
+	return nil
+}
+
+// Verbatim, unparsed.
+type TriggerPayload map[string]interface{}
+
+// An inbound trigger was accepted and an Investigation created for it.
+//
+// Distinct from `investigation_started`, which marks the run leaving PENDING.
+// A webhook can be accepted seconds before anything plans it, and collapsing
+// the two would lose the gap where a backlog becomes visible.
+type TriggerReceivedEvent struct {
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Trigger corresponds to the JSON schema field "trigger".
+	Trigger Trigger `json:"trigger" yaml:"trigger" mapstructure:"trigger"`
+
+	// Type corresponds to the JSON schema field "type".
+	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
+}
+
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+
+type FindingSubject_0 = ResourceRef
+
+type InvestigationVerdict_0 = Verdict
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Verdict) UnmarshalJSON(value []byte) error {
@@ -3838,32 +3981,6 @@ func (j *Verdict) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-var enumValues_StepStatus = []interface{}{
-	"pending",
-	"running",
-	"complete",
-	"degraded",
-	"skipped",
-}
-
-// The inbound event that started everything.
-type Trigger struct {
-	// Kind corresponds to the JSON schema field "kind".
-	Kind TriggerKind `json:"kind" yaml:"kind" mapstructure:"kind"`
-
-	// Verbatim, unparsed.
-	Payload TriggerPayload `json:"payload,omitempty,omitzero" yaml:"payload,omitempty" mapstructure:"payload,omitempty"`
-
-	// ReceivedAt corresponds to the JSON schema field "received_at".
-	ReceivedAt time.Time `json:"received_at" yaml:"received_at" mapstructure:"received_at"`
-
-	// Who sent it, e.g. 'alertmanager'.
-	Source string `json:"source" yaml:"source" mapstructure:"source"`
-
-	// One line, as the source described it.
-	Title string `json:"title,omitempty,omitzero" yaml:"title,omitempty" mapstructure:"title,omitempty"`
-}
-
 // The orchestrator's ranked conclusion for one Investigation.
 type Verdict struct {
 	// Confidence in the leading hypothesis.
@@ -3875,6 +3992,10 @@ type Verdict struct {
 
 	// DecidedAt corresponds to the JSON schema field "decided_at".
 	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Candidates the leading hypothesis does not account for. Empty when the run was
+	// unanimous OR when nothing led - see the validator below.
+	Dissent []Dissent `json:"dissent,omitempty,omitzero" yaml:"dissent,omitempty" mapstructure:"dissent,omitempty"`
 
 	// Ranked most-likely first. Empty means no explanation was reached, which is a
 	// legitimate outcome and must not be dressed up as one.
@@ -3897,6 +4018,12 @@ type Verdict struct {
 	// What happened, in one paragraph, for a human.
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
+
+type EvidenceSubject_0 = ResourceRef
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Trigger) UnmarshalJSON(value []byte) error {
@@ -3923,66 +4050,6 @@ func (j *Trigger) UnmarshalJSON(value []byte) error {
 	}
 	*j = Trigger(plain)
 	return nil
-}
-
-const TierCheap Tier = "cheap"
-const TierBalanced Tier = "balanced"
-const TierFrontier Tier = "frontier"
-
-type FindingSubject_0 = ResourceRef
-
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
-type TriggerKind string
-
-var enumValues_TriggerKind = []interface{}{
-	"alert",
-	"webhook",
-	"schedule",
-	"human_question",
-	"simulation",
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *TriggerKind) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_TriggerKind {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_TriggerKind, v)
-	}
-	*j = TriggerKind(v)
-	return nil
-}
-
-const TriggerKindAlert TriggerKind = "alert"
-const TriggerKindWebhook TriggerKind = "webhook"
-const TriggerKindSchedule TriggerKind = "schedule"
-const TriggerKindHumanQuestion TriggerKind = "human_question"
-const TriggerKindSimulation TriggerKind = "simulation"
-
-// An inbound trigger was accepted and an Investigation created for it.
-//
-// Distinct from `investigation_started`, which marks the run leaving PENDING.
-// A webhook can be accepted seconds before anything plans it, and collapsing
-// the two would lose the gap where a backlog becomes visible.
-type TriggerReceivedEvent struct {
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// Trigger corresponds to the JSON schema field "trigger".
-	Trigger Trigger `json:"trigger" yaml:"trigger" mapstructure:"trigger"`
-
-	// Type corresponds to the JSON schema field "type".
-	Type string `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -4101,4 +4168,4 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+type A2UIComponentAction_0 = A2UIAction

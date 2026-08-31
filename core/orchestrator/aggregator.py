@@ -40,7 +40,8 @@ from uuid import UUID, uuid4
 
 from core.contracts.finding import Finding, FindingKind
 from core.contracts.plan import PlanStep, StepStatus
-from core.contracts.verdict import Verdict
+from core.contracts.root_cause import RootCauseHypothesis
+from core.contracts.verdict import Dissent, Verdict
 from core.orchestrator.hypotheses import leading, rank
 
 
@@ -61,11 +62,49 @@ def aggregate(investigation_id: UUID, findings: list[Finding], steps: list[PlanS
         # two hypotheses tied at 0.55 are a run that reached no conclusion, and
         # reporting 0.55 would present a coin flip as a finding.
         confidence=front_runner.confidence if front_runner is not None else 0.0,
+        dissent=_dissent(hypotheses, front_runner, findings),
         contributing_findings=findings,
         recommended_actions=[],
         decided_at=datetime.now(UTC),
         steps=steps,
     )
+
+
+def _dissent(
+    hypotheses: list[RootCauseHypothesis],
+    front_runner: RootCauseHypothesis | None,
+    findings: list[Finding],
+) -> list[Dissent]:
+    """The candidates the leading hypothesis does not account for.
+
+    Empty when nothing leads. Two tied candidates are a run that reached no
+    conclusion, not a majority with objectors - and calling one of two equals
+    "the leader" would be the aggregator inventing the judgement `leading`
+    deliberately refused to make.
+
+    The agents are named. "Somebody disagreed" is not something anybody can
+    follow up; "Argus's disk signal pointed elsewhere" is.
+    """
+    if front_runner is None:
+        return []
+
+    by_id = {finding.id: finding for finding in findings}
+    return [
+        Dissent(
+            category=hypothesis.category,
+            agents=sorted(
+                {
+                    by_id[finding_id].agent
+                    for finding_id in hypothesis.supporting_finding_ids
+                    if finding_id in by_id
+                }
+            ),
+            finding_ids=list(hypothesis.supporting_finding_ids),
+            confidence=hypothesis.confidence,
+        )
+        for hypothesis in hypotheses
+        if hypothesis.id != front_runner.id
+    ]
 
 
 def _summary(anomalies: list[Finding], degraded: list[Finding], steps: list[PlanStep]) -> str:
