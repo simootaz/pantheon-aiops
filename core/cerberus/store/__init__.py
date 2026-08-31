@@ -20,18 +20,18 @@ Phase: 3 - Guardrails, Approvals & Write Actions
 from __future__ import annotations
 
 from core.cerberus.store.envelope import Sealed
-from core.cerberus.store.kinds import CredentialMalformed, Handoff, kind_of, validate
-from core.cerberus.store.rotation import Rotation, purge, rotate
+from core.cerberus.store.kinds import CredentialMalformed, kind_of, validate
+from core.cerberus.store.rotation import Rotation, history, purge, rotate
 from core.cerberus.store.vault import CredentialNotFound, Retired, Vault
 
 __all__ = [
     "CredentialMalformed",
     "CredentialNotFound",
-    "Handoff",
     "Retired",
     "Rotation",
     "Sealed",
     "Vault",
+    "history",
     "kind_of",
     "purge",
     "rotate",

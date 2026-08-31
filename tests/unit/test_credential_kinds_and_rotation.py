@@ -10,6 +10,7 @@ Phase: 3 - Guardrails, Approvals & Write Actions
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -23,11 +24,10 @@ from core.cerberus.store.kinds import (
     FORBIDDEN_HANDOFF,
     KINDS,
     CredentialMalformed,
-    Handoff,
     kind_of,
     validate,
 )
-from core.cerberus.store.rotation import purge, rotate
+from core.cerberus.store.rotation import history, purge, rotate
 from core.cerberus.store.vault import Vault
 from core.contracts.credentials import (
     AuditEvent,
@@ -35,6 +35,7 @@ from core.contracts.credentials import (
     CredentialRef,
     CredentialType,
     Grant,
+    Handoff,
     PermissionMode,
 )
 
@@ -402,3 +403,97 @@ def test_a_rotation_with_nothing_live_says_so_rather_than_reporting_zero() -> No
     rendered = str(rotate(ref, NEW, vault=vault, leases=book, now=clock.now))
 
     assert "no lease was live" in rendered
+
+
+# --- the wire form, and a history nobody stores twice -----------------------------------
+
+
+def test_a_descriptor_says_how_a_credential_travels_and_never_what_it_is() -> None:
+    """The invariant the whole credential contract surface is checked against.
+
+    A field for the value here would make this the first contract able to carry
+    a secret into a JSON Schema, a Go struct and a TypeScript type in one
+    commit. `channel` is a filename.
+    """
+    descriptor = kind_of(CredentialType.KUBECONFIG).descriptor()
+
+    assert descriptor.handoff is Handoff.FILE
+    assert descriptor.channel == "kubeconfig"
+
+    rendered = json.dumps(descriptor.model_dump(mode="json"))
+    assert OLD not in rendered and "hunter2" not in rendered
+
+
+def test_the_descriptor_agrees_with_the_kind_it_came_from() -> None:
+    """Built rather than declared twice. Two definitions of how a kubeconfig
+    travels is one that can disagree with the other, and the one a dashboard
+    reads would be the one nobody tests."""
+    for credential_type, kind in KINDS.items():
+        descriptor = kind.descriptor()
+        assert (descriptor.type, descriptor.handoff, descriptor.channel) == (
+            credential_type,
+            kind.handoff,
+            kind.channel,
+        )
+
+
+def test_the_rotation_history_is_read_out_of_the_trail() -> None:
+    """Derived, not stored beside it. A second store is a second thing to keep
+    in sync, and the one that drifts is the one somebody consults to answer
+    "when was this last rotated"."""
+    vault, book, clock, ref = _rotating()
+    audit = AuditLog(secrets=[])
+
+    # Other events first, so "only rotations" is a claim the fixture can
+    # express. Without them the filter has nothing to exclude, and a plant
+    # accepting every event passed - a trail in real life is almost entirely
+    # lease traffic.
+    lease = _lease(book, ref)
+    _redeem(lease, vault, book)
+    audit.append(
+        AuditEvent.LEASE_USED,
+        actor="postgres",
+        credential_ref=ref,
+        action=CredentialAction.READ,
+        detail="redeemed",
+    )
+    audit.append(AuditEvent.DENIED, actor="argus", credential_ref=ref, detail="refused")
+
+    rotate(ref, NEW, vault=vault, leases=book, by="alex", audit=audit, now=clock.now)
+
+    (record,) = history(audit)
+    assert record.credential_ref.id == ref.id
+    assert record.rotated_by == "alex"
+    assert record.rotated_at == audit.entries()[-1].at
+
+
+def test_the_history_of_one_credential_excludes_another() -> None:
+    """A rotation attributed to the wrong credential is worse than none."""
+    vault, book, clock, ref = _rotating()
+    other = _ref()
+    vault.put(other, OLD)
+    audit = AuditLog(secrets=[])
+
+    rotate(ref, NEW, vault=vault, leases=book, audit=audit, now=clock.now)
+    rotate(other, NEW, vault=vault, leases=book, audit=audit, now=clock.now)
+
+    assert len(history(audit)) == 2
+    assert [record.credential_ref.id for record in history(audit, ref=other)] == [other.id]
+
+
+def test_the_history_carries_no_value() -> None:
+    vault, book, clock, ref = _rotating()
+    audit = AuditLog(secrets=[])
+    rotate(ref, NEW, vault=vault, leases=book, audit=audit, now=clock.now)
+
+    rendered = json.dumps([record.model_dump(mode="json") for record in history(audit)])
+
+    assert OLD not in rendered and NEW not in rendered
+    assert "hunter2" not in rendered and "correcthorse" not in rendered
+
+
+def test_a_trail_with_no_rotations_has_an_empty_history() -> None:
+    """Not an error and not a None. A credential nobody has rotated has a
+    history of length zero, which is the honest answer to "when was this last
+    rotated"."""
+    assert history(AuditLog(secrets=[])) == []

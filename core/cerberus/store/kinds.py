@@ -39,19 +39,8 @@ Phase: 3 - Guardrails, Approvals & Write Actions
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-from core.contracts.credentials import CredentialType
-
-
-class Handoff(StrEnum):
-    """How a credential reaches the process that uses it."""
-
-    ENVIRONMENT = "environment"
-    FILE = "file"
-    HEADER = "header"
-    ARGUMENT = "argument"
-
+from core.contracts.credentials import ConnectionDescriptor, CredentialType, Handoff
 
 #: The one handoff that is never correct. Named rather than simply omitted, so
 #: that a type declaring it fails loudly instead of falling through a lookup.
@@ -71,6 +60,15 @@ class Kind:
     #: What the connector calls it. A file path for FILE, a variable name for
     #: ENVIRONMENT, a header name for HEADER.
     channel: str
+
+    def descriptor(self) -> ConnectionDescriptor:
+        """The wire form, for anything that may not import this package.
+
+        Built here rather than declared twice. Two definitions of "how a
+        kubeconfig travels" is one that can disagree with the other, and the
+        one a dashboard reads would be the one nobody tests.
+        """
+        return ConnectionDescriptor(type=self.type, handoff=self.handoff, channel=self.channel)
 
     def validate(self, value: str) -> None:
         """Refuse a value that cannot be what this type claims.

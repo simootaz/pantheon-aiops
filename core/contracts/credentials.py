@@ -209,4 +209,61 @@ class AuditEntry(ContractModel):
     detail: str = Field(default="", description="Human-readable context. Never a credential.")
 
 
-# TODO: Phase 3 - add per-type connection descriptors and rotation history
+class Handoff(StrEnum):
+    """How a credential reaches the process that uses it.
+
+    A security property, not a formatting detail. A kubeconfig passed as a
+    command-line argument is in `ps` output for every process on the box and in
+    the shell history of whoever ran it; the same bytes in a 0600 file are not.
+
+    ARGUMENT is a member so that a type declaring it can be REFUSED by name -
+    `core/cerberus/store/kinds.py` does exactly that. Omitting it would make the
+    wrong answer unrepresentable and therefore unrejectable, and the check would
+    have nothing to check.
+    """
+
+    ENVIRONMENT = "environment"
+    FILE = "file"
+    HEADER = "header"
+    ARGUMENT = "argument"
+
+
+class ConnectionDescriptor(ContractModel):
+    """How one credential type travels. Never what it is.
+
+    The wire form of `core/cerberus/store/kinds.Kind`, so a settings UI can say
+    "this one arrives as a file called kubeconfig" without importing anything
+    under `core.cerberus.store` - which is the package agents and the dashboard
+    are forbidden to reach.
+
+    NO FIELD HERE HOLDS A VALUE, and that is the invariant the whole credential
+    contract surface is checked against: `channel` is a variable name, a header
+    name or a filename. Adding a field for the value would make this the first
+    contract that could carry a secret into a JSON Schema, a Go struct and a
+    TypeScript type in one commit.
+    """
+
+    type: CredentialType
+    handoff: Handoff
+    channel: str = Field(
+        description="What the connector calls it: a variable name, header name, or filename."
+    )
+
+
+class RotationRecord(ContractModel):
+    """One rotation of one credential. Derived, never stored twice.
+
+    Built from the audit trail rather than kept beside it - see
+    `core/cerberus/store/rotation.history`. The trail is already append-only and
+    already records every rotation; a second store would be a second thing to
+    keep in sync, and the one that drifts is always the one nobody reads.
+
+    `retained_until` is when the previous value stopped being redeemable. That
+    is the question somebody actually asks after a rotation - not "did it
+    rotate", but "is the old one still out there".
+    """
+
+    credential_ref: CredentialRef
+    rotated_at: datetime
+    rotated_by: str = Field(description="Who performed it, or 'system'.")
+    detail: str = Field(default="", description="Human-readable context. Never a credential.")

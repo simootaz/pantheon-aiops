@@ -26,7 +26,7 @@ keep all of it honest. **No business logic.**
 | Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
 | Go | workspace over 5 modules, golangci-lint, compiling stubs |
 | TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
-| Contracts | 51 models, closed, exported to Go + TS |
+| Contracts | 53 models, closed, exported to Go + TS |
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |

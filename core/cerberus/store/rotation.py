@@ -43,7 +43,12 @@ from datetime import UTC, datetime
 from core.cerberus.audit.log import AuditLog
 from core.cerberus.lease import LeaseBook
 from core.cerberus.store.vault import Vault
-from core.contracts.credentials import AuditEvent, CredentialAction, CredentialRef
+from core.contracts.credentials import (
+    AuditEvent,
+    CredentialAction,
+    CredentialRef,
+    RotationRecord,
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +117,36 @@ def rotate(
         )
 
     return Rotation(ref=ref, at=at, retained_until=retained_until, leases_carried=len(carried))
+
+
+def history(audit: AuditLog, *, ref: CredentialRef | None = None) -> list[RotationRecord]:
+    """Every rotation the trail records, oldest first.
+
+    DERIVED, NOT STORED
+    ---------------------
+    Read out of the audit log rather than kept beside it. The trail is already
+    append-only and already records every rotation, so a second store would be
+    a second thing to keep in sync - and the one that drifts is always the one
+    nobody reads, which here would be the one somebody consults to answer "when
+    was this last rotated".
+
+    `ref` narrows to one credential. A history that returned every credential's
+    rotations to a caller asking about one is a caller that will filter it
+    wrongly, and a rotation attributed to the wrong credential is worse than
+    none.
+    """
+    return [
+        RotationRecord(
+            credential_ref=entry.credential_ref,
+            rotated_at=entry.at,
+            rotated_by=entry.actor,
+            detail=entry.detail,
+        )
+        for entry in audit.entries()
+        if entry.event is AuditEvent.ROTATED
+        and entry.credential_ref is not None
+        and (ref is None or entry.credential_ref.id == ref.id)
+    ]
 
 
 def purge(vault: Vault, *, now: datetime | None = None) -> int:
