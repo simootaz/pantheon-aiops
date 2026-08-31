@@ -13,7 +13,15 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from api import __version__
 from api.routers import (
@@ -26,8 +34,10 @@ from api.routers import (
     webhooks,
 )
 from core.bus import EventBus, InMemoryEventBus
+from core.cerberus.redaction import redact
 from core.guardrails.approval_gate import ApprovalGate
 from core.observability.logging import configure as configure_logging
+from core.observability.logging import investigation
 from core.orchestrator import register_implemented
 from core.store.investigations import InvestigationStore
 from core.store.postgres import PostgresInvestigationStore
@@ -36,6 +46,73 @@ from core.store.providers import ProviderStore
 
 TITLE = "Pantheon API"
 DESCRIPTION = "Polyglot multi-agent AIOps platform."
+
+#: The header that ties a request's log lines to the run it belongs to.
+#:
+#: Read rather than generated. An id this process invented would correlate the
+#: API's own lines and nothing else - the agents, the connectors and the worker
+#: are where an incident is actually reconstructed, and they only share an id
+#: somebody passed in.
+INVESTIGATION_HEADER = "X-Investigation-Id"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start, serve, and give the pools back on the way out.
+
+    Closing matters more than it looks. `PostgresInvestigationStore` creates a
+    pool lazily and holds it for the life of the process; without this, a
+    reload in development leaks one pool per restart until Postgres refuses
+    connections - and that presents as the database being down.
+    """
+    yield
+
+    for store in (app.state.investigation_store, app.state.provider_store):
+        close = getattr(store, "close", None)
+        if close is not None:
+            # Each in its own try. One store failing to close must not leave the
+            # other holding a pool - a shutdown path that stops at the first
+            # error is a shutdown path that does not run.
+            try:
+                await close()
+            except Exception as failure:  # pragma: no cover - shutdown is best effort
+                logging.getLogger(__name__).warning(
+                    "could not close %s: %s", type(store).__name__, failure
+                )
+
+
+async def _correlate(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Tag every log line this request emits with the investigation it belongs to.
+
+    A context manager rather than a setter, so the tag is removed on the way out
+    even when the handler raises. A leaked tag attributes the NEXT request's
+    lines to the previous one, which is worse than no correlation at all -
+    absent correlation is visibly absent, wrong correlation is not.
+    """
+    supplied = request.headers.get(INVESTIGATION_HEADER)
+    if not supplied:
+        return await call_next(request)
+    with investigation(supplied):
+        return await call_next(request)
+
+
+async def _redacted_validation_error(request: Request, error: Exception) -> JSONResponse:
+    """422, with the submitted input scrubbed.
+
+    FastAPI's default handler echoes the offending input back so a caller can
+    see what was wrong with it. That is the right behaviour and it is a leak
+    path: a credential POSTed in a malformed body returns in the error, into
+    whatever logs the response, and into the caller's terminal history.
+
+    Redacted rather than omitted. Dropping the input entirely would make every
+    validation failure unactionable to fix the one case in a thousand that
+    carries a secret.
+    """
+    detail = error.errors() if isinstance(error, RequestValidationError) else []
+    scrubbed: Any = redact(detail)
+    return JSONResponse(status_code=422, content=jsonable_encoder(scrubbed))
 
 
 def create_app(
@@ -63,6 +140,7 @@ def create_app(
         title=TITLE,
         description=DESCRIPTION,
         version=__version__,
+        lifespan=lifespan,
     )
 
     # Before anything can log. A handler installed later would let every line
@@ -88,6 +166,10 @@ def create_app(
 
     register_implemented()
 
+    app.middleware("http")(_correlate)
+    # Overrides FastAPI's own, which echoes the submitted body unredacted.
+    app.add_exception_handler(RequestValidationError, _redacted_validation_error)
+
     app.include_router(health.router)
     app.include_router(webhooks.router)
     app.include_router(alerts.router)
@@ -99,5 +181,10 @@ def create_app(
     return app
 
 
-# TODO: Phase 3 - add lifespan (pool shutdown), middleware, and the approvals router.
-# The agents router landed in Phase 1 and logging is configured above.
+# The lifespan closes the pools, `_correlate` ties a request's log lines to its
+# investigation, and the approvals router landed with the approval gate.
+#
+# What is deliberately NOT here: a middleware that authenticates. Auth is a
+# per-route dependency in `api/auth/dependencies.py`, because a middleware
+# guarding "everything except a list" is a list that goes stale the moment
+# somebody adds a route - and it goes stale open.
