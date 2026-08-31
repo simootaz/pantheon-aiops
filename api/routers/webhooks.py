@@ -33,13 +33,17 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api.routers._runs import runner_for
+from api.routers.investigations import get_store
 from core.bus import EventBus
 from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from core.contracts.investigation import Trigger, TriggerKind
+from core.orchestrator.classifier import subject_of
+from core.store.investigations import InvestigationStore
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -57,6 +61,10 @@ class WebhookAccepted(BaseModel):
     investigation_id: UUID
     accepted: bool = True
     event: str
+    #: Whether an investigation was actually started. A 202 alone cannot say:
+    #: a hook configured for every event gets one for a `star` and one for a
+    #: failed workflow run, and only the second started anything.
+    investigating: bool = False
 
 
 def get_event_bus(request: Request) -> EventBus:
@@ -112,8 +120,11 @@ def _title_for(event: str, payload: dict[str, Any]) -> str:
     summary="Accept a GitLab webhook",
 )
 async def gitlab_webhook(
+    request: Request,
+    background: BackgroundTasks,
     payload: dict[str, Any],
     bus: Annotated[EventBus, Depends(get_event_bus)],
+    store: Annotated[InvestigationStore, Depends(get_store)],
     x_gitlab_event: Annotated[str | None, Header()] = None,
     x_gitlab_token: Annotated[str | None, Header()] = None,
 ) -> WebhookAccepted:
@@ -138,8 +149,11 @@ async def gitlab_webhook(
         TriggerReceivedEvent(investigation_id=investigation_id, trigger=trigger),
         investigation_id=investigation_id,
     )
+    investigating = _schedule(request, background, trigger, investigation_id, store, bus)
 
-    return WebhookAccepted(investigation_id=investigation_id, event=event)
+    return WebhookAccepted(
+        investigation_id=investigation_id, event=event, investigating=investigating
+    )
 
 
 #: The events this endpoint acts on. Everything else is accepted and published
@@ -175,6 +189,37 @@ def _verify_signature(body: bytes, supplied: str | None) -> None:
         )
 
 
+def _schedule(
+    request: Request,
+    background: BackgroundTasks,
+    trigger: Trigger,
+    investigation_id: UUID,
+    store: InvestigationStore,
+    bus: EventBus,
+) -> bool:
+    """Run Zeus for this trigger, when anything can act on it.
+
+    Returns whether a run was scheduled, so the caller can say so rather than
+    a reader having to infer it from a 202 that means both things.
+
+    Nothing is scheduled for a trigger the classifier routes nowhere new. A
+    hook configured for every event sends dozens of types, and starting an
+    investigation for each would fill the store with runs that found nothing
+    because there was nothing to look at.
+    """
+    if not subject_of(trigger):
+        return False
+
+    background.add_task(
+        runner_for(request),
+        trigger=trigger,
+        investigation_id=investigation_id,
+        store=store,
+        bus=bus,
+    )
+    return True
+
+
 def _github_title(event: str, payload: dict[str, Any]) -> str:
     """A one-line description, from whichever fields the hook actually carries."""
     repository = (payload.get("repository") or {}).get("full_name", "unknown")
@@ -199,7 +244,9 @@ def _github_title(event: str, payload: dict[str, Any]) -> str:
 )
 async def github_webhook(
     request: Request,
+    background: BackgroundTasks,
     bus: Annotated[EventBus, Depends(get_event_bus)],
+    store: Annotated[InvestigationStore, Depends(get_store)],
     x_github_event: Annotated[str | None, Header()] = None,
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> WebhookAccepted:
@@ -247,11 +294,17 @@ async def github_webhook(
         TriggerReceivedEvent(investigation_id=investigation_id, trigger=trigger),
         investigation_id=investigation_id,
     )
+    investigating = _schedule(request, background, trigger, investigation_id, store, bus)
 
-    return WebhookAccepted(investigation_id=investigation_id, event=event)
+    return WebhookAccepted(
+        investigation_id=investigation_id, event=event, investigating=investigating
+    )
 
 
-# TODO: Phase 4 - route webhook triggers to Zeus rather than only publishing.
+# `investigating` is on the response because 202 alone cannot say which
+# happened. A hook configured for every event gets a 202 for a `star` and a 202
+# for a failed workflow run, and only one of those started anything - a reader
+# checking their delivery log deserves to know which.
 #
 # Both endpoints publish a TriggerReceivedEvent and stop. `POST
 # /webhooks/alertmanager` runs an investigation in a BackgroundTask, and these

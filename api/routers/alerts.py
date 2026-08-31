@@ -29,35 +29,22 @@ from __future__ import annotations
 import hmac
 import logging
 from datetime import UTC, datetime
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api.routers._runs import runner_for
 from api.routers.investigations import get_store
 from api.routers.webhooks import get_event_bus
 from core.bus import EventBus
 from core.config import get_settings
 from core.contracts.events import TriggerReceivedEvent
 from core.contracts.investigation import Trigger, TriggerKind
-from core.orchestrator import investigate
 from core.store.investigations import InvestigationStore
 
 logger = logging.getLogger(__name__)
-
-
-class InvestigationRunner(Protocol):
-    """What the receiver hands an accepted alert to."""
-
-    async def __call__(
-        self,
-        *,
-        trigger: Trigger,
-        investigation_id: UUID,
-        store: InvestigationStore,
-        bus: EventBus,
-    ) -> None: ...
 
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -164,7 +151,7 @@ async def receive_alertmanager(
     # knowing and is not a reason to go looking for a fault that has ended.
     if str(payload.get("status", FIRING)) == FIRING:
         background.add_task(
-            _runner(request),
+            runner_for(request),
             trigger=trigger,
             investigation_id=investigation_id,
             store=store,
@@ -176,41 +163,3 @@ async def receive_alertmanager(
         status=str(payload.get("status", FIRING)),
         alert_count=len(alerts),
     )
-
-
-def _runner(request: Request) -> InvestigationRunner:
-    """What actually runs an accepted alert, from application state.
-
-    Injectable because the default reaches Prometheus and Postgres, and a unit
-    test that exercises this endpoint would otherwise open sockets as a side
-    effect of asserting a 202. Substituting a recorder keeps those tests offline
-    and makes "an alert schedules an investigation" an assertion rather than a
-    consequence nobody checks.
-    """
-    runner: InvestigationRunner | None = getattr(request.app.state, "investigation_runner", None)
-    return runner if runner is not None else _investigate
-
-
-async def _investigate(
-    *,
-    trigger: Trigger,
-    investigation_id: UUID,
-    store: InvestigationStore,
-    bus: EventBus,
-) -> None:
-    """Run Zeus for an accepted alert.
-
-    Failures are logged and swallowed rather than raised: this runs after the
-    response, so an exception here reaches nobody. Zeus itself records a FAILED
-    Investigation for anything it can attribute, which is the path a reader will
-    actually see.
-    """
-    try:
-        await investigate(
-            trigger,
-            store=store,
-            bus=bus,
-            investigation_id=investigation_id,
-        )
-    except Exception:
-        logger.exception("investigation %s failed", investigation_id)

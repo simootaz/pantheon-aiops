@@ -141,6 +141,8 @@ is asserted and "the provider answers" is not.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
+- ✅ **A pull request reaches Aegis and a failed run reaches Hephaestus**, end
+  to end: signed webhook, classifier, planner, params, dispatch.
 - ✅ **Hephaestus** (flake vs unknown, from reruns at one commit); **Themis**
   still to come; ✅ **GitHub connector** (read-only: Actions
   runs, jobs, pull requests, PR file patches) and ✅ **GitLab connector**.

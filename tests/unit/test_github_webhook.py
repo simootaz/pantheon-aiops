@@ -265,3 +265,94 @@ def test_an_unsigned_malformed_body_is_a_401_and_not_a_400(client: TestClient) -
     )
 
     assert response.status_code == 401
+
+
+# --- the trigger reaches Zeus, not only the bus ------------------------------------------
+
+
+class _Recorder:
+    """Stands in for the runner, so this stays offline."""
+
+    def __init__(self) -> None:
+        self.runs: list[Any] = []
+
+    async def __call__(self, *, trigger: Any, investigation_id: Any, store: Any, bus: Any) -> None:
+        self.runs.append(trigger)
+
+
+@pytest.fixture
+def scheduled(
+    bus: InMemoryEventBus, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[TestClient, _Recorder]]:
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", SECRET)
+    get_settings.cache_clear()
+    recorder = _Recorder()
+    app = create_app(event_bus=bus)
+    app.state.investigation_runner = recorder
+    with TestClient(app) as test_client:
+        yield test_client, recorder
+    get_settings.cache_clear()
+
+
+def test_a_pull_request_starts_an_investigation(
+    scheduled: tuple[TestClient, _Recorder],
+) -> None:
+    """Before this, a pull request reached the bus and no agent ever saw it -
+    even though the classifier knew exactly what to hand Aegis."""
+    client, recorder = scheduled
+
+    response = _post(client, PULL_REQUEST, "pull_request")
+
+    assert response.status_code == 202
+    assert response.json()["investigating"] is True
+    assert len(recorder.runs) == 1
+
+
+def test_a_failed_workflow_run_starts_an_investigation(
+    scheduled: tuple[TestClient, _Recorder],
+) -> None:
+    client, recorder = scheduled
+
+    assert _post(client, FAILED_RUN, "workflow_run").json()["investigating"] is True
+    assert len(recorder.runs) == 1
+
+
+def test_a_green_workflow_run_starts_nothing(scheduled: tuple[TestClient, _Recorder]) -> None:
+    """The control, and the point of `investigating` being on the response: a
+    202 alone cannot say which of the two happened."""
+    client, recorder = scheduled
+    green = {**FAILED_RUN, "workflow_run": {"id": 99, "conclusion": "success"}}
+
+    response = _post(client, green, "workflow_run")
+
+    assert response.status_code == 202
+    assert response.json()["investigating"] is False
+    assert recorder.runs == []
+
+
+def test_an_event_nobody_acts_on_starts_nothing(
+    scheduled: tuple[TestClient, _Recorder],
+) -> None:
+    """A hook configured for every event sends dozens of types. Starting a run
+    for each would fill the store with investigations that found nothing
+    because there was nothing to look at."""
+    client, recorder = scheduled
+
+    response = _post(client, {"repository": {"full_name": REPO}}, "star")
+
+    assert response.json()["investigating"] is False
+    assert recorder.runs == []
+
+
+def test_the_scheduled_trigger_is_the_one_that_was_published(
+    scheduled: tuple[TestClient, _Recorder], bus: InMemoryEventBus
+) -> None:
+    """One trigger, not two. A receiver that built a second one for the runner
+    would publish a different object than it investigated, and the two would
+    drift the first time either was edited."""
+    client, recorder = scheduled
+
+    _post(client, PULL_REQUEST, "pull_request")
+
+    (envelope,) = bus.published
+    assert recorder.runs[0] == envelope.event.trigger  # type: ignore[union-attr]
