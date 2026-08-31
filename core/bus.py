@@ -22,11 +22,16 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from core.contracts.events import Event, EventEnvelope
+from core.contracts.events import DeliveryGuarantee, Event, EventEnvelope
 
 
 class EventBus(Protocol):
     """What the rest of Pantheon depends on. Implementations vary; this does not."""
+
+    #: What this implementation promises. Declared rather than assumed, so a
+    #: consumer needing more than a bus offers fails at wiring time instead of
+    #: discovering it as a gap during an incident.
+    guarantee: DeliveryGuarantee
 
     async def publish(self, event: Event, *, investigation_id: UUID | None = None) -> EventEnvelope:
         """Wrap `event` in an envelope, assign its sequence, and deliver it."""
@@ -39,6 +44,13 @@ class InMemoryEventBus:
     Not durable and not shared between processes, which is exactly why it is
     replaced at Phase 2 rather than grown.
     """
+
+    #: AT_MOST_ONCE, and that is the truth rather than a placeholder. Nothing is
+    #: persisted, nothing is acknowledged, and a process that dies takes every
+    #: event with it. Declaring anything stronger would let a consumer believe
+    #: a picture was complete when the bus cannot say so - and `ReplayCursor`
+    #: exists precisely because that has to be detectable at the reader.
+    guarantee: DeliveryGuarantee = DeliveryGuarantee.AT_MOST_ONCE
 
     def __init__(self) -> None:
         self._published: list[EventEnvelope] = []
