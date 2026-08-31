@@ -1,35 +1,27 @@
 """Collapses agent Findings into a single Verdict.
 
-THE VERDICT PROPOSES NO HYPOTHESES, AND THAT IS THE HONEST OUTPUT
-------------------------------------------------------------------
-`Verdict.hypotheses` comes back **empty**, deliberately. The contract already
-says what that means:
+THE VERDICT PROPOSES ONLY WHAT A SIGNAL ENTITLES IT TO
+-------------------------------------------------------
+`Verdict.hypotheses` was empty for two phases, deliberately, because nothing
+could turn "this moved" into "this is why" without inventing the step.
 
-    Empty means no explanation was reached, which is a legitimate outcome and
-    must not be dressed up as one.
+`core/orchestrator/hypotheses.py` is that step now, and it is narrow on purpose:
+a hypothesis is proposed only from a signal whose metric *is* the thing the
+category describes - resident memory for a leak, used-over-total for disk, the
+pipeline failure ratio for a flaky test. Errors, latency and CPU corroborate and
+name nothing, so `bad_deploy_5xx` and `noisy_neighbor` come back UNKNOWN with
+their evidence attached.
 
-Argus detects. It reports that a series crossed a threshold its peers did not,
-and it says so several times per incident because several metrics move - during
-`bad_deploy_5xx` both `error_ratio` and `latency` cross, and both are correct.
-Lethe now runs on the same alert and reports what appeared in the logs, so a
-single incident produces findings from two agents about the same window.
+That is the honest result rather than a gap: nothing here reports deployments,
+and nothing knows which pods share a node. Both were committed as predicted
+misses in `docs/zeus-predictions/01-hypothesis-ranking.md` before the ranker was
+written, because the ground truth is in this repository and a mapping that named
+all five would have been fitted to it.
 
-Choosing between them is a root-cause judgement, and nothing in this repository
-makes one yet. **Delphi is no longer the blocker** - it landed, with resolution,
-probing and a fallback chain. What is still missing is the step that decides two
-findings describe one event and ranks the candidates, and that is the same gap
-`core/contracts/finding.py` names for cross-agent correlation ids. It should be
-built once.
-
-So a Verdict here is **an aggregation of what the agents found, not a
-diagnosis.**
-Synthesising a hypothesis from a detector's output would mean inventing the
-step between "this moved" and "this is why", and inventing it in a field that
-`simulator/scenarios/*.yaml` provides ground truth for - so the invention would
-then be scored as though it were reasoning.
-
-`confidence` is 0.0 for the same reason: it is defined as confidence in the
-leading hypothesis, and there is no leading hypothesis.
+`confidence` is still 0.0 whenever there is no LEADING hypothesis - none
+proposed, or two tied. It is defined as confidence in the leading hypothesis,
+and a tie is exactly where picking one would be the aggregator inventing a
+judgement nothing made.
 
 WHAT IT DOES CARRY
 ------------------
@@ -49,6 +41,7 @@ from uuid import UUID, uuid4
 from core.contracts.finding import Finding, FindingKind
 from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.verdict import Verdict
+from core.orchestrator.hypotheses import leading, rank
 
 
 def aggregate(investigation_id: UUID, findings: list[Finding], steps: list[PlanStep]) -> Verdict:
@@ -56,12 +49,18 @@ def aggregate(investigation_id: UUID, findings: list[Finding], steps: list[PlanS
     anomalies = [f for f in findings if f.kind is FindingKind.ANOMALY]
     degraded = [f for f in findings if f.kind is FindingKind.DEGRADED]
 
+    hypotheses = rank(findings)
+    front_runner = leading(hypotheses)
+
     return Verdict(
         id=uuid4(),
         investigation_id=investigation_id,
         summary=_summary(anomalies, degraded, steps),
-        hypotheses=[],
-        confidence=0.0,
+        hypotheses=hypotheses,
+        # The LEADING one's confidence, or zero. Not the best score in the list:
+        # two hypotheses tied at 0.55 are a run that reached no conclusion, and
+        # reporting 0.55 would present a coin flip as a finding.
+        confidence=front_runner.confidence if front_runner is not None else 0.0,
         contributing_findings=findings,
         recommended_actions=[],
         decided_at=datetime.now(UTC),

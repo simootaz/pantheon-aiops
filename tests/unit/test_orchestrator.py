@@ -22,6 +22,7 @@ from core.contracts.events import InvestigationCompletedEvent
 from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.investigation import InvestigationState, Trigger, TriggerKind
 from core.contracts.plan import StepStatus
+from core.contracts.root_cause import RootCauseCategory
 from core.orchestrator import aggregator, dispatcher, planner
 from core.orchestrator.classifier import Classification, classify, scenario_of
 from core.orchestrator.router import get as orchestrator_get
@@ -62,6 +63,37 @@ def _finding(agent: str = "argus", kind: FindingKind = FindingKind.ANOMALY) -> F
         detected_at=datetime.now(UTC),
         evidence=[] if kind is FindingKind.DEGRADED else [_evidence()],
         tags=["metric:memory"],
+    )
+
+
+def _named(which: str) -> Finding:
+    """A Finding carrying a metric the ranker IS entitled to conclude from."""
+    from core.contracts.evidence import Evidence, EvidenceSource, MetricWindowPayload, ResourceRef
+
+    metric = {
+        "memory": "pantheon_pod_memory_working_set_bytes",
+        "disk": "pantheon_node_disk_used_bytes / pantheon_node_disk_total_bytes",
+    }[which]
+    subject = ResourceRef(kind="pod" if which == "memory" else "node", name=f"{which}-1")
+    return Finding(
+        id=uuid4(),
+        agent="argus",
+        kind=FindingKind.ANOMALY,
+        title=f"{metric} crossed",
+        severity=Severity.MEDIUM,
+        confidence=0.5,
+        detected_at=datetime.now(UTC),
+        subject=subject,
+        evidence=[
+            Evidence(
+                id=uuid4(),
+                source=EvidenceSource(connector="prometheus", query=metric),
+                observed_at=datetime.now(UTC),
+                summary=f"{metric} crossed",
+                subject=subject,
+                payload=MetricWindowPayload(metric=metric),
+            )
+        ],
     )
 
 
@@ -164,25 +196,40 @@ def test_a_plan_step_says_why_it_exists() -> None:
 # --- the verdict is an aggregation, not a diagnosis --------------------------
 
 
-def test_the_verdict_proposes_no_hypotheses() -> None:
-    """The load-bearing assertion of this whole file.
+def test_a_metric_nothing_declared_an_entitlement_for_cannot_name_a_cause() -> None:
+    """The load-bearing assertion of this whole file, and it survived the
+    ranker landing.
 
-    Argus detects. Nothing here ranks candidate causes, and a Verdict that
-    invented one would be scored against `simulator/scenarios/*.yaml` ground
-    truth as though it were reasoning.
+    These Findings carry the metric `up`, which `core/orchestrator/hypotheses.py`
+    declares nothing about. The Verdict must come back UNKNOWN - not silent, and
+    above all not carrying an invented category, which would be scored against
+    `simulator/scenarios/*.yaml` ground truth as though it were reasoning.
     """
     steps = planner.build(classify(_trigger(scenario="memory_leak")))
     done = [steps[0].model_copy(update={"status": StepStatus.COMPLETE})]
     verdict = aggregator.aggregate(uuid4(), [_finding(), _finding()], done)
 
-    assert verdict.hypotheses == [], (
-        "a detector's output is not an explanation; proposing one here would be "
-        "inventing the step between 'this moved' and 'this is why'"
+    (hypothesis,) = verdict.hypotheses
+    assert hypothesis.category is RootCauseCategory.UNKNOWN, (
+        "an unrecognised metric named a cause; a detector's output is not an "
+        "explanation and the mapping must be a decision somebody made"
     )
-    assert verdict.confidence == 0.0, "confidence is in the leading hypothesis, and there is none"
+    assert verdict.confidence == hypothesis.confidence
     assert len(verdict.contributing_findings) == 2
     assert verdict.steps == done, "a verdict without its steps cannot tell nobody-looked apart"
     assert "not an explanation" in verdict.summary
+
+
+def test_two_tied_hypotheses_leave_the_verdict_at_zero_confidence() -> None:
+    """A tie is a run that reached no conclusion. Reporting the best score would
+    present a coin flip as a finding."""
+    steps = planner.build(classify(_trigger(scenario="memory_leak")))
+    done = [steps[0].model_copy(update={"status": StepStatus.COMPLETE})]
+
+    verdict = aggregator.aggregate(uuid4(), [_named("memory"), _named("disk")], done)
+
+    assert len(verdict.hypotheses) == 2
+    assert verdict.confidence == 0.0
 
 
 def test_a_verdict_over_no_findings_does_not_claim_health() -> None:
