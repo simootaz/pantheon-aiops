@@ -287,7 +287,16 @@ class GitLabSettings(BaseSettings):
 class GitHubSettings(BaseSettings):
     model_config = _group("GITHUB_")
 
+    #: github.com by default, and a setting rather than a constant so GitHub
+    #: Enterprise is reachable by configuration rather than by an edit. An
+    #: endpoint hardcoded in a connector is one that cannot be pointed anywhere
+    #: else without a release.
+    api_url: HttpUrl = HttpUrl("https://api.github.com")
     token: SecretStr | None = None
+
+    @property
+    def base(self) -> str:
+        return _base(self.api_url)
 
 
 class KubernetesSettings(BaseSettings):
