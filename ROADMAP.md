@@ -113,7 +113,7 @@ is asserted and "the provider answers" is not.
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
 
-## Phase 3 — Guardrails, Approvals & Write Actions 🚧 tenant scoping outstanding
+## Phase 3 — Guardrails, Approvals & Write Actions ✅
 
 - ✅ `core/guardrails/` — policy, approval gate, budget, executor. An approval
   binds to a **digest of the content the approver read**, not to an id, and the
@@ -127,10 +127,13 @@ is asserted and "the provider answers" is not.
   mutating tool, which is safe by construction rather than by convention.
 - ✅ Auth — bearer tokens, four roles, constant-time comparison. The approver's
   identity comes from the credential and no longer from the request body.
-- ⬜ **Tenant scoping.** Not built. `Principal` carries a subject and roles and
-  nothing narrows what a subject may *see* — every authenticated caller reads
-  every investigation. Single-tenant is a coherent posture and this is not it,
-  because nothing states the assumption anywhere it is enforced.
+- ✅ **Tenant scoping.** `Investigation.tenant` and `Principal.tenant`, with the
+  reads narrowed in the store rather than at each call site — one call site can
+  forget it, and the filter has to run before the limit. Another tenant's run
+  answers **404 rather than 403**, because existence is itself the disclosure.
+  Cross-tenant is `@*` in the token table and is not inherited from ADMIN. The
+  investigation reads are gated now: a scope an unauthenticated caller bypasses
+  is a scope in name.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
