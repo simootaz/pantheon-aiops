@@ -1,3 +1,11 @@
-# Argus prompt templates.
+# Argus prompt templates. Empty, and intended to stay that way.
+#
+# Argus consults no model. Detection is statistical - a peer-relative baseline
+# with a declared floor, see agents/anomaly/ - and deciding which anomaly is the
+# cause is Zeus's and Delphi's work rather than this agent's.
+#
+# The directory exists because tests/unit/test_repo_structure.py requires every
+# agent to ship one. The TODO that was here said "populate this directory", and
+# a TODO that must never be actioned trains people to ignore TODOs.
+#
 # Phase: 1 - Contracts & First Agent Path
-# TODO: Phase 1 - populate this directory
