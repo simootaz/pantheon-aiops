@@ -793,6 +793,10 @@ export type StartedAt1 = string | null;
 export type InvestigationState =
   "pending" | "planning" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
 /**
+ * Who this run belongs to. Never empty - see api/auth/dependencies.py.
+ */
+export type Tenant = string;
+/**
  * The only connector that may redeem this lease.
  */
 export type Connector2 = string;
@@ -1466,6 +1470,7 @@ export interface Investigation {
   scenario?: Scenario;
   started_at?: StartedAt1;
   state: InvestigationState;
+  tenant?: Tenant;
   trigger: Trigger;
   /**
    * Absent until the run reaches a conclusion.

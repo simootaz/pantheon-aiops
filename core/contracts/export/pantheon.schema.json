@@ -1716,6 +1716,13 @@
         "state": {
           "$ref": "#/$defs/InvestigationState"
         },
+        "tenant": {
+          "default": "default",
+          "description": "Who this run belongs to. Never empty - see api/auth/dependencies.py.",
+          "minLength": 1,
+          "title": "Tenant",
+          "type": "string"
+        },
         "trigger": {
           "$ref": "#/$defs/Trigger"
         },

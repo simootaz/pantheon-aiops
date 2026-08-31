@@ -46,8 +46,18 @@ class InvestigationStore(Protocol):
         """The Investigation, or None. Absence is a legitimate answer, not an error."""
         ...
 
-    async def recent(self, limit: int = 20) -> list[Investigation]:
-        """Newest first."""
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Investigation]:
+        """Newest first, narrowed to one tenant.
+
+        The filter lives here rather than at the call site so it cannot be
+        forgotten by one of them, and so it runs BEFORE the limit - filtering
+        afterwards returns a tenant with three runs among a hundred an empty
+        page, which reads as "nothing happened" rather than as a paging bug.
+
+        `tenant=None` means every tenant and has to be passed deliberately. It
+        is not the shape a router reaches by omission: `api/routers/`
+        always passes one, from a verified `Principal`.
+        """
         ...
 
 
@@ -67,8 +77,13 @@ class InMemoryInvestigationStore:
     async def get(self, investigation_id: UUID) -> Investigation | None:
         return self._saved.get(investigation_id)
 
-    async def recent(self, limit: int = 20) -> list[Investigation]:
-        ordered = sorted(self._saved.values(), key=lambda i: i.created_at, reverse=True)
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Investigation]:
+        matching = [
+            investigation
+            for investigation in self._saved.values()
+            if tenant is None or investigation.tenant == tenant
+        ]
+        ordered = sorted(matching, key=lambda i: i.created_at, reverse=True)
         return ordered[:limit]
 
 

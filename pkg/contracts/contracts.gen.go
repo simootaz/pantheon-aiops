@@ -2254,6 +2254,9 @@ type Investigation struct {
 	// State corresponds to the JSON schema field "state".
 	State InvestigationState `json:"state" yaml:"state" mapstructure:"state"`
 
+	// Who this run belongs to. Never empty - see api/auth/dependencies.py.
+	Tenant string `json:"tenant,omitempty,omitzero" yaml:"tenant,omitempty" mapstructure:"tenant,omitempty"`
+
 	// Trigger corresponds to the JSON schema field "trigger".
 	Trigger Trigger `json:"trigger" yaml:"trigger" mapstructure:"trigger"`
 
@@ -2460,6 +2463,12 @@ func (j *Investigation) UnmarshalJSON(value []byte) error {
 	var plain Plain
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
+	}
+	if v, ok := raw["tenant"]; !ok || v == nil {
+		plain.Tenant = "default"
+	}
+	if utf8.RuneCountInString(string(plain.Tenant)) < 1 {
+		return fmt.Errorf("field %s length: must be >= %d", "tenant", 1)
 	}
 	*j = Investigation(plain)
 	return nil

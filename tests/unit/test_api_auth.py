@@ -27,6 +27,7 @@ from api.auth.dependencies import (
 from api.main import create_app
 from api.routers import approvals
 from core.config import get_settings
+from core.contracts.investigation import DEFAULT_TENANT
 from core.store.investigations import InMemoryInvestigationStore
 from core.store.providers import InMemoryProviderStore
 
@@ -304,3 +305,62 @@ def test_a_token_string_that_parses_to_nothing_is_still_refused(
     finally:
         get_settings.cache_clear()
         _principals.cache_clear()
+
+
+# --- tenant scoping on the principal -------------------------------------------------
+
+
+def test_a_token_without_a_tenant_gets_the_default() -> None:
+    """A single-tenant deployment writes exactly what it wrote before, and
+    still gets the mechanism rather than a bypass of it."""
+    (principal,) = _parse("alex:approver=t1").values()
+
+    assert principal.tenant == DEFAULT_TENANT
+    assert principal.reads(DEFAULT_TENANT)
+    assert not principal.reads("acme")
+
+
+def test_a_tenant_is_parsed_off_the_identity() -> None:
+    (principal,) = _parse("alex:approver@acme=t1").values()
+
+    assert principal.subject == "alex"
+    assert principal.roles == frozenset({Role.APPROVER})
+    assert principal.tenant == "acme"
+
+
+def test_an_empty_tenant_is_refused_rather_than_defaulted() -> None:
+    """It would match nothing, so the account authenticates and sees no
+    investigation at all - which reads as a broken deployment, not as a
+    configuration error."""
+    with pytest.raises(AuthMisconfigured, match="no tenant after it"):
+        _parse("alex:approver@=t1")
+
+
+def test_every_tenant_has_to_be_spelled() -> None:
+    """`*` in the token table, in the same place it says everything else. A
+    separate flag would be a second thing to read when answering "who can see
+    this"."""
+    (principal,) = _parse("support:viewer@*=t1").values()
+
+    assert principal.reads_every_tenant
+    assert principal.reads("acme") and principal.reads("globex")
+
+
+def test_admin_does_not_read_every_tenant() -> None:
+    """ADMIN is not a wildcard for roles and it is not one for tenants, for the
+    same reason: implicit inheritance means the set of people who can read
+    every tenant is not the set of people configured to."""
+    (principal,) = _parse("root:admin@acme=t1").values()
+
+    assert not principal.reads_every_tenant
+    assert not principal.reads("globex")
+
+
+def test_a_role_list_still_parses_with_a_tenant() -> None:
+    """The `@` split happens before the `:` split, so a mistake in either
+    would show up as roles or subject going missing."""
+    (principal,) = _parse("alex:approver,operator@acme=t1").values()
+
+    assert principal.roles == frozenset({Role.APPROVER, Role.OPERATOR})
+    assert principal.subject == "alex"
+    assert principal.tenant == "acme"

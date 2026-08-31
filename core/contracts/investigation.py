@@ -102,6 +102,14 @@ class AgentAccounting(ContractModel):
         return None
 
 
+#: The tenant an Investigation belongs to when nobody said otherwise.
+#:
+#: A default rather than a required field, so a single-tenant deployment needs
+#: no configuration and still gets the mechanism rather than a bypass of it.
+#: There is exactly one tenant there, and it is named.
+DEFAULT_TENANT = "default"
+
+
 class Investigation(ContractModel):
     """One end-to-end run, from trigger to Verdict."""
 
@@ -139,6 +147,11 @@ class Investigation(ContractModel):
             "Cerberus credential audit for this run. Safe to expose: every credential "
             "here is a CredentialRef, never a value."
         ),
+    )
+    tenant: str = Field(
+        default=DEFAULT_TENANT,
+        min_length=1,
+        description="Who this run belongs to. Never empty - see api/auth/dependencies.py.",
     )
     scenario: str | None = Field(
         default=None,

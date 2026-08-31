@@ -14,6 +14,22 @@ established. Nothing downstream can tell the two apart once they are both a
 routers take a `Principal`, and there is no constructor for one that a request
 body can reach.
 
+TENANT SCOPING
+----------------
+A `Principal` carries the tenant it belongs to, and a read is narrowed to it.
+Without that, every authenticated caller reads every investigation - which is a
+coherent posture for a single-tenant deployment and an exposure the moment it is
+not, and nothing stated the assumption anywhere it was enforced.
+
+Cross-tenant access is a separate, configured thing (`@*`), NOT something ADMIN
+inherits. The argument is the same one `holds` makes about roles: implicit
+inheritance means the set of people who can read every tenant is not the set of
+people configured to, and that is exactly the question an audit asks.
+
+A resource in another tenant answers **404, not 403**. A 403 confirms the thing
+exists, and for tenant isolation existence is itself the disclosure - "that
+investigation is not yours" tells you another tenant had an incident.
+
 TOKENS, NOT JWTs
 ------------------
 No signing library and no session store. Tokens are opaque strings configured
@@ -31,17 +47,21 @@ and the obvious *bug* is that it authenticates everybody, because an empty
 credential matches an unset expectation. `_principals` refuses to authenticate
 against an empty table, and production refuses to start without one.
 
-Open mode is a separate, named state (`AuthMode.NONE`), not the absence of
-configuration. An absence is ambiguous; a declaration is not.
+There is no open mode. An earlier version of this text claimed one, named
+`AuthMode.NONE` - that enum belongs to `core/contracts/llm.py` and describes how
+Pantheon authenticates to a model PROVIDER. It has never had anything to do with
+this module, and a docstring pointing at a mechanism that does not exist is worse
+than one that says nothing: somebody configures it and believes they have.
 
-WHAT IS NOT GATED YET
------------------------
-Only `/approvals` requires a principal. The read endpoints - investigations,
-agents, providers, health - are open, and that is stated rather than implied:
-they disclose what the system found, which is a real exposure, and closing it
-is a deployment decision that belongs with the identity provider in Phase 4.
-The endpoint that *decides* something is gated now because its own guarantees
-were resting on nothing.
+WHAT IS GATED
+---------------
+`/approvals` and the investigation reads. The reads were open and are not any
+more: tenant scoping is meaningless without them, because an unauthenticated
+caller has no tenant, and a scope that everybody bypasses is a scope in name.
+
+`/agents`, `/providers` and `/health` stay open. They describe the system's own
+configuration rather than what it found in somebody's cluster, and `/health` in
+particular is read by things that hold no credential.
 
 Phase: 3 - Guardrails, Approvals & Write Actions
 """
@@ -57,6 +77,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 
 from core.config import Environment, get_settings
+from core.contracts.investigation import DEFAULT_TENANT
 
 
 class Role(StrEnum):
@@ -80,6 +101,14 @@ class Role(StrEnum):
     ADMIN = "admin"
 
 
+#: A principal configured to read every tenant. Spelled, not inferred.
+#:
+#: `*` rather than a boolean, so the token table says it in the same place it
+#: says everything else - a separate flag is a second thing to read when
+#: answering "who can see this".
+ALL_TENANTS = "*"
+
+
 @dataclass(frozen=True)
 class Principal:
     """Who the caller is, as established by the server.
@@ -91,6 +120,20 @@ class Principal:
 
     subject: str
     roles: frozenset[Role]
+    tenant: str = DEFAULT_TENANT
+
+    def reads(self, tenant: str) -> bool:
+        """Whether this principal may see something belonging to `tenant`.
+
+        Exact match, or a principal configured for every tenant. ADMIN is not
+        checked here on purpose - it is not a wildcard for roles and it is not
+        one for tenants, for the same reason.
+        """
+        return self.tenant == ALL_TENANTS or self.tenant == tenant
+
+    @property
+    def reads_every_tenant(self) -> bool:
+        return self.tenant == ALL_TENANTS
 
     def holds(self, *required: Role) -> bool:
         """Whether this principal holds any of the named roles.
@@ -108,7 +151,11 @@ class AuthMisconfigured(RuntimeError):
 
 
 def _parse(raw: str) -> dict[str, Principal]:
-    """`subject:role,role=token;subject:role=token` into token -> principal.
+    """`subject:role,role@tenant=token;...` into token -> principal.
+
+    `@tenant` is optional and defaults to `DEFAULT_TENANT`, so a single-tenant
+    deployment writes exactly what it wrote before. `@*` grants every tenant
+    and has to be typed - see `ALL_TENANTS`.
 
     Every failure here is fatal rather than skipped. A malformed entry that
     was ignored would silently reduce the set of people who can approve, and
@@ -122,6 +169,15 @@ def _parse(raw: str) -> dict[str, Principal]:
         identity, separator, token = entry.partition("=")
         if not separator or not token:
             raise AuthMisconfigured(f"token entry {identity!r} has no '=token' part")
+
+        identity, tenant_separator, tenant = identity.partition("@")
+        tenant = tenant.strip() if tenant_separator else DEFAULT_TENANT
+        if tenant_separator and not tenant:
+            raise AuthMisconfigured(
+                f"token entry {identity!r} has an '@' and no tenant after it. An empty "
+                "tenant would match nothing, so the account would authenticate and see "
+                f"no investigation at all - omit the '@' to mean {DEFAULT_TENANT!r}."
+            )
 
         subject, _, role_names = identity.partition(":")
         if not subject.strip():
@@ -147,7 +203,7 @@ def _parse(raw: str) -> dict[str, Principal]:
                 "An ambiguous identity would let one of them act as the other, and the "
                 "trail would name the wrong person."
             )
-        table[token] = Principal(subject=subject.strip(), roles=roles)
+        table[token] = Principal(subject=subject.strip(), roles=roles, tenant=tenant)
     return table
 
 
