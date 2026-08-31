@@ -31,6 +31,10 @@ def _deployment(**overrides: Any) -> dict[str, Any]:
     is the one distinction this agent exists to make.
     """
     manifest: dict[str, Any] = {
+        # Present because `sources.documents` requires it: a document without
+        # apiVersion AND kind is not a Kubernetes object. The fetch tests below
+        # failed without it, which is the guard working on its own author.
+        "apiVersion": "apps/v1",
         "kind": "Deployment",
         "metadata": {"name": "checkout", "namespace": "shop"},
         "spec": {
@@ -360,17 +364,37 @@ async def test_an_entry_with_neither_side_degrades() -> None:
 # --- the toolset ----------------------------------------------------------------------------------
 
 
-def test_aegis_declares_no_tools_and_implements_none() -> None:
-    """A declared tool the agent never calls is an allowlist entry nobody uses,
-    and the allowlist is what makes an agent's reach checkable by reading its
-    manifest. Aegis previously declared four."""
-    assert Aegis().manifest.tools == []
-    assert IMPLEMENTATIONS == {}
+def test_every_declared_tool_has_an_implementation_and_no_others() -> None:
+    """The claim that survived the toolset coming back.
+
+    Aegis declared four tools for two phases and called none - an allowlist
+    entry nobody uses, which makes an agent's reach unreadable from the one
+    place it is supposed to be readable. Now it declares three and calls three,
+    asserted in both directions so a tool added to either side alone fails.
+    """
+    assert set(Aegis().manifest.tools) == set(IMPLEMENTATIONS)
+    assert set(IMPLEMENTATIONS) == {
+        "github.pull_request",
+        "github.diff",
+        "github.file_at",
+    }
 
 
-async def test_aegis_calls_no_connector_during_a_real_review() -> None:
-    """Asserted through a run rather than by reading the manifest, so the claim
-    is about behaviour. The manifest could be widened tomorrow and this fails."""
+def test_kubernetes_is_still_not_declared() -> None:
+    """It was, for two phases, and nothing called it. Nothing about the cluster
+    changes what a diff removed - a readiness probe deleted from a manifest is
+    deleted whatever the cluster currently says.
+
+    Asserted so that adding it back is a deliberate act rather than a drift.
+    """
+    assert not [tool for tool in Aegis().manifest.tools if tool.startswith("kubernetes.")]
+
+
+async def test_a_supplied_change_costs_no_requests() -> None:
+    """Both paths are legitimate - a webhook carries the manifests, an operator
+    carries a PR reference - and the supplied one must not quietly reach for the
+    network. Asserted through a run rather than by reading the manifest, so the
+    claim is about behaviour."""
     after = _without(["spec", "template", "spec", "containers", 0, "livenessProbe"])
 
     outcome = await _run({"before": _deployment(), "after": after})
@@ -382,3 +406,211 @@ async def test_aegis_calls_no_connector_during_a_real_review() -> None:
 @pytest.mark.parametrize("kind", ["ClusterRoleBinding", "ValidatingWebhookConfiguration"])
 def test_cluster_scoped_kinds_are_recognised(kind: str) -> None:
     assert reach_of(kind) is Reach.CLUSTER
+
+
+# --- reading the change out of a pull request ---------------------------------------------
+
+
+def _yaml(manifest: dict[str, Any]) -> str:
+    import yaml
+
+    return str(yaml.safe_dump(manifest))
+
+
+def _b64(text: str) -> dict[str, str]:
+    import base64
+
+    return {"encoding": "base64", "content": base64.b64encode(text.encode()).decode()}
+
+
+class _Forge:
+    """A scripted GitHub. Records every call so the fetch plan is assertable."""
+
+    def __init__(
+        self,
+        files: list[dict[str, Any]] | None = None,
+        contents: dict[tuple[str, str], str] | None = None,
+        base: str = "base-sha",
+        head: str = "head-sha",
+    ) -> None:
+        self.files = files if files is not None else []
+        self.contents = contents or {}
+        self.base = base
+        self.head = head
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def pull_request(self, **kwargs: Any) -> Any:
+        self.calls.append(("pull_request", kwargs))
+        return {"base": {"sha": self.base}, "head": {"sha": self.head}}
+
+    async def diff(self, **kwargs: Any) -> Any:
+        self.calls.append(("diff", kwargs))
+        return self.files
+
+    async def file_at(self, **kwargs: Any) -> Any:
+        self.calls.append(("file_at", kwargs))
+        key = (str(kwargs["path"]), str(kwargs["ref"]))
+        if key not in self.contents:
+            raise RuntimeError(f"github has no {key[0]} at {key[1]} visible to this token")
+        return _b64(self.contents[key])
+
+    def fetched(self) -> list[tuple[str, str]]:
+        return [
+            (str(kwargs["path"]), str(kwargs["ref"]))
+            for name, kwargs in self.calls
+            if name == "file_at"
+        ]
+
+
+async def _review_pr(forge: _Forge) -> Any:
+    """Run Aegis against a scripted forge, through the real binding."""
+    from agents._base.tool_binding import BoundTools
+
+    agent = Aegis()
+
+    def _bind(tools: BoundTools) -> None:
+        tools.register("github.pull_request", forge.pull_request)
+        tools.register("github.diff", forge.diff)
+        tools.register("github.file_at", forge.file_at)
+
+    agent.bind_tools = _bind  # type: ignore[method-assign]
+    ctx = a_context()
+    ctx.params = {"repository": "acme/checkout", "pull_request": 12}
+    return await agent.run(ctx)
+
+
+async def test_a_pull_request_is_read_at_both_shas() -> None:
+    """The whole point. A review with only one side reports on the workload
+    rather than on the change."""
+    after = _deployment()
+    del _containers(after)[0]["livenessProbe"]
+    forge = _Forge(
+        files=[{"filename": "k8s/deploy.yaml", "status": "modified"}],
+        contents={
+            ("k8s/deploy.yaml", "base-sha"): _yaml(_deployment()),
+            ("k8s/deploy.yaml", "head-sha"): _yaml(after),
+        },
+    )
+
+    outcome = await _review_pr(forge)
+
+    assert forge.fetched() == [
+        ("k8s/deploy.yaml", "base-sha"),
+        ("k8s/deploy.yaml", "head-sha"),
+    ]
+    (finding,) = outcome.findings
+    assert "livenessProbe" in finding.title
+
+
+async def test_an_added_file_is_not_fetched_at_the_base() -> None:
+    """Asking for a base revision of a file that has none is a 404 that would
+    abort a review over a file that is fine."""
+    forge = _Forge(
+        files=[{"filename": "k8s/new.yaml", "status": "added"}],
+        contents={("k8s/new.yaml", "head-sha"): _yaml(_deployment())},
+    )
+
+    await _review_pr(forge)
+
+    assert forge.fetched() == [("k8s/new.yaml", "head-sha")]
+
+
+async def test_a_removed_file_is_not_fetched_at_the_head() -> None:
+    forge = _Forge(
+        files=[{"filename": "k8s/gone.yaml", "status": "removed"}],
+        contents={("k8s/gone.yaml", "base-sha"): _yaml(_deployment())},
+    )
+
+    outcome = await _review_pr(forge)
+
+    assert forge.fetched() == [("k8s/gone.yaml", "base-sha")]
+    assert outcome.findings, "a deleted manifest removes everything it held"
+
+
+async def test_a_rename_reads_the_old_path_at_the_base() -> None:
+    """`previous_filename` is the path at the base sha. Fetching the new path
+    there would 404 on every rename."""
+    forge = _Forge(
+        files=[
+            {
+                "filename": "k8s/renamed.yaml",
+                "status": "renamed",
+                "previous_filename": "k8s/old.yaml",
+            }
+        ],
+        contents={
+            ("k8s/old.yaml", "base-sha"): _yaml(_deployment()),
+            ("k8s/renamed.yaml", "head-sha"): _yaml(_deployment()),
+        },
+    )
+
+    await _review_pr(forge)
+
+    assert forge.fetched() == [
+        ("k8s/old.yaml", "base-sha"),
+        ("k8s/renamed.yaml", "head-sha"),
+    ]
+
+
+async def test_files_that_are_not_yaml_are_never_opened() -> None:
+    """A pull request touching a hundred Go files must cost no requests."""
+    forge = _Forge(files=[{"filename": "main.go", "status": "modified"}])
+
+    outcome = await _review_pr(forge)
+
+    assert forge.fetched() == []
+    assert outcome.findings == []
+
+
+async def test_a_pull_request_with_no_shas_degrades() -> None:
+    """A review with only one side reports on the workload rather than on the
+    change - the exact failure diff.py exists to avoid."""
+    forge = _Forge(files=[{"filename": "k8s/deploy.yaml", "status": "modified"}], base="")
+
+    outcome = await _review_pr(forge)
+
+    assert outcome.status is AgentStatus.DEGRADED
+    assert outcome.degraded_reason is not None
+    assert "nothing to compare" in outcome.degraded_reason
+
+
+async def test_too_many_manifests_degrades_rather_than_reviewing_a_prefix() -> None:
+    """Each file costs two requests. Silently reviewing the first few would
+    report a clean change for every file it never opened."""
+    from agents.manifest_review.agent import MAX_FILES
+
+    forge = _Forge(
+        files=[{"filename": f"k8s/{i}.yaml", "status": "modified"} for i in range(MAX_FILES + 1)]
+    )
+
+    outcome = await _review_pr(forge)
+
+    assert outcome.status is AgentStatus.DEGRADED
+    assert forge.fetched() == [], "it must refuse before spending the quota"
+
+
+async def test_a_file_that_will_not_parse_degrades_and_keeps_the_rest() -> None:
+    """One bad file in twenty must not cost the review of the other nineteen,
+    and a skipped file is a file reviewed as unchanged."""
+    stripped = _deployment()
+    del _containers(stripped)[0]["livenessProbe"]
+    forge = _Forge(
+        files=[
+            {"filename": "k8s/good.yaml", "status": "modified"},
+            {"filename": "k8s/bad.yaml", "status": "modified"},
+        ],
+        contents={
+            ("k8s/good.yaml", "base-sha"): _yaml(_deployment()),
+            ("k8s/good.yaml", "head-sha"): _yaml(stripped),
+            ("k8s/bad.yaml", "base-sha"): "kind: [unclosed\n",
+            ("k8s/bad.yaml", "head-sha"): "kind: [unclosed\n",
+        },
+    )
+
+    outcome = await _review_pr(forge)
+
+    assert outcome.status is AgentStatus.DEGRADED
+    assert outcome.degraded_reason is not None and "k8s/bad.yaml" in outcome.degraded_reason
+    assert any("livenessProbe" in f.title for f in outcome.findings), (
+        "the readable file was still reviewed"
+    )

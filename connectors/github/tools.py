@@ -68,6 +68,7 @@ READ_PATHS = (
     "/repos/<owner>/<repo>/actions/runs/<run>",
     "/repos/<owner>/<repo>/actions/runs/<run>/jobs",
     "/repos/<owner>/<repo>/pulls",
+    "/repos/<owner>/<repo>/pulls/<number>",
     "/repos/<owner>/<repo>/pulls/<number>/files",
     "/repos/<owner>/<repo>/contents/<path>",
 )
@@ -284,6 +285,19 @@ async def pull_requests(arguments: dict[str, Any]) -> Any:
     return await _get(f"/repos/{repository}/pulls", params)
 
 
+async def pull_request(arguments: dict[str, Any]) -> Any:
+    """One pull request, whole.
+
+    Exists for `base.sha` and `head.sha`. A review of a change needs both
+    revisions, and the `files` listing carries neither - it names what changed
+    and not what it changed from. Deriving the base from `contents_url` would
+    mean parsing a sha out of a URL GitHub is free to reshape.
+    """
+    repository = _repo_path(str(arguments.get("repository", "")))
+    number = _numeric(arguments.get("pull_request"), what="pull_request")
+    return await _get(f"/repos/{repository}/pulls/{number}")
+
+
 async def diff(arguments: dict[str, Any]) -> Any:
     """The files changed in one pull request.
 
@@ -415,6 +429,21 @@ def build_server() -> BaseMCPServer:
                 "required": ["repository"],
             },
             handler=pull_requests,
+        )
+    )
+    server.register(
+        Tool(
+            name="pull_request",
+            description="One pull request, for its base and head shas.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "repository": _REPO_ARG,
+                    "pull_request": {"type": "integer", "description": "PR number."},
+                },
+                "required": ["repository", "pull_request"],
+            },
+            handler=pull_request,
         )
     )
     server.register(

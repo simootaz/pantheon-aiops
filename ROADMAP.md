@@ -145,10 +145,11 @@ is asserted and "the provider answers" is not.
   runs, jobs, pull requests, PR file patches) and ✅ **GitLab connector**.
   **GitHub is the one this deployment uses**; GitLab is built and kept, not
   invested in further.
-  Both `diff` tools return per-file patches, which are **not** what Aegis
-  consumes - it reviews parsed before/after manifests, and turning one into the
-  other needs a second read at the base sha. Named rather than papered over, and
-  it is the next thing that connects Aegis to a real change.
+  ✅ **Aegis reads a real pull request.** `github.file_at` reads the bytes at
+  both shas rather than reconstructing from patches - GitHub omits `patch`
+  above ~20k of diff, so a patch-based reviewer silently skips the large
+  manifest changes most worth reviewing. Documents pair by identity, not
+  position.
 - **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
   Cerberus
 - `ArtifactRef` resolution — server-side, same-investigation only

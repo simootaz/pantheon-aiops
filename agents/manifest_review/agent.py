@@ -51,6 +51,8 @@ from uuid import NAMESPACE_URL, uuid5
 
 from agents._base.base_agent import AgentContext, AgentDegraded, BaseAgent
 from agents.manifest_review.diff import Reach, Review, review
+from agents.manifest_review.sources import decode, extract, looks_like_manifest_file
+from agents.manifest_review.tools import attach
 from core.contracts.evidence import (
     Evidence,
     EvidenceSource,
@@ -74,6 +76,25 @@ _SIDES = "\n"
 #: namespace whatever anybody thinks about it, and a Deployment reaches its own
 #: pods. A weighting over which protections matter more would be an opinion
 #: dressed as a measurement.
+#: How many changed manifest files this agent will open.
+#:
+#: Each costs two requests, so a pull request touching two hundred would spend
+#: four hundred against a 5000/hour quota. Over the cap the run DEGRADES rather
+#: than reviewing the first few: silently reviewing a prefix reports a clean
+#: change for every file it never opened.
+MAX_FILES = 40
+
+
+def _names_a_pull_request(ctx: AgentContext) -> bool:
+    """Whether this run was given a change to fetch rather than handed one.
+
+    Both are legitimate. A webhook carries the manifests; an operator asking
+    "review PR 12" carries a reference. What is not legitimate is guessing -
+    a run with a half-specified reference is refused by `_fetched`.
+    """
+    return bool(ctx.params.get("repository") and ctx.params.get("pull_request"))
+
+
 SEVERITY_BY_REACH = {
     Reach.CLUSTER: Severity.HIGH,
     Reach.NAMESPACE: Severity.MEDIUM,
@@ -97,7 +118,7 @@ class Aegis(BaseAgent):
         `before` reports on the workload rather than on the change, and would
         look like a working review while being a different question.
         """
-        changes = self._changes(ctx)
+        changes = await self._fetched(ctx) if _names_a_pull_request(ctx) else self._changes(ctx)
         findings: list[Finding] = []
 
         for index, (before, after) in enumerate(changes):
@@ -107,6 +128,115 @@ class Aegis(BaseAgent):
             findings.append(self._finding(ctx, assessment, index, before, after))
 
         return findings
+
+    def bind_tools(self, tools: Any) -> None:
+        """Attach the GitHub connector to the toolset the runtime built.
+
+        The runtime owns the toolset - `BaseAgent.run` constructs it from the
+        manifest and replaces whatever a caller put on the context. That
+        ownership cost a live gate to learn on Argus.
+        """
+        attach(tools)
+
+    async def _fetched(
+        self, ctx: AgentContext
+    ) -> list[tuple[dict[str, Any] | None, dict[str, Any] | None]]:
+        """Read the change out of a pull request.
+
+        THE BASE SHA IS FETCHED, NOT DERIVED
+        --------------------------------------
+        The `files` listing names what changed and carries neither sha, so the
+        pull request itself is read first. Without a base there is no *before*,
+        and a review with no before is a review of the workload rather than of
+        the change - the exact failure `diff.py` exists to avoid.
+
+        A FILE'S `status` DECIDES WHICH SIDES EXIST
+        ---------------------------------------------
+        An `added` file has no base revision, and asking for one is a 404 that
+        would abort a review over a file that is fine. A `removed` file has no
+        head revision. A `renamed` one has a *different* path at the base, which
+        `previous_filename` carries - fetching the new path at the base sha
+        would 404 on every rename.
+        """
+        repository = str(ctx.params["repository"])
+        number = ctx.params["pull_request"]
+        tools = ctx.tools
+
+        pull = await tools.call("github.pull_request", repository=repository, pull_request=number)
+        base_sha = str((pull.get("base") or {}).get("sha") or "")
+        head_sha = str((pull.get("head") or {}).get("sha") or "")
+        if not base_sha or not head_sha:
+            raise AgentDegraded(
+                f"pull request {number} carries no base or head sha, so there is "
+                "nothing to compare. A review with only one side reports on the "
+                "workload rather than on the change.",
+                partial=[],
+                retryable=False,
+            )
+
+        files = await tools.call("github.diff", repository=repository, pull_request=number)
+        manifests = [
+            entry
+            for entry in files
+            if isinstance(entry, dict) and looks_like_manifest_file(str(entry.get("filename", "")))
+        ]
+
+        if len(manifests) > MAX_FILES:
+            raise AgentDegraded(
+                f"pull request {number} changes {len(manifests)} manifest files, over "
+                f"the {MAX_FILES} this agent will read. Each needs two requests, and "
+                "silently reviewing the first few would report a clean change for the "
+                "ones it never opened.",
+                partial=[],
+                retryable=False,
+            )
+
+        triples: list[tuple[str, str | None, str | None]] = []
+        for entry in manifests:
+            path = str(entry["filename"])
+            status = str(entry.get("status", "modified"))
+            base_path = str(entry.get("previous_filename") or path)
+
+            before = (
+                None
+                if status == "added"
+                else await self._text(tools, repository, base_path, base_sha)
+            )
+            after = (
+                None if status == "removed" else await self._text(tools, repository, path, head_sha)
+            )
+            triples.append((path, before, after))
+
+        extraction = extract(triples)
+        if not extraction.complete:
+            raise AgentDegraded(
+                f"could not read {', '.join(extraction.unreadable)} as manifests. A "
+                "file skipped is a file reviewed as unchanged, so the rest is "
+                "reported and this is not swallowed.",
+                partial=[
+                    self._finding(ctx, review(change.before, change.after), index, None, None)
+                    for index, change in enumerate(extraction.changes)
+                    if not review(change.before, change.after).clean
+                ],
+                retryable=True,
+            )
+
+        return [(change.before, change.after) for change in extraction.changes]
+
+    async def _text(self, tools: Any, repository: str, path: str, ref: str) -> str | None:
+        """One file's text at one commit, or `None` when it is not there.
+
+        A 404 here is a legitimate answer: a path that exists at the head and
+        not at the base is an addition GitHub's `status` did not label as one,
+        which happens on a rename GitHub did not detect as a rename.
+        """
+        try:
+            payload = await tools.call("github.file_at", repository=repository, path=path, ref=ref)
+        except Exception as unreachable:
+            if "has no" in str(unreachable):
+                return None
+            raise
+        return decode(payload)
 
     def _changes(
         self, ctx: AgentContext

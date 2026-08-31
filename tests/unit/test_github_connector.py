@@ -348,7 +348,14 @@ async def test_an_unreachable_github_names_the_host(monkeypatch: pytest.MonkeyPa
 def test_every_declared_tool_has_a_handler_and_a_schema() -> None:
     server = tools.build_server()
 
-    assert set(server.tools) == {"actions_run", "jobs", "pull_requests", "diff", "file_at"}
+    assert set(server.tools) == {
+        "actions_run",
+        "jobs",
+        "pull_requests",
+        "pull_request",
+        "diff",
+        "file_at",
+    }
     assert server.read_only, "the GitHub connector must expose no mutating tool"
 
 
@@ -411,3 +418,17 @@ async def test_a_file_too_large_for_the_contents_api_is_refused(recorder: _Recor
 async def test_the_contents_path_is_inside_the_allowlist() -> None:
     assert tools._allowed(f"/repos/{REPO}/contents/k8s/base/deploy.yaml")
     assert not tools._allowed(f"/repos/{REPO}/contents")
+
+
+@pytest.mark.asyncio
+async def test_one_pull_request_is_readable_for_its_shas(recorder: _Recorder) -> None:
+    """A review of a change needs both revisions, and the `files` listing
+    carries neither - it names what changed and not what it changed from."""
+    await tools.pull_request({"repository": REPO, "pull_request": 12})
+
+    assert str(recorder.last.url).endswith(f"/repos/{REPO}/pulls/12")
+
+
+def test_the_single_pull_request_path_is_inside_the_allowlist() -> None:
+    assert tools._allowed(f"/repos/{REPO}/pulls/12")
+    assert not tools._allowed(f"/repos/{REPO}/pulls/12/merge")
