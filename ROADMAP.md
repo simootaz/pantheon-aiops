@@ -81,16 +81,22 @@ one. A Verdict aggregates and proposes no hypotheses — see Phase 2.
   actually branch (`tests/coverage_floor.py`). The aggregate alone is flattered
   because most statements are Pydantic field declarations covered by import.
 
-## Phase 2 — Orchestrator & Investigation Flow 🚧 in progress
+## Phase 2 — Orchestrator & Investigation Flow 🚧 one capability short
 
-**One of six.** Zeus runs flow 1 end to end. **Delphi has landed** — resolution,
-capability probing, a fallback chain and a completion cache — so it is no longer
-what stands between aggregating and reasoning.
+**One of six.** Zeus runs flow 1 end to end, reaching all three agents. Delphi
+has landed — resolution, capability probing, a fallback chain and a completion
+cache — and `ResolutionRecord`s are written onto the Investigation.
 
-What remains is correlation: the step that decides two findings describe one
-event and ranks the candidates. Until it exists a Verdict proposes no hypotheses
-by design rather than by omission, and `confidence` stays 0.0 because it is
-defined as confidence in a leading hypothesis there is none of.
+Correlation exists and groups findings by co-occurrence. What remains is
+**ranking those groups into hypotheses**, and it is one capability rather than
+three loose ends: the two open TODOs in `core/contracts/` — per-category
+root-cause detail and recorded dissent — are both blocked on it, because a
+Verdict cannot record disagreement about a leading hypothesis it does not have.
+Until then `confidence` stays 0.0 by design rather than by omission.
+
+Also outstanding: a **live gate against a real model**. Every Delphi test to
+date runs against `RecordingProvider` or a scripted fake, so "the adapter works"
+is asserted and "the provider answers" is not.
 
 - ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. An alert
   plans **two** steps — metrics and logs both cover it — and a human question
@@ -107,13 +113,24 @@ defined as confidence in a leading hypothesis there is none of.
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
 
-## Phase 3 — Guardrails, Approvals & Write Actions ⬜ not started
+## Phase 3 — Guardrails, Approvals & Write Actions 🚧 tenant scoping outstanding
 
-- `core/guardrails/` — policy, approval gate, budget
-- **Cerberus** implemented: store, policy, audit, broker, lease, redemption,
-  rotation, revocation, break-glass
-- **Aegis**; write tools behind approval
-- Auth and tenant scoping
+- ✅ `core/guardrails/` — policy, approval gate, budget, executor. An approval
+  binds to a **digest of the content the approver read**, not to an id, and the
+  last policy rule is REQUIRE_APPROVAL so an unclassified operation gets a
+  person rather than permission. Every receipt names the rule that decided it.
+- ✅ **Cerberus** — store, policy, audit, broker, lease, redemption, rotation,
+  revocation, break-glass. The vault has no plaintext getter; redemption is the
+  only producer and checks the lease against the context it is used in. Every
+  revocation kills the live leases too, or it takes effect in one TTL.
+- ✅ **Aegis**; the first write tool behind approval. No agent may declare a
+  mutating tool, which is safe by construction rather than by convention.
+- ✅ Auth — bearer tokens, four roles, constant-time comparison. The approver's
+  identity comes from the credential and no longer from the request body.
+- ⬜ **Tenant scoping.** Not built. `Principal` carries a subject and roles and
+  nothing narrows what a subject may *see* — every authenticated caller reads
+  every investigation. Single-tenant is a coherent posture and this is not it,
+  because nothing states the assumption anywhere it is enforced.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
