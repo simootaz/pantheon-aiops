@@ -141,7 +141,11 @@ is asserted and "the provider answers" is not.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
-- **Hephaestus** and **Themis**; GitLab and GitHub connectors
+- **Hephaestus** and **Themis**; ✅ **GitLab connector** (read-only: pipelines,
+  jobs, merge requests, MR diffs); GitHub connector still to come.
+  The GitLab `diff` returns unified text, which is **not** what Aegis consumes -
+  it reviews parsed before/after manifests, and turning one into the other needs
+  a second read at the base sha. Named rather than papered over.
 - **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
   Cerberus
 - `ArtifactRef` resolution — server-side, same-investigation only

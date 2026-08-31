@@ -18,6 +18,7 @@ import pytest
 
 from connectors._base.python.base_server import BaseMCPServer, Tool, ToolError
 from connectors.alertmanager.tools import build_server as build_alertmanager
+from connectors.gitlab.tools import build_server as build_gitlab
 from connectors.loki import tools as loki_tools
 from connectors.loki.tools import build_server as build_loki
 from connectors.prometheus import tools as prometheus_tools
@@ -35,6 +36,7 @@ SERVERS = {
     "prometheus": build_prometheus,
     "alertmanager": build_alertmanager,
     "loki": build_loki,
+    "gitlab": build_gitlab,
 }
 
 #: Where each connector's read-path allowlist is written.
@@ -42,6 +44,7 @@ TOOL_MODULES = {
     "prometheus": REPO_ROOT / "connectors/prometheus/tools.py",
     "alertmanager": REPO_ROOT / "connectors/alertmanager/tools.py",
     "loki": REPO_ROOT / "connectors/loki/tools.py",
+    "gitlab": REPO_ROOT / "connectors/gitlab/tools.py",
 }
 
 
