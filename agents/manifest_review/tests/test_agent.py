@@ -614,3 +614,64 @@ async def test_a_file_that_will_not_parse_degrades_and_keeps_the_rest() -> None:
     assert any("livenessProbe" in f.title for f in outcome.findings), (
         "the readable file was still reviewed"
     )
+
+
+async def test_every_declared_adapter_reaches_the_connector(
+    monkeypatch: Any,
+) -> None:
+    """Through `attach` and the real adapters, with only the transport faked.
+
+    The `_Forge` tests above register handlers directly, which skips the
+    adapters entirely - so an adapter passing `pr=` where the connector expects
+    `pull_request=` would be invisible. The per-module coverage floor caught
+    that gap at 80%, which is what it is for.
+    """
+    import httpx
+
+    from agents._base.tool_binding import BoundTools
+    from agents.manifest_review.tools import IMPLEMENTATIONS, attach
+
+    seen: list[str] = []
+    real_client = httpx.AsyncClient
+
+    def _client(**kwargs: Any) -> Any:
+        def _answer(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(
+                200, json={"encoding": "base64", "content": "eA==", "base": {"sha": "s"}}
+            )
+
+        kwargs["transport"] = httpx.MockTransport(_answer)
+        return real_client(**kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _client)
+
+    tools = BoundTools(declared=frozenset(IMPLEMENTATIONS), max_calls=10)
+    attach(tools)
+
+    await tools.call("github.pull_request", repository="acme/checkout", pull_request=12)
+    await tools.call("github.diff", repository="acme/checkout", pull_request=12)
+    await tools.call("github.file_at", repository="acme/checkout", path="k8s/a.yaml", ref="sha1")
+
+    assert [url.split("acme/checkout")[1].split("?")[0] for url in seen] == [
+        "/pulls/12",
+        "/pulls/12/files",
+        "/contents/k8s/a.yaml",
+    ]
+    # The ref travels in the QUERY, so stripping it above left the one argument
+    # `file_at` cannot work without unasserted - a plant hardcoding ref="HEAD"
+    # passed until this line existed.
+    assert "ref=sha1" in seen[-1]
+
+
+def test_attach_binds_only_what_the_manifest_declared() -> None:
+    """A narrower toolset must not be widened by attaching. The manifest is the
+    allowlist and this can only fill it."""
+    from agents._base.tool_binding import BoundTools
+    from agents.manifest_review.tools import attach
+
+    narrow = BoundTools(declared=frozenset({"github.diff"}), max_calls=10)
+
+    attach(narrow)
+
+    assert narrow.declared == frozenset({"github.diff"})
