@@ -38,6 +38,7 @@ from uuid import UUID
 
 from core.cerberus.audit.log import AuditLog
 from core.cerberus.lease import LeaseBook
+from core.cerberus.redaction import REDEEMED
 from core.cerberus.store.envelope import open_sealed
 from core.cerberus.store.vault import CredentialNotFound, Vault
 from core.contracts.credentials import AuditEvent, Lease
@@ -113,6 +114,16 @@ def redeem(
         raise AssertionError("unreachable") from missing  # pragma: no cover
 
     plaintext = open_sealed(sealed, master=master)
+
+    # Registered the moment it exists, before anything can log it. This is the
+    # only place in the process where a credential is in the clear, so it is the
+    # only place the redactor can be told about one - see redaction.REDEEMED,
+    # which also records why reading it out of the vault is impossible by design.
+    #
+    # A short credential is refused there, and that refusal is not swallowed: a
+    # value too short to redact safely is a value that will appear in logs, and
+    # the caller has to know before it is used rather than after.
+    REDEEMED.register(plaintext)
 
     if audit is not None:
         # The event, the reference and the lease. Never the value - that is what

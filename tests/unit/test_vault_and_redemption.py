@@ -19,6 +19,7 @@ import pytest
 
 from core.cerberus.audit.log import AuditLog
 from core.cerberus.lease import LeaseBook
+from core.cerberus.redaction import REDEEMED, RedeemedSecrets, redact
 from core.cerberus.redemption import RedemptionRefused, redeem
 from core.cerberus.store.envelope import DecryptionFailed, open_sealed
 from core.cerberus.store.vault import CredentialNotFound, Vault
@@ -357,3 +358,100 @@ def test_the_vault_retains_no_plaintext_anywhere_in_its_state() -> None:
     assert SECRET not in state, "the vault kept the plaintext on the instance"
     assert "hunter2" not in state
     assert SECRET not in repr(vault)
+
+
+# --- a redeemed credential cannot reach a log ------------------------------------------
+
+
+def test_redeeming_registers_the_plaintext_for_redaction() -> None:
+    """The only moment a credential exists in the clear is redemption, so it is
+    the only moment the redactor can be told about one.
+
+    The Phase 3 TODO asked for the literals to be sourced from the Cerberus
+    store instead. That is impossible: the vault has no plaintext getter, and a
+    redactor that could read it would be a second producer of secrets - the
+    exact thing the boundary exists to prevent.
+    """
+    vault, book, _, ref = _stocked()
+    lease = _lease(book, ref)
+    REDEEMED.clear()
+
+    redeem(
+        lease,
+        vault=vault,
+        leases=book,
+        connector="postgres",
+        investigation_id=RUN,
+        master=MASTER,
+    )
+
+    assert SECRET in REDEEMED.known()
+    assert redact(f"connecting with {SECRET}") == "connecting with [REDACTED]"
+    REDEEMED.clear()
+
+
+def test_a_refused_redemption_registers_nothing() -> None:
+    """Nothing was produced, so there is nothing to hold. Registering on the
+    refusal path would accumulate secrets for credentials this process was
+    never allowed to open."""
+    vault, book, _, ref = _stocked()
+    lease = _lease(book, ref, connector="postgres")
+    REDEEMED.clear()
+
+    with pytest.raises(RedemptionRefused):
+        redeem(
+            lease,
+            vault=vault,
+            leases=book,
+            connector="kubernetes",
+            investigation_id=RUN,
+            master=MASTER,
+        )
+
+    assert len(REDEEMED) == 0
+
+
+def test_a_secret_too_short_to_redact_safely_is_refused_loudly() -> None:
+    """A one-character literal is a substring of everything. Registering it
+    would replace that character throughout every log line in the process - the
+    logs survive as unreadable and it reads as a formatter bug.
+
+    Refused rather than skipped: silently declining to protect a credential is
+    worse than not offering to, because the caller believes it is covered.
+    """
+    register = RedeemedSecrets()
+
+    with pytest.raises(ValueError, match="substring of"):
+        register.register("abc")
+
+    assert len(register) == 0
+
+
+def test_the_register_is_bounded() -> None:
+    """A rotated credential's previous value stays registered and nothing here
+    can know when the last holder is done with it."""
+    register = RedeemedSecrets()
+    for index in range(RedeemedSecrets.MAX_HELD):
+        register.register(f"secret-value-{index:04d}")
+
+    with pytest.raises(RuntimeError, match="redeeming without bound"):
+        register.register("one-too-many-secrets")
+
+
+def test_forgetting_says_whether_it_was_held() -> None:
+    register = RedeemedSecrets()
+    register.register(SECRET)
+
+    assert register.forget(SECRET) is True
+    assert register.forget(SECRET) is False
+
+
+def test_redaction_covers_redeemed_secrets_even_when_a_caller_supplies_its_own_list() -> None:
+    """That caller is a log handler, which is the one place it matters most. A
+    supplied list silently opting out of scrubbing what this process decrypted
+    is a hole opened by being helpful."""
+    REDEEMED.clear()
+    REDEEMED.register(SECRET)
+
+    assert redact(f"saw {SECRET}", secrets=["something-else-entirely"]) == "saw [REDACTED]"
+    REDEEMED.clear()
