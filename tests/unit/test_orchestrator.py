@@ -8,7 +8,7 @@ Phase: 2 - Orchestrator & Investigation Flow
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import Any
 from uuid import UUID, uuid4
@@ -23,7 +23,7 @@ from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.investigation import InvestigationState, Trigger, TriggerKind
 from core.contracts.plan import StepStatus
 from core.contracts.root_cause import RootCauseCategory
-from core.orchestrator import aggregator, dispatcher, planner
+from core.orchestrator import aggregator, classifier, dispatcher, planner
 from core.orchestrator.classifier import Classification, classify, scenario_of
 from core.orchestrator.router import get as orchestrator_get
 from core.orchestrator.router import investigate
@@ -49,6 +49,38 @@ def _a_question(question: str) -> Trigger:
         source="dashboard",
         title=question,
         payload={"question": question},
+    )
+
+
+def _a_pull_request(number: int = 12, repository: str = "acme/checkout") -> Trigger:
+    """What GitHub sends when somebody opens a pull request."""
+    return Trigger(
+        kind=TriggerKind.WEBHOOK,
+        received_at=datetime.now(UTC),
+        source="github",
+        title=f"pull request #{number}",
+        payload={
+            "action": "opened",
+            "pull_request": {"number": number},
+            "repository": {"full_name": repository},
+        },
+    )
+
+
+def _a_failed_run(
+    run_id: int = 99, conclusion: str = "failure", repository: str = "acme/checkout"
+) -> Trigger:
+    """What GitHub sends when a workflow run completes."""
+    return Trigger(
+        kind=TriggerKind.WEBHOOK,
+        received_at=datetime.now(UTC),
+        source="github",
+        title=f"workflow run {run_id}",
+        payload={
+            "action": "completed",
+            "workflow_run": {"id": run_id, "conclusion": conclusion},
+            "repository": {"full_name": repository},
+        },
     )
 
 
@@ -564,6 +596,8 @@ def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
     """
     adapters = {
         "argus": "agents.anomaly.tools",
+        "aegis": "agents.manifest_review.tools",
+        "hephaestus": "agents.ci_triage.tools",
         "lethe": "agents.log_clustering.tools",
         "hermes": "agents.nl_query.tools",
     }
@@ -602,6 +636,8 @@ def test_every_implemented_agent_is_reachable_by_some_trigger() -> None:
         _trigger(scenario="memory_leak"),
         _trigger(),
         _a_question("what is the error rate?"),
+        _a_pull_request(),
+        _a_failed_run(),
     ):
         reachable.update(classify(trigger).domains)
 
@@ -677,3 +713,131 @@ async def test_an_investigation_records_what_each_agent_consumed(registered: Any
     assert all(entry.token_ceiling > 0 for entry in investigation.accounting), (
         "an accounting entry with no ceiling cannot answer whether the spend was close"
     )
+
+
+# --- a webhook is about one thing, and that thing reaches the agent ---------------------
+
+
+def test_a_pull_request_is_reviewed_rather_than_investigated() -> None:
+    """Nothing has happened yet. There is no window to scan and no incident to
+    explain, so pointing Argus and Lethe at a pull request would have them
+    report on whatever the cluster was doing while somebody opened it."""
+    classification = classify(_a_pull_request())
+
+    assert classification.domains == ("manifest_review",)
+    assert classification.certain
+
+
+def test_a_failed_workflow_run_is_triaged() -> None:
+    """The failure is in the pipeline, not the cluster, and a metric scan over
+    the minutes around it reports the weather rather than the fault."""
+    classification = classify(_a_failed_run())
+
+    assert classification.domains == ("ci_triage",)
+
+
+def test_a_green_workflow_run_starts_no_investigation() -> None:
+    """GitHub sends `workflow_run` for every completion. Starting an
+    investigation for every green build is how a system teaches people to
+    ignore it."""
+    classification = classify(_a_failed_run(conclusion="success"))
+
+    assert classification.domains != ("ci_triage",)
+
+
+def test_a_cancelled_run_is_not_triaged_either() -> None:
+    """A cancelled run says somebody pushed again."""
+    assert classify(_a_failed_run(conclusion="cancelled")).domains != ("ci_triage",)
+
+
+def test_an_alert_carrying_a_field_called_pull_request_is_still_an_alert() -> None:
+    """The trigger KIND is checked as well as the payload - the same rule
+    `question_of` follows. Alertmanager annotations are operator-supplied text,
+    and a payload key alone would let one route to Aegis."""
+    hostile = Trigger(
+        kind=TriggerKind.ALERT,
+        received_at=datetime.now(UTC),
+        source="alertmanager",
+        title="CheckoutErrorRateHigh",
+        payload={
+            "pull_request": {"number": 1},
+            "repository": {"full_name": "acme/checkout"},
+            "labels": {"alertname": "CheckoutErrorRateHigh"},
+        },
+    )
+
+    assert classify(hostile).domains == classifier.ALERT_DOMAINS
+
+
+def test_a_webhook_with_no_repository_routes_nowhere_new() -> None:
+    """Every tool the change and CI agents call takes a repository, and one
+    guessed from a URL or a title would send a read at the wrong project -
+    which answers, plausibly, about something else."""
+    nameless = Trigger(
+        kind=TriggerKind.WEBHOOK,
+        received_at=datetime.now(UTC),
+        source="github",
+        title="pull request #12",
+        payload={"pull_request": {"number": 12}},
+    )
+
+    assert classify(nameless).domains != ("manifest_review",)
+
+
+def test_the_subject_of_an_alert_is_empty() -> None:
+    """Argus and Lethe take a window, and the window is on the context already.
+    Params invented for them would be params nothing reads."""
+    assert classifier.subject_of(_trigger(alertname="X")) == {}
+
+
+def test_the_subject_of_a_pull_request_is_what_aegis_needs() -> None:
+    """One reader of the payload, not two. A classifier that answered "yes, a
+    pull request" and left the extraction to a dispatcher would be two readers
+    of one payload, and the one that drifts is the one nobody tests."""
+    assert classifier.subject_of(_a_pull_request(number=7, repository="acme/api")) == {
+        "repository": "acme/api",
+        "pull_request": 7,
+    }
+
+
+def test_the_subject_of_a_failed_run_is_what_hephaestus_needs() -> None:
+    subject = classifier.subject_of(_a_failed_run(run_id=42))
+
+    assert subject["repository"] == "acme/checkout"
+    assert subject["run"] == 42
+
+
+@pytest.mark.asyncio
+async def test_the_subject_reaches_the_agent_as_params() -> None:
+    """The end of the chain. Without this the two agents are registered,
+    planned, dispatched - and degrade with "no run was named", which reads as a
+    broken agent rather than as a missing route."""
+    seen: dict[str, Any] = {}
+
+    class _Recorder(BaseAgent):
+        domain = "ci_triage"
+
+        async def investigate(self, ctx: AgentContext) -> list[Finding]:
+            seen.update(ctx.params)
+            return []
+
+    from core.orchestrator.dispatcher import register
+
+    register("hephaestus", _Recorder)
+    try:
+        trigger = _a_failed_run(run_id=77)
+        step = planner.build(classify(trigger))[0]
+        now = datetime.now(UTC)
+        await dispatcher.run_step(
+            step,
+            investigation_id=uuid4(),
+            trigger=trigger,
+            window_start=now - timedelta(minutes=10),
+            window_end=now,
+        )
+    finally:
+        from agents.ci_triage.agent import Hephaestus
+
+        register("hephaestus", Hephaestus)  # restore, or every later test sees the stub
+
+    assert seen == {"repository": "acme/checkout", "run": 77, "conclusion": "failure"}

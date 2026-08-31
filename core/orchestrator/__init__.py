@@ -29,25 +29,21 @@ def register_implemented() -> None:
     else has been imported, and the failure shows up at dispatch.
     """
     from agents.anomaly.agent import Argus
+    from agents.ci_triage.agent import Hephaestus
     from agents.log_clustering.agent import Lethe
+    from agents.manifest_review.agent import Aegis
     from agents.nl_query.agent import Hermes
 
     register("argus", Argus)
     register("lethe", Lethe)
     register("hermes", Hermes)
-
-    # Aegis and Hephaestus are implemented and NOT registered, deliberately.
-    #
-    # Both read their subject off `ctx.params` - a pull request, a CI run - and
-    # `dispatcher.py` populates none: it builds an AgentContext from a window
-    # and a trigger. Registering them would put two agents in a plan that
-    # degrade on every dispatch with "no run was named", which reads as a broken
-    # agent rather than as a missing route.
-    #
-    # `test_nothing_is_registered_that_the_planner_will_never_name` refused the
-    # registration when it was attempted, which is what that guard is for. The
-    # route - classifier, planner and params from the webhook payload - is the
-    # work that makes this line correct, and it is its own change.
+    # Reachable as of the webhook route: `classifier.subject_of` puts the pull
+    # request or the CI run on `ctx.params`, so these two are pointed at
+    # something rather than degrading with "no run was named". Registering them
+    # before that existed was refused by
+    # `test_nothing_is_registered_that_the_planner_will_never_name`.
+    register("aegis", Aegis)
+    register("hephaestus", Hephaestus)
 
 
 __all__ = [

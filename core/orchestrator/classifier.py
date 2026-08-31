@@ -17,6 +17,7 @@ Phase: 2 - Orchestrator & Investigation Flow
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from core.contracts.finding import Severity
 from core.contracts.investigation import Trigger, TriggerKind
@@ -48,6 +49,22 @@ ALERT_DOMAINS = ("anomaly", "log_clustering")
 #: report what moved; neither answers "what is the error rate right now", and
 #: pointing them at a question produces findings nobody asked for.
 QUESTION_DOMAINS = ("nl_query",)
+
+#: A proposed change is reviewed, not investigated. Nothing has happened yet -
+#: there is no window to scan and no incident to explain, so pointing Argus and
+#: Lethe at a pull request would have them report on whatever the cluster was
+#: doing while somebody opened it.
+CHANGE_DOMAINS = ("manifest_review",)
+
+#: A failed CI run is triaged. Same argument: the failure is in the pipeline,
+#: not in the cluster, and a metric scan over the minutes around it reports the
+#: weather rather than the fault.
+CI_DOMAINS = ("ci_triage",)
+
+#: Workflow-run conclusions worth triaging. A run that succeeded, was cancelled
+#: or was skipped is not a failure - and starting an investigation for every
+#: green build is how a system teaches people to ignore it.
+TRIAGEABLE = frozenset({"failure", "timed_out"})
 
 
 @dataclass(frozen=True)
@@ -85,6 +102,31 @@ def classify(trigger: Trigger) -> Classification:
             severity=severity,
             certain=True,
             reason="the trigger carries a question, which is answered rather than investigated",
+        )
+
+    change = pull_request_of(trigger)
+    if change is not None:
+        return Classification(
+            domains=CHANGE_DOMAINS,
+            severity=severity,
+            certain=True,
+            reason=(
+                f"the trigger carries pull request #{change['pull_request']} on "
+                f"{change['repository']}, which is reviewed rather than investigated - "
+                "nothing has happened yet, so there is no window to scan"
+            ),
+        )
+
+    run = failed_run_of(trigger)
+    if run is not None:
+        return Classification(
+            domains=CI_DOMAINS,
+            severity=severity,
+            certain=True,
+            reason=(
+                f"workflow run {run['run']} on {run['repository']} finished "
+                f"{run['conclusion']}; the failure is in the pipeline, not the cluster"
+            ),
         )
 
     scenario = labels.get("scenario")
@@ -126,6 +168,82 @@ def question_of(trigger: Trigger) -> str | None:
     value = trigger.payload.get("question")
     text = str(value).strip() if value else ""
     return text or None
+
+
+def pull_request_of(trigger: Trigger) -> dict[str, Any] | None:
+    """The pull request a webhook is about, when it is about one.
+
+    Read from the trigger KIND as well as the payload, the same rule
+    `question_of` follows. A payload key alone would make any alert carrying a
+    field called `pull_request` route to Aegis, and Alertmanager annotations are
+    operator-supplied text.
+
+    Returns the SUBJECT rather than a bool, because the agent needs
+    `repository` and `pull_request` and there is no second place that knows how
+    to find them. A classifier that answered "yes, a pull request" and left the
+    extraction to a dispatcher would be two readers of one payload, and the one
+    that drifts is the one nobody tests.
+    """
+    if trigger.kind is not TriggerKind.WEBHOOK:
+        return None
+
+    change = trigger.payload.get("pull_request")
+    repository = _repository_of(trigger)
+    if not isinstance(change, dict) or repository is None:
+        return None
+
+    number = change.get("number")
+    return {"repository": repository, "pull_request": number} if isinstance(number, int) else None
+
+
+def failed_run_of(trigger: Trigger) -> dict[str, Any] | None:
+    """The failed workflow run a webhook is about, when it is about one.
+
+    A run that succeeded returns `None`. GitHub sends `workflow_run` for every
+    completion, and starting an investigation for every green build is how a
+    system teaches people to ignore it.
+    """
+    if trigger.kind is not TriggerKind.WEBHOOK:
+        return None
+
+    run = trigger.payload.get("workflow_run")
+    repository = _repository_of(trigger)
+    if not isinstance(run, dict) or repository is None:
+        return None
+
+    conclusion = run.get("conclusion")
+    identifier = run.get("id")
+    if not isinstance(identifier, int) or conclusion not in TRIAGEABLE:
+        return None
+    return {"repository": repository, "run": identifier, "conclusion": conclusion}
+
+
+def subject_of(trigger: Trigger) -> dict[str, Any]:
+    """What this trigger is ABOUT, as parameters an agent can act on.
+
+    Empty for an alert: Argus and Lethe take a window, and the window is on the
+    context already. Populated for a change or a CI run, because Aegis and
+    Hephaestus are pointed at one thing and cannot find it from a time range.
+
+    `dispatcher.py` puts this on `ctx.params`. It lives here rather than there
+    because this module already reads the payload, and a second reader of the
+    same payload is one that can disagree with the first.
+    """
+    return pull_request_of(trigger) or failed_run_of(trigger) or {}
+
+
+def _repository_of(trigger: Trigger) -> str | None:
+    """`owner/repo`, from GitHub's `repository.full_name`.
+
+    Required rather than defaulted. Every tool the change and CI agents call
+    takes a repository, and one guessed from a URL or a title would send a read
+    at the wrong project - which answers, plausibly, about something else.
+    """
+    repository = trigger.payload.get("repository")
+    if not isinstance(repository, dict):
+        return None
+    full_name = repository.get("full_name")
+    return full_name if isinstance(full_name, str) and full_name else None
 
 
 def scenario_of(trigger: Trigger) -> str | None:

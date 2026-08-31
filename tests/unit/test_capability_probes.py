@@ -275,6 +275,8 @@ def test_every_capability_an_implemented_agent_requires_can_be_probed() -> None:
 
     agents = {
         "argus": "agents.anomaly.agent",
+        "aegis": "agents.manifest_review.agent",
+        "hephaestus": "agents.ci_triage.agent",
         "lethe": "agents.log_clustering.agent",
         "hermes": "agents.nl_query.agent",
     }

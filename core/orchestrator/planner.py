@@ -28,6 +28,8 @@ IMPLEMENTED: dict[str, str] = {
     "anomaly": "argus",
     "log_clustering": "lethe",
     "nl_query": "hermes",
+    "manifest_review": "aegis",
+    "ci_triage": "hephaestus",
 }
 
 
