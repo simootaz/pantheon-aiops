@@ -293,6 +293,11 @@ class GitHubSettings(BaseSettings):
     #: else without a release.
     api_url: HttpUrl = HttpUrl("https://api.github.com")
     token: SecretStr | None = None
+    #: The secret GitHub signs webhook bodies with. Empty disables verification,
+    #: which is fine locally and is not fine anywhere a real GitHub can reach -
+    #: an unverified webhook endpoint is a way for anyone to start an
+    #: investigation against any repository name they care to type.
+    webhook_secret: SecretStr | None = None
 
     @property
     def base(self) -> str:
@@ -344,7 +349,9 @@ class SimulatorSettings(BaseSettings):
 #: added in the same session that wrote the claim.
 OPTIONAL_IN_PRODUCTION: dict[str, str] = {
     "GITHUB_TOKEN": "only needed by the GitHub connector; a Prometheus-only "
-    "deployment must not be forced to invent one",
+    "deployment must not be forced to invent one. Note the webhook secret IS "
+    "required, the same split as GitLab: a token reaches OUT, a secret guards "
+    "something reaching in",
     "GITLAB_TOKEN": "same - the GitLab connector is optional. Note the webhook "
     "token IS required: that one guards an inbound endpoint",
     "LLM_API_KEY": "a local provider needs none. DelphiSettings already refuses "
@@ -361,6 +368,11 @@ REQUIRED_IN_PRODUCTION: tuple[tuple[str, str, str], ...] = (
     ("object_storage", "secret_key", "S3_SECRET_KEY"),
     ("cerberus", "master_key", "CERBERUS_MASTER_KEY"),
     ("gitlab", "webhook_token", "GITLAB_WEBHOOK_TOKEN"),
+    # The same argument, and it applies whether or not this deployment uses
+    # GitHub: the endpoint is mounted regardless, so an unset secret is an open
+    # door for anyone who finds the URL to start an investigation against any
+    # repository name they care to type.
+    ("github", "webhook_secret", "GITHUB_WEBHOOK_SECRET"),
     # Unset means no principal can authenticate, so every gated endpoint is a
     # 401 and the approvals queue is unanswerable. Refused here rather than
     # discovered when somebody tries to approve something at 03:00.

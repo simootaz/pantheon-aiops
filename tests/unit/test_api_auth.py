@@ -44,6 +44,7 @@ _PRODUCTION_SECRETS = (
     ("GITLAB_TOKEN", "x"),
     ("GITLAB_WEBHOOK_TOKEN", "x"),
     ("GITHUB_TOKEN", "x"),
+    ("GITHUB_WEBHOOK_SECRET", "x"),
     ("LLM_API_KEY", "x"),
 )
 
