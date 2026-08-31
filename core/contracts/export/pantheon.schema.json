@@ -508,8 +508,22 @@
     },
     "ActionReceipt": {
       "additionalProperties": false,
-      "description": "What happened when an Action ran. Written once, never amended.",
+      "description": "What happened when an Action ran, and what let it. Written once, never amended.\n\n`decided_by` is required and cannot be empty. A receipt said what happened\nand never why it was allowed to: for a refusal the rule lived in an\nexception message, and for a success it was nowhere at all. \"Why did this\nrun\" is the first question asked afterwards, and the record could not\nanswer it.\n\nRequired rather than defaulted, so a receipt that cannot say is\nunconstructible - a default would be filled in by the one call site that\nforgot, which is the site that most needed to say.",
       "properties": {
+        "approval_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The approval spent, when the rule required one. Null when it did not.",
+          "title": "Approval Id"
+        },
         "at": {
           "format": "date-time",
           "title": "At",
@@ -518,6 +532,12 @@
         "connector": {
           "description": "Which connector executed it.",
           "title": "Connector",
+          "type": "string"
+        },
+        "decided_by": {
+          "description": "The policy rule that produced the decision, whichever way it went.",
+          "minLength": 1,
+          "title": "Decided By",
           "type": "string"
         },
         "detail": {
@@ -547,7 +567,8 @@
       "required": [
         "at",
         "state",
-        "connector"
+        "connector",
+        "decided_by"
       ],
       "title": "ActionReceipt",
       "type": "object"

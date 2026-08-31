@@ -39,7 +39,16 @@ def _action(blast_radius: BlastRadius = BlastRadius.SINGLE_WORKLOAD) -> Action:
 
 
 def _receipt(state: ExecutionState, detail: str = "done") -> ActionReceipt:
-    return ActionReceipt(at=NOW, state=state, connector="alertmanager", detail=detail)
+    # `decided_by` is required and cannot be empty: a receipt that says what
+    # happened and not what let it cannot answer the first question asked
+    # afterwards. The executor sets it from the ruling that ran.
+    return ActionReceipt(
+        at=NOW,
+        state=state,
+        connector="alertmanager",
+        detail=detail,
+        decided_by="silence-in-staging",
+    )
 
 
 def _investigation() -> Investigation:

@@ -232,11 +232,19 @@ export type ProposedBy = string;
  * Why this Action was proposed, in terms of the Verdict.
  */
 export type Reason1 = string;
+/**
+ * The approval spent, when the rule required one. Null when it did not.
+ */
+export type ApprovalId = string | null;
 export type At = string;
 /**
  * Which connector executed it.
  */
 export type Connector = string;
+/**
+ * The policy rule that produced the decision, whichever way it went.
+ */
+export type DecidedBy = string;
 /**
  * Human-readable outcome. Never a credential.
  */
@@ -1030,11 +1038,23 @@ export interface Parameters {
   [k: string]: unknown;
 }
 /**
- * What happened when an Action ran. Written once, never amended.
+ * What happened when an Action ran, and what let it. Written once, never amended.
+ *
+ * `decided_by` is required and cannot be empty. A receipt said what happened
+ * and never why it was allowed to: for a refusal the rule lived in an
+ * exception message, and for a success it was nowhere at all. "Why did this
+ * run" is the first question asked afterwards, and the record could not
+ * answer it.
+ *
+ * Required rather than defaulted, so a receipt that cannot say is
+ * unconstructible - a default would be filled in by the one call site that
+ * forgot, which is the site that most needed to say.
  */
 export interface ActionReceipt {
+  approval_id?: ApprovalId;
   at: At;
   connector: Connector;
+  decided_by: DecidedBy;
   detail?: Detail;
   lease_id?: LeaseId;
   state: ExecutionState1;

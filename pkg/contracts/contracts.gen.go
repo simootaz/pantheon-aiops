@@ -7,6 +7,7 @@ import "errors"
 import "fmt"
 import "reflect"
 import "time"
+import "unicode/utf8"
 
 // A declared action on a component.
 //
@@ -535,13 +536,29 @@ type Action struct {
 // Operation arguments, e.g. {'replicas': 4}.
 type ActionParameters map[string]interface{}
 
-// What happened when an Action ran. Written once, never amended.
+// What happened when an Action ran, and what let it. Written once, never amended.
+//
+// `decided_by` is required and cannot be empty. A receipt said what happened
+// and never why it was allowed to: for a refusal the rule lived in an
+// exception message, and for a success it was nowhere at all. "Why did this
+// run" is the first question asked afterwards, and the record could not
+// answer it.
+//
+// Required rather than defaulted, so a receipt that cannot say is
+// unconstructible - a default would be filled in by the one call site that
+// forgot, which is the site that most needed to say.
 type ActionReceipt struct {
+	// The approval spent, when the rule required one. Null when it did not.
+	ApprovalId interface{} `json:"approval_id,omitempty,omitzero" yaml:"approval_id,omitempty" mapstructure:"approval_id,omitempty"`
+
 	// At corresponds to the JSON schema field "at".
 	At time.Time `json:"at" yaml:"at" mapstructure:"at"`
 
 	// Which connector executed it.
 	Connector string `json:"connector" yaml:"connector" mapstructure:"connector"`
+
+	// The policy rule that produced the decision, whichever way it went.
+	DecidedBy string `json:"decided_by" yaml:"decided_by" mapstructure:"decided_by"`
 
 	// Human-readable outcome. Never a credential.
 	Detail string `json:"detail,omitempty,omitzero" yaml:"detail,omitempty" mapstructure:"detail,omitempty"`
@@ -552,6 +569,8 @@ type ActionReceipt struct {
 	// State corresponds to the JSON schema field "state".
 	State ExecutionState `json:"state" yaml:"state" mapstructure:"state"`
 }
+
+type ActionReceiptApprovalId_0 *string
 
 type ActionReceiptLeaseId_0 *string
 
@@ -567,6 +586,9 @@ func (j *ActionReceipt) UnmarshalJSON(value []byte) error {
 	if _, ok := raw["connector"]; raw != nil && !ok {
 		return fmt.Errorf("field connector in ActionReceipt: required")
 	}
+	if _, ok := raw["decided_by"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_by in ActionReceipt: required")
+	}
 	if _, ok := raw["state"]; raw != nil && !ok {
 		return fmt.Errorf("field state in ActionReceipt: required")
 	}
@@ -574,6 +596,9 @@ func (j *ActionReceipt) UnmarshalJSON(value []byte) error {
 	var plain Plain
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
+	}
+	if utf8.RuneCountInString(string(plain.DecidedBy)) < 1 {
+		return fmt.Errorf("field %s length: must be >= %d", "decided_by", 1)
 	}
 	if v, ok := raw["detail"]; !ok || v == nil {
 		plain.Detail = ""
@@ -3704,45 +3729,16 @@ const StepStatusPending StepStatus = "pending"
 const StepStatusRunning StepStatus = "running"
 const StepStatusSkipped StepStatus = "skipped"
 
-var enumValues_StepStatus = []interface{}{
-	"pending",
-	"running",
-	"complete",
-	"degraded",
-	"skipped",
-}
+type AuditEntryCredentialRef_0 = CredentialRef
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *StepStatus) UnmarshalJSON(value []byte) error {
-	var v string
-	if err := json.Unmarshal(value, &v); err != nil {
-		return err
-	}
-	var ok bool
-	for _, expected := range enumValues_StepStatus {
-		if reflect.DeepEqual(v, expected) {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_StepStatus, v)
-	}
-	*j = StepStatus(v)
-	return nil
-}
+type A2UIComponentAction_0 = A2UIAction
 
-type Tier string
+type EvidenceSubject_0 = ResourceRef
 
-const TierBalanced Tier = "balanced"
-const TierCheap Tier = "cheap"
-const TierFrontier Tier = "frontier"
+type A2UIComponentArtifactRef_0 = ArtifactRef
 
-var enumValues_Tier = []interface{}{
-	"cheap",
-	"balanced",
-	"frontier",
-}
+// Verbatim, unparsed.
+type TriggerPayload map[string]interface{}
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *Tier) UnmarshalJSON(value []byte) error {
@@ -3764,6 +3760,83 @@ func (j *Tier) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type InvestigationVerdict_0 = Verdict
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *StepStatus) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_StepStatus {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_StepStatus, v)
+	}
+	*j = StepStatus(v)
+	return nil
+}
+
+var enumValues_Tier = []interface{}{
+	"cheap",
+	"balanced",
+	"frontier",
+}
+
+type Tier string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["decided_at"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_at in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["steps"]; raw != nil && !ok {
+		return fmt.Errorf("field steps in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
+	return nil
+}
+
+var enumValues_StepStatus = []interface{}{
+	"pending",
+	"running",
+	"complete",
+	"degraded",
+	"skipped",
+}
+
 // The inbound event that started everything.
 type Trigger struct {
 	// Kind corresponds to the JSON schema field "kind".
@@ -3782,13 +3855,76 @@ type Trigger struct {
 	Title string `json:"title,omitempty,omitzero" yaml:"title,omitempty" mapstructure:"title,omitempty"`
 }
 
-type TriggerKind string
+// The orchestrator's ranked conclusion for one Investigation.
+type Verdict struct {
+	// Confidence in the leading hypothesis.
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
 
-const TriggerKindAlert TriggerKind = "alert"
-const TriggerKindHumanQuestion TriggerKind = "human_question"
-const TriggerKindSchedule TriggerKind = "schedule"
-const TriggerKindSimulation TriggerKind = "simulation"
-const TriggerKindWebhook TriggerKind = "webhook"
+	// ContributingFindings corresponds to the JSON schema field
+	// "contributing_findings".
+	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
+
+	// DecidedAt corresponds to the JSON schema field "decided_at".
+	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Ranked most-likely first. Empty means no explanation was reached, which is a
+	// legitimate outcome and must not be dressed up as one.
+	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
+	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
+
+	// What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed
+	// without knowing which agents completed is a verdict that cannot tell 'nobody
+	// found anything' from 'nobody looked'.
+	Steps []PlanStep `json:"steps" yaml:"steps" mapstructure:"steps"`
+
+	// What happened, in one paragraph, for a human.
+	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trigger) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
+	}
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
+	}
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
+	}
+	type Plain Trigger
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["title"]; !ok || v == nil {
+		plain.Title = ""
+	}
+	*j = Trigger(plain)
+	return nil
+}
+
+const TierCheap Tier = "cheap"
+const TierBalanced Tier = "balanced"
+const TierFrontier Tier = "frontier"
+
+type FindingSubject_0 = ResourceRef
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
+
+type TriggerKind string
 
 var enumValues_TriggerKind = []interface{}{
 	"alert",
@@ -3818,8 +3954,11 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// Verbatim, unparsed.
-type TriggerPayload map[string]interface{}
+const TriggerKindAlert TriggerKind = "alert"
+const TriggerKindWebhook TriggerKind = "webhook"
+const TriggerKindSchedule TriggerKind = "schedule"
+const TriggerKindHumanQuestion TriggerKind = "human_question"
+const TriggerKindSimulation TriggerKind = "simulation"
 
 // An inbound trigger was accepted and an Investigation created for it.
 //
@@ -3863,120 +4002,6 @@ func (j *TriggerReceivedEvent) UnmarshalJSON(value []byte) error {
 	*j = TriggerReceivedEvent(plain)
 	return nil
 }
-
-type A2UIComponentAction_0 = A2UIAction
-
-// The orchestrator's ranked conclusion for one Investigation.
-type Verdict struct {
-	// Confidence in the leading hypothesis.
-	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
-
-	// ContributingFindings corresponds to the JSON schema field
-	// "contributing_findings".
-	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
-
-	// DecidedAt corresponds to the JSON schema field "decided_at".
-	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
-
-	// Ranked most-likely first. Empty means no explanation was reached, which is a
-	// legitimate outcome and must not be dressed up as one.
-	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
-
-	// Id corresponds to the JSON schema field "id".
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
-	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
-
-	// What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed
-	// without knowing which agents completed is a verdict that cannot tell 'nobody
-	// found anything' from 'nobody looked'.
-	Steps []PlanStep `json:"steps" yaml:"steps" mapstructure:"steps"`
-
-	// What happened, in one paragraph, for a human.
-	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
-}
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
-type InvestigationVerdict_0 = Verdict
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["decided_at"]; raw != nil && !ok {
-		return fmt.Errorf("field decided_at in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["steps"]; raw != nil && !ok {
-		return fmt.Errorf("field steps in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
-
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
-type EvidenceSubject_0 = ResourceRef
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
-	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
-	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
-	}
-	type Plain Trigger
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["title"]; !ok || v == nil {
-		plain.Title = ""
-	}
-	*j = Trigger(plain)
-	return nil
-}
-
-type FindingSubject_0 = ResourceRef
 
 type UIActionResponseContext map[string]interface{}
 

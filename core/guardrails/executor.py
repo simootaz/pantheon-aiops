@@ -42,7 +42,7 @@ from typing import Any
 from core.config import Environment
 from core.contracts.action import Action, ActionReceipt, ExecutionState
 from core.guardrails.approval_gate import ApprovalRequest, may_execute
-from core.guardrails.policy import Decision, evaluate
+from core.guardrails.policy import Decision, Ruling, evaluate
 
 #: What actually performs the operation. A callable rather than a connector
 #: object, so the executor depends on the shape of a call and not on which
@@ -63,8 +63,34 @@ class NotPermitted(RuntimeError):
         self.receipt = receipt
 
 
-def _receipt(state: ExecutionState, detail: str, connector: str) -> ActionReceipt:
-    return ActionReceipt(at=datetime.now(tz=UTC), state=state, connector=connector, detail=detail)
+def _receipt(
+    state: ExecutionState,
+    detail: str,
+    connector: str,
+    ruling: Ruling,
+    approval: ApprovalRequest | None = None,
+) -> ActionReceipt:
+    """Every receipt names the rule that decided it.
+
+    The ruling is a parameter rather than re-evaluated here. Evaluating twice
+    could produce two different answers - `evaluate` reads the clock and the
+    environment - and the receipt would then record a rule that did not run.
+    """
+    return ActionReceipt(
+        at=datetime.now(tz=UTC),
+        state=state,
+        connector=connector,
+        detail=detail,
+        decided_by=ruling.rule,
+        # Only when the rule actually required one. Recording an approval id on
+        # a receipt for a rule that asked for no approval would make the trail
+        # say a person signed off on something nobody was asked about.
+        approval_id=(
+            approval.id
+            if approval is not None and ruling.decision is Decision.REQUIRE_APPROVAL
+            else None
+        ),
+    )
 
 
 async def execute(
@@ -88,6 +114,7 @@ async def execute(
             ExecutionState.SKIPPED,
             f"denied by policy ({ruling.rule}): {ruling.because}",
             connector,
+            ruling,
         )
         raise NotPermitted(f"policy denied {action.id}: {ruling.rule}", receipt)
 
@@ -97,6 +124,7 @@ async def execute(
                 ExecutionState.SKIPPED,
                 f"needs approval ({ruling.rule}) and none was supplied",
                 connector,
+                ruling,
             )
             raise NotPermitted(f"{action.id} needs an approval and none was given", receipt)
 
@@ -110,6 +138,7 @@ async def execute(
                 "the approval does not cover this action as it stands: it has "
                 "expired, was rejected, or the action changed since it was read",
                 connector,
+                ruling,
             )
             raise NotPermitted(f"{action.id} has no live approval", receipt)
 
@@ -118,7 +147,13 @@ async def execute(
     except Exception as failure:
         # A receipt for the failure too. "It ran and broke" and "it never ran"
         # are different facts and both need to survive.
-        receipt = _receipt(ExecutionState.FAILED, f"{type(failure).__name__}: {failure}", connector)
+        receipt = _receipt(
+            ExecutionState.FAILED,
+            f"{type(failure).__name__}: {failure}",
+            connector,
+            ruling,
+            approval,
+        )
         raise NotPermitted(f"{action.id} failed: {failure}", receipt) from failure
 
     return _receipt(
@@ -128,4 +163,6 @@ async def execute(
         ExecutionState.DRY_RUN if action.dry_run else ExecutionState.SUCCEEDED,
         str(detail)[:500],
         connector,
+        ruling,
+        approval,
     )

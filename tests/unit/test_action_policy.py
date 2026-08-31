@@ -18,8 +18,10 @@ import pytest
 from pydantic import ValidationError
 
 from core.config import Environment
-from core.contracts.action import Action, BlastRadius, ExecutionState
+from core.contracts.action import Action, ActionReceipt, BlastRadius, ExecutionState
 from core.contracts.evidence import ResourceRef
+from core.guardrails.approval_gate import ApprovalGate
+from core.guardrails.executor import NotPermitted, execute
 from core.guardrails.policy import (
     HARMLESS,
     IRREVERSIBLE_IN_PRODUCTION,
@@ -30,6 +32,12 @@ from core.guardrails.policy import (
 
 #: Radii a rollback is mandatory for - the contract refuses to build one without.
 NEEDS_ROLLBACK = {BlastRadius.NAMESPACE, BlastRadius.CLUSTER, BlastRadius.MULTI_CLUSTER}
+
+NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
+
+
+async def _ok(operation: str, parameters: dict[str, object]) -> str:
+    return f"{operation} accepted"
 
 
 def an_action(
@@ -233,4 +241,81 @@ def test_the_allowed_set_is_small_and_stays_small() -> None:
     assert len(HARMLESS) <= 2, (
         f"{len(HARMLESS)} blast radii are allowed without an approver: "
         f"{sorted(r.value for r in HARMLESS)}"
+    )
+
+
+# --- a receipt names the rule that decided it ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_receipt_names_the_rule_that_permitted_it() -> None:
+    """A receipt said what happened and never why it was allowed to.
+
+    For a refusal the rule lived in an exception message; for a success it was
+    nowhere at all. "Why did this run" is the first question asked afterwards,
+    and the record could not answer it.
+    """
+    action = an_action(blast_radius=BlastRadius.SINGLE_WORKLOAD, dry_run=True)
+
+    receipt = await execute(action, perform=_ok, connector="alertmanager")
+
+    assert receipt.decided_by, "the receipt cannot say what let this run"
+    assert receipt.decided_by == evaluate(action, environment=Environment.STAGING).rule
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_carries_the_rule_too() -> None:
+    """The refusal path is where it mattered least and was already worst: the
+    rule existed only in a string nobody stores."""
+    action = an_action(blast_radius=BlastRadius.CLUSTER, dry_run=False)
+
+    with pytest.raises(NotPermitted) as refused:
+        await execute(
+            action, perform=_ok, connector="alertmanager", environment=Environment.PRODUCTION
+        )
+
+    assert refused.value.receipt.decided_by
+    assert refused.value.receipt.state is ExecutionState.SKIPPED
+
+
+def test_a_receipt_cannot_be_constructed_without_a_rule() -> None:
+    """Required rather than defaulted. A default would be filled in by the one
+    call site that forgot, which is the site that most needed to say."""
+    # The ignore is the second half of the guard: mypy refuses the omission at
+    # the type level and pydantic refuses it at runtime, and only the second is
+    # reachable from code that was never type-checked - a JSON body, a
+    # deserialised record, a Go or TypeScript caller of the generated contract.
+    with pytest.raises(ValidationError):
+        ActionReceipt(at=NOW, state=ExecutionState.SUCCEEDED, connector="alertmanager")  # type: ignore[call-arg]
+
+    with pytest.raises(ValidationError):
+        ActionReceipt(
+            at=NOW,
+            state=ExecutionState.SUCCEEDED,
+            connector="alertmanager",
+            decided_by="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_approval_id_is_recorded_only_when_a_rule_asked_for_one() -> None:
+    """Recording one on a receipt for a rule that required no approval would
+    make the trail say a person signed off on something nobody was asked
+    about.
+
+    An approval IS supplied here, for a different Action that genuinely needed
+    one. Passing `None` could not express the claim - the plant that dropped
+    the decision check passed it, because there was no approval to record
+    either way.
+    """
+    needs_one = an_action(blast_radius=BlastRadius.NAMESPACE, dry_run=False)
+    gate = ApprovalGate()
+    elsewhere = gate.open_request(needs_one, evaluate(needs_one, environment=Environment.STAGING))
+
+    allowed = an_action(blast_radius=BlastRadius.SINGLE_WORKLOAD, dry_run=True)
+    receipt = await execute(allowed, perform=_ok, connector="alertmanager", approval=elsewhere)
+
+    assert receipt.decided_by == "dry-run"
+    assert receipt.approval_id is None, (
+        "an approval for another Action was recorded against one nobody was asked about"
     )
