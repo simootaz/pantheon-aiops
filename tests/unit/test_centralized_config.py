@@ -18,7 +18,7 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pytest
 from pydantic import SecretStr
@@ -193,9 +193,40 @@ def test_every_template_entry_maps_to_a_setting() -> None:
 # --- secrets fail closed -----------------------------------------------------
 
 
+@pytest.fixture
+def without_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings built from the environment alone, ignoring any local `.env`.
+
+    These two tests assert what happens when a secret is ABSENT, and they used
+    to read whatever `.env` the developer had. Creating the repository-root
+    `.env` that `core/config.py` is built to read - the ordinary act of
+    configuring the project - turned both red.
+
+    A test that fails because someone configured their machine correctly is a
+    test that gets disabled, so the file is taken out of scope rather than the
+    assertion being softened. What is under test is the fail-closed rule, not
+    which file happens to exist.
+    """
+    for group in _settings_groups():
+        monkeypatch.setitem(group.model_config, "env_file", None)
+
+
+def _settings_groups() -> list[Any]:
+    """Every nested settings model, so each one's `env_file` can be silenced."""
+    return [
+        annotation
+        for annotation in (field.annotation for field in Settings.model_fields.values())
+        if isinstance(annotation, type) and issubclass(annotation, BaseSettings)
+    ]
+
+
 @pytest.mark.parametrize(("group", "field", "variable"), REQUIRED_IN_PRODUCTION)
 def test_a_missing_secret_fails_at_startup_in_production(
-    group: str, field: str, variable: str, monkeypatch: pytest.MonkeyPatch
+    group: str,
+    field: str,
+    variable: str,
+    monkeypatch: pytest.MonkeyPatch,
+    without_env_file: None,
 ) -> None:
     """Absent means refuse to start, not fall back to a development value."""
     for _group, _field, other in REQUIRED_IN_PRODUCTION:
@@ -207,8 +238,13 @@ def test_a_missing_secret_fails_at_startup_in_production(
         Settings()
 
 
-def test_the_same_secrets_are_optional_outside_production() -> None:
+def test_the_same_secrets_are_optional_outside_production(
+    monkeypatch: pytest.MonkeyPatch, without_env_file: None
+) -> None:
     """`make up` has to work with no .env at all, or nobody will run it."""
+    for _group, _field, variable in REQUIRED_IN_PRODUCTION:
+        monkeypatch.delenv(variable, raising=False)
+
     settings = Settings()
     assert settings.postgres.password is None
     assert settings.object_storage.secret_key is None

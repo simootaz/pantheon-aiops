@@ -16,7 +16,7 @@ SHELL := /usr/bin/env bash
 # a module to go.work is enough - nothing here needs updating.
 GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
-.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-go test-ts lint lint-go lint-ts \
+.PHONY: help install dev sim test test-sim test-connectors test-alerts test-argus test-flow-one test-providers test-loki test-delphi test-go test-ts lint lint-go lint-ts \
         typecheck codegen codegen-verify up down clean
 
 ## help: list every target
@@ -74,6 +74,21 @@ test-sim:
 test-connectors:
 	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
 
+## test-loki: prove the Loki connector against a real Loki, both directions
+# The negative direction is the reason it exists. Loki omits `data` entirely on an
+# empty result, which crashed the connector with a KeyError that read like a broken
+# adapter - a unit test with a hand-written body would have asserted the shape
+# someone expected rather than the shape Loki sends.
+test-loki:
+	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_loki_connector.py -m integration --no-cov -v
+
+## test-delphi: prove the gateway reaches a real model, whichever one is configured
+# Skips rather than fails when no API key is set: a developer who has not signed
+# up for a third-party service has not broken anything, and a red gate that means
+# "you did not sign up" trains people to ignore red gates.
+test-delphi:
+	@uv run pytest tests/integration/test_delphi_live.py -m integration --no-cov -v
+
 ## test-flow-one: prove flow 1 end to end - alert, plan, dispatch, detect, verdict
 # The negative half is the point: a clean baseline must open NO investigation,
 # and the positive half reads the result back on a second connection, because a
@@ -83,6 +98,14 @@ test-connectors:
 # copy is a second thing to keep in step.
 test-flow-one:
 	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_flow_one.py 	   -m integration --no-cov -v
+
+## test-providers: prove the Postgres provider store seals keys before they reach a column
+# This is the gate that earns core/store/postgres_providers.py its coverage-floor
+# exemption. It reads the sealed_key column on a SECOND connection and asserts the
+# plaintext is not in it - which is the one claim a unit test cannot make, because a
+# unit test reads the value back through the object that sealed it.
+test-providers:
+	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_provider_store.py 	   -m integration --no-cov -v
 
 ## test-argus: prove Argus detects each scenario and stays silent on a clean baseline
 # The negative case runs three times. A detector that fires on everything passes

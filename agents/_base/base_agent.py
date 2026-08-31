@@ -80,6 +80,7 @@ from core.bus import EventBus
 from core.contracts.events import FindingProducedEvent
 from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.investigation import Trigger
+from core.contracts.llm import ResolutionRecord
 from core.contracts.manifest import AgentManifest
 from core.registry.loader import for_domain
 
@@ -135,6 +136,14 @@ class AgentContext:
     #: Set by BaseAgent before `investigate` is called.
     tools: Any = None
     params: dict[str, Any] = field(default_factory=dict)
+    #: Every model consultation this run made, appended by the agent as it goes.
+    #:
+    #: Collected here rather than returned from `investigate`, because an agent
+    #: that degraded halfway through still consulted a model and still spent the
+    #: money - and a record that only survives a successful run cannot answer
+    #: "what did this investigation cost" for the runs that went wrong, which
+    #: are the ones anybody asks about.
+    resolutions: list[ResolutionRecord] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -155,6 +164,8 @@ class AgentOutcome:
     tool_calls: int
     degraded_reason: str | None = None
     retryable: bool = True
+    #: Which model answered, and why, for every consultation this run made.
+    resolutions: list[ResolutionRecord] = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
@@ -262,6 +273,10 @@ class BaseAgent(ABC):
             tool_calls=tools.calls_made,
             degraded_reason=reason,
             retryable=retryable,
+            # Read off the context on every exit path, degraded included. An
+            # agent that failed halfway still consulted a model and still spent
+            # the money.
+            resolutions=list(ctx.resolutions),
         )
 
     def bind_tools(self, tools: Any) -> None:  # noqa: B027 - optional by design

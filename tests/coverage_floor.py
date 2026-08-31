@@ -73,6 +73,19 @@ EXEMPT: dict[str, Exemption] = {
             "of it is covered there."
         ),
     ),
+    "core/store/postgres_providers.py": Exemption(
+        gate="test-providers",
+        reason=(
+            "every path needs a live Postgres and every path is executed by the "
+            "provider gate: schema creation, create, get, list, update, delete "
+            "and reveal_key. That gate also reads the sealed_key column on a "
+            "second connection and asserts the plaintext is absent, which is the "
+            "one claim no unit test can make. The store was split for this: the "
+            "Protocol, the sealing in-memory implementation, row_to_stored and "
+            "config_from_input stayed in core/store/providers.py and remain "
+            "under the floor, because that is where a mistake leaks a key."
+        ),
+    ),
 }
 
 

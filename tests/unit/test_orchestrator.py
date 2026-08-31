@@ -52,6 +52,24 @@ def _finding(agent: str = "argus", kind: FindingKind = FindingKind.ANOMALY) -> F
     )
 
 
+def _resolution_record() -> Any:
+    from core.contracts.llm import (
+        ModelDescriptor,
+        ModelRequirements,
+        ResolutionRecord,
+        ResolutionStep,
+    )
+
+    return ResolutionRecord(
+        id=uuid4(),
+        requested_by="argus",
+        requirements=ModelRequirements(),
+        matched_step=ResolutionStep.TIER_DEFAULT,
+        chosen=ModelDescriptor(provider_id="p", model_id="balanced"),
+        resolved_at=datetime.now(UTC),
+    )
+
+
 def _evidence() -> Any:
     from core.contracts.evidence import Evidence, EvidenceSource, MetricWindowPayload
 
@@ -338,3 +356,59 @@ async def test_reading_one_back_returns_it_or_none(registered: Any) -> None:
 
     assert (await orchestrator_get(investigation.id, store=store)) is not None
     assert (await orchestrator_get(uuid4(), store=store)) is None
+
+
+@pytest.mark.asyncio
+async def test_a_model_consultation_persists_on_the_investigation(registered: Any) -> None:
+    """`Investigation.resolutions` is what answers "which model answered, and why".
+
+    Zeus collects them from the outcome rather than the agent writing them
+    anywhere, so an agent cannot forget - and the store persists the whole
+    Investigation, so they travel with it without a second write path.
+    """
+
+    class _Consulting(BaseAgent):
+        domain = "anomaly"
+
+        async def investigate(self, ctx: AgentContext) -> list[Finding]:
+            ctx.resolutions.append(_resolution_record())
+            return [_finding()]
+
+    dispatcher.register("argus", _Consulting)
+    store = InMemoryInvestigationStore()
+
+    investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
+
+    assert len(investigation.resolutions) == 1
+    assert investigation.resolutions[0].requested_by == "argus"
+    stored = await store.get(investigation.id)
+    assert stored is not None and len(stored.resolutions) == 1, (
+        "the resolution did not survive being stored"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_degraded_run_still_records_what_it_spent(registered: Any) -> None:
+    """The runs anybody asks about are the ones that went wrong.
+
+    A record that only survives a successful run cannot answer "what did this
+    cost" for the failures - and an agent that degraded halfway still consulted
+    a model and still spent the money.
+    """
+
+    class _ConsultsThenFails(BaseAgent):
+        domain = "anomaly"
+
+        async def investigate(self, ctx: AgentContext) -> list[Finding]:
+            ctx.resolutions.append(_resolution_record())
+            raise AgentDegraded("prometheus went away after the model answered")
+
+    dispatcher.register("argus", _ConsultsThenFails)
+    investigation = await investigate(
+        _trigger(), store=InMemoryInvestigationStore(), bus=InMemoryEventBus()
+    )
+
+    assert investigation.plan[0].status is StepStatus.DEGRADED
+    assert len(investigation.resolutions) == 1, (
+        "a degraded run lost the record of the model it had already paid for"
+    )

@@ -40,6 +40,15 @@ lets connectors be written in whichever language fits the client library best.
 | Codename | Folder | Role | Phase |
 |---|---|---|---|
 | **Zeus** | [core/orchestrator/](../core/orchestrator/) | Orchestrator — routes, classifies, plans, dispatches, aggregates | 2 |
+| `core/llm/provider.py` | The adapter Protocol every dialect implements, plus `Completion` and a recording fake. `stream` and `probe` are deliberately absent until something calls them. | 2 |
+| `core/llm/catalog.py` | Configured providers and models. A configured model is described as **unprobed** - zero context, baseline capabilities - because configured is not observed. | 2 |
+| `core/llm/resolver.py` | The four-step cascade. A binding that cannot satisfy the requirements is skipped; an explicit override that cannot is an **error**, never a downgrade. | 2 |
+| `core/llm/providers/chat_completions.py` | The reference dialect adapter. Refuses to guess: no `choices` raises rather than returning `""`, because an empty completion and a model that said nothing are different facts. | 2 |
+| `core/llm/gateway.py` | `consult()`. The fallback chain never widens the search - relaxing a declared capability under load produces the worst output exactly when the system is struggling. | 2 |
+| `core/llm/tracing.py` | A span per call carrying a prompt **digest**, not the text: redaction removes the secrets Cerberus knows about and cannot remove the ones nobody registered. | 2 |
+| `tests/integration/test_delphi_live.py` | Delphi against whatever provider is configured. **Skips** without a key rather than failing - a red gate meaning "you did not sign up for a service" trains people to ignore red gates. | 2 |
+| `tests/unit/test_llm_gateway.py` | The adapter, the chain, the cost stop and the span - all offline behind an injected transport. | 2 |
+| `tests/unit/test_llm_resolution.py` | The cascade rung by rung, both refusals, and the rejection record that explains why. | 2 |
 | **Argus** | [agents/anomaly/](../agents/anomaly/) | Detects metric anomalies and correlates them into findings | 1 |
 | **Lethe** | [agents/log_clustering/](../agents/log_clustering/) | Clusters high-volume logs into signatures, surfaces novelty | 2 |
 | **Hermes** | [agents/nl_query/](../agents/nl_query/) | Translates natural language into connector queries and back | 2 |
@@ -190,7 +199,7 @@ pantheon-aiops/
 | `core/registry/` | Agent manifest discovery and capability matching. | 1 |
 | `core/guardrails/` | `policy`, `approval_gate`, `budget` — every write action passes here. Cerberus reuses this Approval Gate; there is no second inbox. | 3 |
 | **core/cerberus/** | **Cerberus** — the credential broker. Three heads: `store/` (custody), `policy/` (decisions), `audit/` (memory), plus `broker`, `lease`, `redemption`, `redaction`. Not an agent. | 3 |
-| `core/cerberus/store/` | ⛔ **Plaintext.** Agents must not import anything here. | 3 |
+| `core/cerberus/store/` | ⛔ **Plaintext.** Agents must not import anything here. `master_key` and `envelope` are live; `vault`, `kinds` and `rotation` are Phase 3. | 3 |
 | `core/cerberus/redemption.py` | ⛔ **The only producer of plaintext.** Connector-side only. | 3 |
 | `core/workflows/` | Temporal `workflow`, `activities`, `worker` for long-running investigations. | 5 |
 | `core/memory/` | `vector_store`, `repository`, `cache`. | 2 |
@@ -281,6 +290,14 @@ pantheon-aiops/
 | `core/orchestrator/` | Zeus: classify, plan, dispatch, aggregate. One step, because one agent is implemented; the verdict proposes no hypotheses, because nothing ranks candidate causes. | 2 |
 | `core/store/investigations.py` | Where an Investigation lives between the run that made it and the read that wants it. Postgres, one JSONB document, table created on first use. | 2 |
 | `core/store/postgres.py` | The driver half, split off because it is **exempt from the coverage floor** - every line needs a live database and every line runs under `make test-flow-one`. | 2 |
+| `connectors/loki/` | Read-only MCP server: `loki.query_range`, `loki.labels` - exactly the two Lethe declares, asserted in both directions. HTTP paths are an allowlist, so Loki's delete API (which removes log lines permanently) cannot become reachable by accident. | 2 |
+| `tests/integration/test_loki_connector.py` | The live gate. Loki answers an empty result **differently per endpoint** - the label endpoints omit `data` entirely, `query_range` sends it with an empty `result` - and this is what measures which, so the offline tests encode Loki's behaviour rather than someone's memory of it. | 2 |
+| `core/cerberus/store/master_key.py` | Resolves `CERBERUS_MASTER_KEY`, or **refuses**. No generated fallback: a key invented at startup makes every stored credential unreadable after the next restart, and the failure reads as corruption rather than as missing configuration. | 3 |
+| `core/cerberus/store/envelope.py` | Envelope encryption. A fresh AES-256-GCM data key per credential, wrapped by the master key. Per-credential keys because a shared key means a shared nonce space, and GCM leaks its authentication key on nonce reuse - and because rotation then rewraps metadata instead of re-encrypting every secret. | 3 |
+| `core/store/providers.py` | Configured LLM providers. `StoredProvider.has_key` is a **boolean**; `reveal_key` is the single, greppable door to a plaintext key. The in-memory store seals exactly as Postgres does, so a test cannot pass there and fail here. | 3 |
+| `core/store/postgres_providers.py` | The driver half, **exempt from the coverage floor** - every line needs a live database and every line runs under `make test-providers`. `row_to_stored` stayed behind: it takes a mapping and opens no connection. | 3 |
+| `api/routers/providers.py` | Provider CRUD, plus `GET /providers/{id}/models` and `PUT /providers/{id}/tiers`. The key **never comes back**, not even masked. Model lists are asked of the provider rather than read from config, and a tier bound to a model the provider no longer serves is reported here - at settings time, where it costs nothing, rather than mid-investigation. | 3 |
+| `tests/integration/test_provider_store.py` | The gate that earns the exemption above. Reads the `sealed_key` column on a **second connection** and asserts the plaintext is not in it - the one claim a unit test cannot make, since it reads back through the object that sealed it. | 3 |
 | `tests/unit/test_coverage_exemptions.py` | An exemption must name a gate the Makefile defines, say what that gate covers, and point at a module that exists. | 2 |
 | `tests/unit/test_orchestrator.py` | What Zeus plans, what it refuses to plan, and what its Verdict will not claim. | 2 |
 | `tests/integration/test_flow_one.py` | The live gate for flow 1, both directions, reading the result back on a second connection. | 2 |

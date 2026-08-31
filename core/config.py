@@ -51,6 +51,8 @@ from pathlib import Path
 from pydantic import Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.contracts.llm import AuthMode, Dialect, Tier
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = REPO_ROOT / ".env"
 
@@ -64,30 +66,19 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
-class Dialect(StrEnum):
-    """The wire format a provider speaks. See ADR 0004."""
-
-    CHAT_COMPLETIONS = "chat_completions"
-    MESSAGES = "messages"
-    GENERATE_CONTENT = "generate_content"
-    RAW = "raw"
-
-
-class AuthMode(StrEnum):
-    """How a provider expects its credential presented."""
-
-    NONE = "none"
-    BEARER = "bearer"
-    HEADER_KEY = "header_key"
-    QUERY_PARAM = "query_param"
-
-
-class Tier(StrEnum):
-    """Agents ask for a tier; Delphi resolves it to a model."""
-
-    CHEAP = "cheap"
-    BALANCED = "balanced"
-    FRONTIER = "frontier"
+#: `Dialect`, `AuthMode` and `Tier` come from `core/contracts/llm.py`, not from
+#: here.
+#:
+#: They were defined in both, with identical members. Nothing had gone wrong yet,
+#: which is the only reason it survived: two definitions of one closed vocabulary
+#: agree until someone adds a member to one of them, and then a setting parses
+#: into an enum the contract cannot represent. mypy caught it the first time a
+#: module used both - `core.config.Dialect` is not `core.contracts.llm.Dialect`,
+#: however identical they look.
+#:
+#: The contract is the source, because it is the one that reaches Go and
+#: TypeScript through codegen. A settings module that redefined it would be
+#: publishing a second vocabulary no generator sees.
 
 
 def _group(prefix: str) -> SettingsConfigDict:

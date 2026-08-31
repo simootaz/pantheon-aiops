@@ -106,6 +106,7 @@ async def investigate(
 
     completed_steps = []
     findings = []
+    resolutions = []
     for step in plan:
         await bus.publish(
             StepStartedEvent(investigation_id=investigation.id, agent=step.agent),
@@ -120,6 +121,10 @@ async def investigate(
         )
         completed_steps.append(finished)
         findings.extend(outcome.findings)
+        # Every model consultation the step made, whether or not it completed.
+        # `Investigation.resolutions` is what answers "what did this run cost",
+        # and the runs anybody asks that about are the ones that went wrong.
+        resolutions.extend(outcome.resolutions)
         await bus.publish(
             StepFinishedEvent(
                 investigation_id=investigation.id,
@@ -138,6 +143,7 @@ async def investigate(
             "completed_at": datetime.now(UTC),
             "plan": completed_steps,
             "findings": findings,
+            "resolutions": resolutions,
             "verdict": verdict,
         }
     )

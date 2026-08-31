@@ -1659,6 +1659,76 @@ violations - a gate nobody wrote, a reason that describes the module rather than
 its coverage ("needs a database"), and an entry whose module had been renamed -
 each confirmed to have actually applied before the exit code was read.
 
+## The guard checked the label, not the thing the label refers to, 2026-08-27
+
+The previous entry ends by describing `tests/unit/test_coverage_exemptions.py`
+as enforcing the shape of an exemption: a gate the Makefile defines, a reason
+long enough to say what that gate executes, a module that still exists. Three
+checks, each planted, each confirmed red.
+
+All three could pass over an exemption that was false.
+
+The second exempt module landed today - `core/store/postgres_providers.py`,
+whose every line needs a live database. Writing its entry meant choosing a gate
+name, and the choice made the hole visible: nothing stopped it saying
+`gate="test-flow-one"`. That target exists. It is green on every run. It does
+not import the provider store and never executes a line of it.
+
+Planted exactly that, and watched the file report it:
+
+```
+test_every_exemption_names_a_gate_that_exists              PASSED
+test_every_exemption_states_what_its_gate_covers           PASSED
+test_every_exempt_module_exists                            PASSED
+test_the_exemption_list_is_small_and_deliberate            PASSED
+```
+
+Four green checks over a module that was unprotected in **both directions at
+once** - below the floor by exemption, and outside the gate by fact. The
+coverage report would have shown it exempt. The gate would have shown it passing.
+Neither would have been lying, and the module would have had no coverage at all.
+
+The file's own docstring named the failure mode and then did not check it: *"the
+reader sees a target name and stops asking whether it runs the module."* It was
+written about a human reader. It described the guard.
+
+### What separates this from a gate that does not exist
+
+The earlier variants in this catalogue are about a check whose subject is
+missing or whose status is misread. This one has a real subject, a real status,
+and a real green run. What is wrong is the **join**: the exemption points at the
+gate by name, and nothing verified that the name resolves to something that
+touches the module. A string matched a string.
+
+That join is where this family lives generally - a manifest naming a handler, an
+alert rule naming a receiver, a suppression naming a finding, a test id in a
+coverage config. Every one of them is a label checked for existence when the
+claim is about reference.
+
+### The fix
+
+Not a longer reason field - that is the same mistake one level up, since prose
+about coverage is not coverage. The gate's **recipe** is now read out of the
+Makefile, the test files it runs are extracted from it, and the exempt module
+must be imported by name in one of them. A direct import rather than a
+transitive walk, deliberately: the gate that claims to cover a module should say
+so in its own text.
+
+```
+core/store/postgres_providers.py is exempt on the strength of `make test-flow-one`,
+and none of ['test_flow_one.py'] imports core.store.postgres_providers.
+The gate exists, is green, and does not run the module.
+```
+
+Both exempt entries satisfy it today, and both gates were then run and planted
+in turn. `make test-providers` went red on a store that wrote the plaintext key
+into the column, and red again on an edit that dropped a stored key instead of
+keeping it - the two halves of the omit-versus-clear distinction, which need
+separate plants because a single rule satisfying one silently breaks the other.
+
+> A guard that checks a name exists has verified spelling. Ask what the name
+> points at, and whether the thing it points at does what the claim says.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
