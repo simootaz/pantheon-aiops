@@ -69,6 +69,7 @@ READ_PATHS = (
     "/repos/<owner>/<repo>/actions/runs/<run>/jobs",
     "/repos/<owner>/<repo>/pulls",
     "/repos/<owner>/<repo>/pulls/<number>/files",
+    "/repos/<owner>/<repo>/contents/<path>",
 )
 
 #: What GitHub accepts in an owner or repository name. Anchored: an unanchored
@@ -77,6 +78,20 @@ SEGMENT = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._\-]*\Z")
 
 NUMERIC = re.compile(r"\A[0-9]+\Z")
 
+#: A path inside a repository. Slashes are legitimate - `k8s/base/x.yaml` is one
+#: file - so this is the one place a multi-segment value is correct.
+#:
+#: An ALLOWLIST of characters rather than a denylist of dangerous ones, which is
+#: the same choice the read-path allowlist makes: a denylist has to know today
+#: about the character that turns out to matter tomorrow. A leading slash and any
+#: `..` segment are refused outright.
+REPO_FILE = re.compile(r"\A(?!/)(?!.*(?:\A|/)\.\.(?:/|\Z))[A-Za-z0-9._/\-]+\Z")
+
+#: A git object id, or a ref name. Refs are validated to the same character
+#: class as a path segment: a ref goes into a query parameter here rather than a
+#: path, but one containing a newline would split a header if this ever moved.
+REF = re.compile(r"\A[A-Za-z0-9._\-/]+\Z")
+
 _CONCRETE = tuple(
     re.compile(
         "\\A"
@@ -84,6 +99,7 @@ _CONCRETE = tuple(
         .replace("<repo>", "[^/]+")
         .replace("<run>", "[0-9]+")
         .replace("<number>", "[0-9]+")
+        .replace("<path>", ".+")
         + "\\Z"
     )
     for pattern in READ_PATHS
@@ -114,6 +130,27 @@ def _repo_path(repository: str) -> str:
             "validated rather than escaped after the fact."
         )
     return f"{owner}/{repo}"
+
+
+def _repo_file(path: str) -> str:
+    """A path inside the repository, or refuse it.
+
+    Not encoded. `/contents/k8s/base/deployment.yaml` is how the endpoint is
+    addressed, so percent-encoding the slashes would name a file that does not
+    exist - the same rule as `owner/repo`, applied to a longer path.
+    """
+    if not REPO_FILE.match(path):
+        raise ToolError(
+            f"{path!r} is not a path inside a repository. Expected something like "
+            "'k8s/base/deployment.yaml' - no leading slash, no '..' segment."
+        )
+    return path
+
+
+def _ref(ref: str) -> str:
+    if not REF.match(ref):
+        raise ToolError(f"{ref!r} is not a git ref or object id")
+    return ref
 
 
 def _numeric(value: Any, *, what: str) -> str:
@@ -267,6 +304,50 @@ async def diff(arguments: dict[str, Any]) -> Any:
     )
 
 
+async def file_at(arguments: dict[str, Any]) -> Any:
+    """One file's contents at one commit.
+
+    THE REASON THIS EXISTS RATHER THAN APPLYING THE PATCH
+    -------------------------------------------------------
+    A pull request's `files` entries carry a unified `patch`, and reconstructing
+    before/after from one is possible. It is also wrong here twice over.
+
+    GitHub **omits `patch` entirely** for a file above roughly 20k of diff, and
+    for anything it considers binary. A reviewer that reconstructed from patches
+    would silently skip exactly the large manifest changes most worth reviewing,
+    and produce a clean report.
+
+    And applying a unified diff correctly is an algorithm with its own failure
+    modes, none of which would be visible in the output - a mis-applied hunk
+    yields a plausible document.
+
+    Two reads at two shas yield the real bytes. It costs one extra request per
+    file and removes both failure modes.
+
+    GitHub returns base64 for a file under 1MB and **no content at all** above
+    it, pointing at the blobs API instead. That case is reported rather than
+    returned empty: an empty manifest reviews as "everything was removed".
+    """
+    repository = _repo_path(str(arguments.get("repository", "")))
+    path = _repo_file(str(arguments.get("path", "")))
+    ref = _ref(str(arguments.get("ref", "")))
+
+    body = await _get(f"/repos/{repository}/contents/{path}", {"ref": ref})
+
+    if isinstance(body, list):
+        raise ToolError(
+            f"{path} at {ref} is a directory, not a file. A directory listing "
+            "reviewed as a manifest would parse as nothing and report a clean change."
+        )
+    if not body.get("content"):
+        raise ToolError(
+            f"github returned no content for {path} at {ref}. Files over 1MB are "
+            "served through the blobs API instead, and an empty body reviewed as a "
+            "manifest reads as 'everything was removed'."
+        )
+    return body
+
+
 def _per_page(arguments: dict[str, Any]) -> int:
     requested = int(arguments.get("per_page", DEFAULT_PER_PAGE))
     if requested > MAX_PER_PAGE:
@@ -334,6 +415,22 @@ def build_server() -> BaseMCPServer:
                 "required": ["repository"],
             },
             handler=pull_requests,
+        )
+    )
+    server.register(
+        Tool(
+            name="file_at",
+            description="One file's contents at one commit, base64-encoded by GitHub.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "repository": _REPO_ARG,
+                    "path": {"type": "string", "description": "e.g. 'k8s/base/deploy.yaml'."},
+                    "ref": {"type": "string", "description": "A sha or branch name."},
+                },
+                "required": ["repository", "path", "ref"],
+            },
+            handler=file_at,
         )
     )
     server.register(

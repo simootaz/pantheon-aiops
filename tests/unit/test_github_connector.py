@@ -37,14 +37,26 @@ class _Recorder:
         self.headers = headers or {}
         self.requests: list[httpx.Request] = []
 
+    body: Any = None
+
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        return httpx.Response(self.status, json={"id": 42}, headers=self.headers)
+        return httpx.Response(
+            self.status,
+            json=self.body if self.body is not None else {"id": 42},
+            headers=self.headers,
+        )
 
     @property
     def last(self) -> httpx.Request:
         assert self.requests, "nothing was requested"
         return self.requests[-1]
+
+
+def _patch_body(recording: _Recorder, body: Any) -> None:
+    """What this recorder answers with. Set per test, because `file_at` cares
+    about the shape of the body and every other tool does not."""
+    recording.body = body
 
 
 def _patch(monkeypatch: pytest.MonkeyPatch, recording: _Recorder) -> None:
@@ -336,5 +348,66 @@ async def test_an_unreachable_github_names_the_host(monkeypatch: pytest.MonkeyPa
 def test_every_declared_tool_has_a_handler_and_a_schema() -> None:
     server = tools.build_server()
 
-    assert set(server.tools) == {"actions_run", "jobs", "pull_requests", "diff"}
+    assert set(server.tools) == {"actions_run", "jobs", "pull_requests", "diff", "file_at"}
     assert server.read_only, "the GitHub connector must expose no mutating tool"
+
+
+# --- file_at: the bytes, not a reconstruction ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_file_is_fetched_at_the_ref_it_was_asked_for(recorder: _Recorder) -> None:
+    """Two reads at two shas yield the real bytes. GitHub omits `patch` for a
+    file above roughly 20k of diff, so a reviewer built on patches would
+    silently skip the large manifest changes most worth reviewing."""
+    _patch_body(recorder, {"encoding": "base64", "content": "eA=="})
+
+    await tools.file_at({"repository": REPO, "path": "k8s/base/deploy.yaml", "ref": "abc123"})
+
+    url = recorder.last.url
+    assert str(url).split("?")[0].endswith(f"/repos/{REPO}/contents/k8s/base/deploy.yaml")
+    assert url.params["ref"] == "abc123"
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["/etc/passwd", "../../../etc/passwd", "k8s/../../secrets.yaml", "k8s/..", "", "a b.yaml"],
+)
+def test_a_path_that_could_leave_the_repository_is_refused(hostile: str) -> None:
+    """An allowlist of characters rather than a denylist of dangerous ones - a
+    denylist has to know today about the character that matters tomorrow."""
+    with pytest.raises(ToolError, match="not a path inside a repository"):
+        tools._repo_file(hostile)
+
+
+def test_a_real_nested_path_is_kept_whole() -> None:
+    """Slashes are legitimate here: `/contents/k8s/base/x.yaml` is how the
+    endpoint is addressed, so encoding them would name a file that does not
+    exist."""
+    assert tools._repo_file("k8s/base/deployment.yaml") == "k8s/base/deployment.yaml"
+
+
+@pytest.mark.asyncio
+async def test_a_directory_listing_is_refused_rather_than_reviewed(recorder: _Recorder) -> None:
+    """GitHub answers a list for a directory. Reviewed as a manifest it parses
+    as nothing and reports a clean change."""
+    _patch_body(recorder, [{"name": "deploy.yaml"}])
+
+    with pytest.raises(ToolError, match="is a directory"):
+        await tools.file_at({"repository": REPO, "path": "k8s", "ref": "abc123"})
+
+
+@pytest.mark.asyncio
+async def test_a_file_too_large_for_the_contents_api_is_refused(recorder: _Recorder) -> None:
+    """Files over 1MB are served through the blobs API instead, and an empty
+    body reviewed as a manifest reads as "everything was removed"."""
+    _patch_body(recorder, {"encoding": "none", "content": ""})
+
+    with pytest.raises(ToolError, match="no content"):
+        await tools.file_at({"repository": REPO, "path": "k8s/big.yaml", "ref": "abc123"})
+
+
+@pytest.mark.asyncio
+async def test_the_contents_path_is_inside_the_allowlist() -> None:
+    assert tools._allowed(f"/repos/{REPO}/contents/k8s/base/deploy.yaml")
+    assert not tools._allowed(f"/repos/{REPO}/contents")
