@@ -141,7 +141,8 @@ is asserted and "the provider answers" is not.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
-- **Hephaestus** and **Themis**; ✅ **GitHub connector** (read-only: Actions
+- ✅ **Hephaestus** (flake vs unknown, from reruns at one commit); **Themis**
+  still to come; ✅ **GitHub connector** (read-only: Actions
   runs, jobs, pull requests, PR file patches) and ✅ **GitLab connector**.
   **GitHub is the one this deployment uses**; GitLab is built and kept, not
   invested in further.

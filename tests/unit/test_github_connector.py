@@ -353,6 +353,7 @@ def test_every_declared_tool_has_a_handler_and_a_schema() -> None:
         "jobs",
         "pull_requests",
         "pull_request",
+        "workflow_runs",
         "diff",
         "file_at",
     }
@@ -432,3 +433,21 @@ async def test_one_pull_request_is_readable_for_its_shas(recorder: _Recorder) ->
 def test_the_single_pull_request_path_is_inside_the_allowlist() -> None:
     assert tools._allowed(f"/repos/{REPO}/pulls/12")
     assert not tools._allowed(f"/repos/{REPO}/pulls/12/merge")
+
+
+@pytest.mark.asyncio
+async def test_workflow_runs_requires_a_commit_to_filter_by(recorder: _Recorder) -> None:
+    """Unfiltered, this returns the whole run history newest-first, and the
+    caller that forgot the filter would compare a failure against runs of
+    entirely different commits - which is how "this test is flaky" gets
+    concluded from two different bugs."""
+    with pytest.raises(ToolError, match="not a git ref"):
+        await tools.workflow_runs({"repository": REPO})
+
+
+@pytest.mark.asyncio
+async def test_workflow_runs_passes_the_sha_as_a_filter(recorder: _Recorder) -> None:
+    await tools.workflow_runs({"repository": REPO, "head_sha": "abc123"})
+
+    assert recorder.last.url.params["head_sha"] == "abc123"
+    assert str(recorder.last.url).split("?")[0].endswith(f"/repos/{REPO}/actions/runs")

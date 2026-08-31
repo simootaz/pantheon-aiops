@@ -65,6 +65,7 @@ API_VERSION = "2022-11-28"
 #: Paths this connector may reach. `<owner>/<repo>` is substituted only through
 #: `_repo_path`, which validates first.
 READ_PATHS = (
+    "/repos/<owner>/<repo>/actions/runs",
     "/repos/<owner>/<repo>/actions/runs/<run>",
     "/repos/<owner>/<repo>/actions/runs/<run>/jobs",
     "/repos/<owner>/<repo>/pulls",
@@ -253,6 +254,26 @@ async def actions_run(arguments: dict[str, Any]) -> Any:
     return await _get(f"/repos/{repository}/actions/runs/{run}")
 
 
+async def workflow_runs(arguments: dict[str, Any]) -> Any:
+    """Every workflow run at one commit.
+
+    `head_sha` is required rather than optional. Unfiltered, this returns the
+    repository's whole run history newest-first, and the caller that forgot the
+    filter would compare a failure against runs of entirely different commits -
+    which is how "this test is flaky" gets concluded from two different bugs.
+
+    That comparison is the whole of flake detection: the same job at the SAME
+    commit finishing two different ways is non-determinism by definition, and
+    at two different commits it is just a change.
+    """
+    repository = _repo_path(str(arguments.get("repository", "")))
+    head_sha = _ref(str(arguments.get("head_sha", "")))
+    return await _get(
+        f"/repos/{repository}/actions/runs",
+        {"head_sha": head_sha, "per_page": _per_page(arguments)},
+    )
+
+
 async def jobs(arguments: dict[str, Any]) -> Any:
     """Every job in one workflow run.
 
@@ -412,6 +433,22 @@ def build_server() -> BaseMCPServer:
                 "required": ["repository", "run"],
             },
             handler=jobs,
+        )
+    )
+    server.register(
+        Tool(
+            name="workflow_runs",
+            description="Every workflow run at one commit. head_sha is required.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "repository": _REPO_ARG,
+                    "head_sha": {"type": "string", "description": "The commit to filter by."},
+                    "per_page": _PER_PAGE_ARG,
+                },
+                "required": ["repository", "head_sha"],
+            },
+            handler=workflow_runs,
         )
     )
     server.register(

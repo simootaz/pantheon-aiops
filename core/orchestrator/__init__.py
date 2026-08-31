@@ -36,6 +36,19 @@ def register_implemented() -> None:
     register("lethe", Lethe)
     register("hermes", Hermes)
 
+    # Aegis and Hephaestus are implemented and NOT registered, deliberately.
+    #
+    # Both read their subject off `ctx.params` - a pull request, a CI run - and
+    # `dispatcher.py` populates none: it builds an AgentContext from a window
+    # and a trigger. Registering them would put two agents in a plan that
+    # degrade on every dispatch with "no run was named", which reads as a broken
+    # agent rather than as a missing route.
+    #
+    # `test_nothing_is_registered_that_the_planner_will_never_name` refused the
+    # registration when it was attempted, which is what that guard is for. The
+    # route - classifier, planner and params from the webhook payload - is the
+    # work that makes this line correct, and it is its own change.
+
 
 __all__ = [
     "AGENTS",
