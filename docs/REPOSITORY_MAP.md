@@ -310,6 +310,7 @@ pantheon-aiops/
 | `simulator/cli.py` | `pantheon-sim run <scenario> [--speed N]`, `baseline`, `list`. | 1 |
 | `simulator/scenarios/` | Five YAML scenarios driving the demo and e2e tests, one per root-cause category. | 1 |
 | **codegen/** | The contract pipeline: `export_schemas.py`, `gen_go.sh`, `gen_ts.sh`, `verify.sh`. | 0 |
+| **tooling/** | The Makefile recipes that needed a shell, written so they need none. `make up`, `make clean` and `make help` used `[`, `cp`, `rm`, `find` and a grep/sed/awk pipeline; on Windows make runs recipes through cmd.exe, which has none of them. Python is the one interpreter this repository already requires everywhere - and unlike awk it is **testable**, which `make help`'s pipeline never was. | 4 |
 | **tests/** | Cross-cutting `unit/`, `integration/`, `e2e/`, `fixtures/`. Agent-local tests live in `agents/*/tests/`. | 1–5 |
 | **deploy/** | Everything needed to run Pantheon somewhere. | 6–7 |
 | `deploy/docker/` | Seven Dockerfiles, one per image. | 6 |

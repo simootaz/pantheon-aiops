@@ -21,7 +21,7 @@ GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
 ## help: list every target
 help:
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed -e 's/## //' | awk -F':' '{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@uv run python -m tooling.make_tasks help
 
 ## install: install all Python, Go and dashboard dependencies
 install:
@@ -181,7 +181,7 @@ codegen-verify:
 
 ## up: start the local Compose stack (add PROFILE=llm-local for local models)
 up:
-	@cd deploy/compose && [ -f .env ] || cp .env.example .env
+	@uv run python -m tooling.make_tasks ensure-env
 	@cd deploy/compose && docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 		$(if $(PROFILE),--profile $(PROFILE),) up -d
 	@echo "up: API http://localhost:8000  MinIO console http://localhost:9001"
@@ -193,8 +193,5 @@ down:
 
 ## clean: remove build artifacts and tooling caches
 clean:
-	@rm -rf .mypy_cache .ruff_cache .pytest_cache htmlcov .coverage coverage.xml
-	@rm -rf dist build *.egg-info bin
-	@rm -rf dashboard/.next dashboard/.turbo
-	@find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+	@uv run python -m tooling.make_tasks clean
 	@echo "clean: done"
