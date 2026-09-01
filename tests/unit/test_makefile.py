@@ -139,16 +139,52 @@ def recipe_for(target: str) -> str:
     return "\n".join(lines)
 
 
-def test_test_sim_requires_the_stack_rather_than_skipping() -> None:
-    """A skipped gate is reported as a pass, and this one exists to assert data.
+def test_every_live_gate_requires_the_stack_rather_than_skipping() -> None:
+    """A skipped gate is reported as a pass, and these exist to assert data.
 
     `make test-sim` skipped all nine tests and exited 0 on a machine where Loki
-    was briefly unready. Without the env var it would do so again.
+    was briefly unready. Without the flag any of them would do so again.
+
+    Checked over the target's whole block - the recipe AND its target-specific
+    `export` - because the flag moved from one to the other and this guard went
+    looking in the old place. `test-delphi` is deliberately absent: it skips
+    without an API key on purpose, because a red gate meaning "you did not sign
+    up" trains people to ignore red gates.
     """
-    recipe = recipe_for("test-sim")
-    assert "PANTHEON_REQUIRE_STACK" in recipe, (
-        "make test-sim does not set PANTHEON_REQUIRE_STACK, so an unreachable "
-        f"stack makes the whole gate skip and exit 0. Recipe:\n{recipe}"
+    text = BODY
+    for gate in ("test-sim", "test-connectors", "test-loki", "test-flow-one"):
+        start = text.index(f"\n{gate}:")
+        block = text[start : text.index("\n\n", start)]
+        assert "PANTHEON_REQUIRE_STACK" in block, (
+            f"make {gate} does not set PANTHEON_REQUIRE_STACK, so an unreachable "
+            f"stack makes the whole gate skip and exit 0. Block:\n{block}"
+        )
+
+
+def test_no_recipe_uses_posix_only_shell_syntax() -> None:
+    """Every live gate was unrunnable on Windows until 2026-08-31.
+
+    On Windows, make runs recipes through cmd.exe, which has no
+    `VAR=value command` prefix and no `.` builtin. `make test-sim` reported
+    `'PANTHEON_REQUIRE_STACK' is not recognized as an internal or external
+    command` - so the targets whose entire job is to be run BY HAND, before
+    trusting something, could not be run by hand on a developer's own machine.
+
+    A target-specific `export` is a make directive rather than shell syntax, and
+    `uv run --env-file` replaces sourcing. Both work wherever make does.
+    """
+    offenders: list[str] = []
+    for line in BODY.splitlines():
+        if not line.startswith("\t"):
+            continue
+        recipe = line.lstrip("\t@").strip()
+        if re.match(r"^[A-Z_][A-Z0-9_]*=", recipe) or recipe.startswith(("set -a", ". ")):
+            offenders.append(recipe)
+
+    assert not offenders, (
+        "recipes using POSIX-only shell syntax, which cmd.exe cannot run: "
+        f"{offenders}. Use a target-specific `export` for a variable and "
+        "`uv run --env-file` for a file."
     )
 
 

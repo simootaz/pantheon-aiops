@@ -98,9 +98,13 @@ Per-category root-cause detail moved to **Phase 4**. Half its blocker lifted —
 categories are produced now — and half did not: nothing computes a growth rate
 or a time-to-full, so the detail would be a shape nobody fills.
 
-Also outstanding: a **live gate against a real model**. Every Delphi test to
-date runs against `RecordingProvider` or a scripted fake, so "the adapter works"
-is asserted and "the provider answers" is not.
+**`make test-delphi` has now run against a real provider** — 5 passed,
+2026-08-31. Until that moment every Delphi test used `RecordingProvider` or a
+scripted fake, so "the adapter works" was asserted and "the provider answers"
+was not. It is now observed: the configured provider answers a real prompt, a
+wrong model id fails naming which one, the gateway reaches a model without
+anyone naming one, JSON mode produces JSON, and the provider lists what it
+serves.
 
 - ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. An alert
   plans **two** steps — metrics and logs both cover it — and a human question
@@ -110,9 +114,9 @@ is asserted and "the provider answers" is not.
   function that would change — see ADR 0007 for what forces it.
 - `core/memory/` — vector store, repository, cache
 - 🚧 **Delphi**: gateway, resolver, catalog, `chat_completions` and tracing are
-  implemented and unit-gated. What remains is `ResolutionRecord` persistence
-  onto the Investigation, a live gate against a real model, and the remaining
-  dialect adapters (Phase 5). Nothing consults it yet - no agent reasons.
+  implemented, unit-gated **and proven against a real provider**. What remains
+  is the other dialect adapters (Phase 5). Nothing consults it yet - no agent
+  reasons.
 - **Lethe** and **Hermes**; Loki connector
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
