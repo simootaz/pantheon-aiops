@@ -158,8 +158,9 @@ serves.
   above ~20k of diff, so a patch-based reviewer silently skips the large
   manifest changes most worth reviewing. Documents pair by identity, not
   position.
-- **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
-  Cerberus
+- ✅ **AG-UI endpoint and translator**; ✅ A2UI surfaces for the Approval Gate
+  and Cerberus. The A2UI envelope remains a **documented guess** - no canonical
+  AG-UI wrapper is specified - bounded to one function and one constant.
 - `ArtifactRef` resolution — server-side, same-investigation only
 - Dashboard: real investigation, agent, approval and settings views
 - Delphi settings surface: provider cards, tier pickers, per-agent overrides,

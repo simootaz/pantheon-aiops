@@ -24,6 +24,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api import __version__
+from api.agui import router as agui_router
 from api.routers import (
     agents,
     alerts,
@@ -171,6 +172,7 @@ def create_app(
     app.add_exception_handler(RequestValidationError, _redacted_validation_error)
 
     app.include_router(health.router)
+    app.include_router(agui_router)
     app.include_router(webhooks.router)
     app.include_router(alerts.router)
     app.include_router(investigations.router)
