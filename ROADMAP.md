@@ -147,8 +147,9 @@ serves.
 
 - ✅ **A pull request reaches Aegis and a failed run reaches Hephaestus**, end
   to end: signed webhook, classifier, planner, params, dispatch.
-- ✅ **Hephaestus** (flake vs unknown, from reruns at one commit); **Themis**
-  still to come; ✅ **GitHub connector** (read-only: Actions
+- ✅ **Hephaestus** (flake vs unknown, from reruns at one commit) and ✅ **Themis**
+  (merge frequency and review latency, both named for what they are rather than
+  for the DORA metric they resemble); ✅ **GitHub connector** (read-only: Actions
   runs, jobs, pull requests, PR file patches) and ✅ **GitLab connector**.
   **GitHub is the one this deployment uses**; GitLab is built and kept, not
   invested in further.

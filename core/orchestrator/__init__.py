@@ -45,6 +45,16 @@ def register_implemented() -> None:
     register("aegis", Aegis)
     register("hephaestus", Hephaestus)
 
+    # Themis is implemented and NOT registered, for the reason Aegis and
+    # Hephaestus were not until the webhook route existed: nothing can route to
+    # it. A delivery measurement answers a question nobody's incident asked -
+    # it belongs on a schedule, and `TriggerKind.SCHEDULE` reaches no classifier
+    # branch because nothing schedules anything until Temporal lands in Phase 5.
+    #
+    # Registering it would put an agent in a plan that no trigger produces, and
+    # `test_every_implemented_agent_is_reachable_by_some_trigger` would refuse
+    # it - correctly.
+
 
 __all__ = [
     "AGENTS",

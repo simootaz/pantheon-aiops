@@ -1,6 +1,10 @@
-"""Themis - computes DORA metrics and judges delivery health.
+"""Themis - measures what delivery data supports, and refuses the rest.
 
 Phase: 4 - Delivery Flow
 """
 
-# TODO: Phase 4 - expose the Themis agent entrypoint
+from __future__ import annotations
+
+from agents.dora.agent import Themis
+
+__all__ = ["Themis"]
