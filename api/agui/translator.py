@@ -92,6 +92,7 @@ from core.contracts.events import (
     VerdictReadyEvent,
 )
 from core.contracts.investigation import Investigation
+from core.ui import access_surface, approval_surface, renewal_surface
 
 #: The only Custom event Pantheon defines. See the reasoning above.
 CUSTOM_EVENTS = ("pantheon.break_glass",)
@@ -195,17 +196,21 @@ def translate(event: Event, *, investigation: Investigation | None = None) -> li
         ]
 
     if isinstance(event, ApprovalRequestedEvent):
-        return [a2ui_channel.surface_event(a2ui_channel.approval_surface(event.action))]
+        return [
+            a2ui_channel.surface_event(
+                approval_surface(event.action, investigation_id=event.investigation_id)
+            )
+        ]
 
     if isinstance(event, AccessRequestedEvent):
-        return [a2ui_channel.surface_event(a2ui_channel.access_surface(event.request))]
+        return [a2ui_channel.surface_event(access_surface(event.request))]
 
     if isinstance(event, LeaseExpiredEvent):
         lost: list[BaseEvent] = [_append("/findings/-", _lease_finding(event))]
         if event.reason == "expired":
             lost.append(
                 a2ui_channel.surface_event(
-                    a2ui_channel.renewal_surface(lease_id=str(event.lease_id), agent=event.agent)
+                    renewal_surface(lease_id=str(event.lease_id), agent=event.agent)
                 )
             )
         return lost

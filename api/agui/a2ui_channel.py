@@ -25,16 +25,16 @@ A2UISurface objects; `translator.py` decides *when* to emit; only this module
 decides *how*. The cost of being wrong is bounded to one function and one
 constant, and that is the entire reason this seam exists.
 
-A SURFACE IS BUILT FROM A CONTRACT, NEVER FROM FREE TEXT
-----------------------------------------------------------
-The surfaces below are constructed here from `Action` and `AccessRequest`,
-which are typed. No agent supplies component ids, labels or actions - it
-supplies a request, and the shape of the prompt is Pantheon's.
+WHAT THIS MODULE DOES NOT DO
+------------------------------
+It does not BUILD surfaces. `core/ui/` does - `approval_surface`,
+`access_surface` and `renewal_surface` live there, on the component builders.
 
-That is what makes the component allowlist meaningful. An allowlist over
-components an agent *chose* would be a filter on hostile input; an allowlist
-over components only this module emits is a statement about what this module
-does, which is checkable by reading it.
+They were briefly here, which contradicted the paragraph above in the same file:
+"core/ui/ builds A2UISurface objects; translator.py decides when to emit; only
+this module decides how." Two places constructing an approval card is two places
+that can disagree about what an approver is shown, and the one that drifts is
+whichever is not the one being read.
 
 Phase: 4 - Delivery Flow
 """
@@ -42,20 +42,11 @@ Phase: 4 - Delivery Flow
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from ag_ui.core import CustomEvent, EventType
 
-from core.contracts.action import Action
-from core.contracts.credentials import AccessRequest
-from core.contracts.ui import (
-    A2UIAction,
-    A2UIComponent,
-    A2UIComponentType,
-    A2UISurface,
-    A2UISurfaceKind,
-    UIActionResponse,
-)
+from core.contracts.ui import A2UISurface, UIActionResponse
 
 #: Name carried on the AG-UI `Custom` event. Change here if a canonical
 #: envelope is standardised - and nowhere else.
@@ -148,113 +139,4 @@ def from_wire(message: dict[str, Any]) -> UIActionResponse:
         ),
         action_name=action,
         context=dict(message.get("context") or {}),
-    )
-
-
-def approval_surface(action: Action) -> A2UISurface:
-    """The prompt an operator answers to approve or reject one Action.
-
-    Everything an approver needs to decide is on the card: what it does, to
-    what, how wide the blast radius is, and how to undo it. An approval prompt
-    that says only "approve action 7f3a?" is a prompt people learn to click
-    through, and the whole gate then measures nothing.
-    """
-    surface_id = uuid4()
-    return A2UISurface(
-        id=surface_id,
-        kind=A2UISurfaceKind.APPROVAL,
-        root="card",
-        investigation_id=None,
-        agent_display_name=action.proposed_by,
-        components=[
-            A2UIComponent(
-                id="card",
-                component=A2UIComponentType.CARD,
-                children=["what", "target", "radius", "rollback", "reason", "buttons"],
-            ),
-            _text("what", f"{action.operation} — approval required"),
-            _text("target", f"Target: {action.target.kind}/{action.target.name}"),
-            _text("radius", f"Blast radius: {action.blast_radius.value}"),
-            _text("rollback", f"Rollback: {action.rollback or 'none stated'}"),
-            _text("reason", f"Why: {action.reason}"),
-            A2UIComponent(
-                id="buttons",
-                component=A2UIComponentType.ROW,
-                children=["approve", "reject"],
-            ),
-            _button("approve", "Approve", "approve", {"action_id": str(action.id)}),
-            _button("reject", "Reject", "reject", {"action_id": str(action.id)}),
-        ],
-    )
-
-
-def access_surface(request: AccessRequest) -> A2UISurface:
-    """The prompt a person answers to grant or deny one credential request.
-
-    `request.reason` is on the card and is the point of it. Approving "an agent
-    wants database access" is not a decision; approving a stated hypothesis is,
-    which is why `AccessRequest.reason` is a required field rather than a note.
-    """
-    return A2UISurface(
-        id=uuid4(),
-        kind=A2UISurfaceKind.ACCESS_REQUEST,
-        root="card",
-        investigation_id=request.investigation_id,
-        agent_display_name=request.agent,
-        components=[
-            A2UIComponent(
-                id="card",
-                component=A2UIComponentType.CARD,
-                children=["what", "who", "why", "ttl", "buttons"],
-            ),
-            _text("what", f"{request.agent} requests {request.action.value} access"),
-            _text("who", f"Credential: {request.credential_ref.name}"),
-            _text("why", f"To test: {request.reason}"),
-            _text("ttl", f"For up to {request.requested_ttl_seconds}s"),
-            A2UIComponent(
-                id="buttons", component=A2UIComponentType.ROW, children=["grant", "deny"]
-            ),
-            _button("grant", "Grant", "grant", {"request_id": str(request.id)}),
-            _button("deny", "Deny", "deny", {"request_id": str(request.id)}),
-        ],
-    )
-
-
-def renewal_surface(*, lease_id: str, agent: str) -> A2UISurface:
-    """The prompt raised when a lease expired mid-run.
-
-    Only for an EXPIRED lease. A revoked one is a decision somebody just made,
-    and re-prompting for it would put the revocation back in front of the person
-    who performed it as a question - `translator.py` is what makes that
-    distinction, from `LeaseExpiredEvent.reason`.
-    """
-    return A2UISurface(
-        id=uuid4(),
-        kind=A2UISurfaceKind.ACCESS_REQUEST,
-        root="card",
-        agent_display_name=agent,
-        components=[
-            A2UIComponent(
-                id="card", component=A2UIComponentType.CARD, children=["what", "buttons"]
-            ),
-            _text("what", f"{agent}'s lease {lease_id} expired mid-run. Grant it again?"),
-            A2UIComponent(
-                id="buttons", component=A2UIComponentType.ROW, children=["grant", "deny"]
-            ),
-            _button("grant", "Grant again", "grant", {"lease_id": lease_id}),
-            _button("deny", "Leave it expired", "deny", {"lease_id": lease_id}),
-        ],
-    )
-
-
-def _text(component_id: str, text: str) -> A2UIComponent:
-    return A2UIComponent(id=component_id, component=A2UIComponentType.TEXT, text=text)
-
-
-def _button(component_id: str, label: str, action: str, context: dict[str, str]) -> A2UIComponent:
-    return A2UIComponent(
-        id=component_id,
-        component=A2UIComponentType.BUTTON,
-        label=label,
-        action=A2UIAction(event_name=action, context=dict(context)),
     )

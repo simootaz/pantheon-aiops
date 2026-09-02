@@ -66,6 +66,7 @@ from core.contracts.plan import PlanStep, StepStatus
 from core.contracts.root_cause import RootCauseCategory, RootCauseHypothesis
 from core.contracts.ui import A2UIComponentType
 from core.contracts.verdict import Verdict
+from core.ui import access_surface, approval_surface, renewal_surface
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 RUN = uuid4()
@@ -383,7 +384,7 @@ def test_a_revoked_lease_raises_no_prompt() -> None:
 def test_an_approval_surface_carries_what_an_approver_needs_to_decide() -> None:
     """ "Approve action 7f3a?" is a prompt people learn to click through, and the
     whole gate then measures nothing."""
-    surface = a2ui_channel.approval_surface(_action())
+    surface = approval_surface(_action())
     text = " ".join(one.text or "" for one in surface.components)
 
     assert "rollout_restart" in text
@@ -395,7 +396,7 @@ def test_an_approval_surface_carries_what_an_approver_needs_to_decide() -> None:
 def test_an_access_surface_carries_the_hypothesis_being_tested() -> None:
     """Approving "an agent wants database access" is not a decision; approving
     a stated hypothesis is."""
-    surface = a2ui_channel.access_surface(_access_request())
+    surface = access_surface(_access_request())
     text = " ".join(one.text or "" for one in surface.components)
 
     assert "connection saturation may explain the p99 latency" in text
@@ -406,9 +407,9 @@ def test_every_component_pantheon_emits_is_in_the_allowlist() -> None:
     allowlist over components an agent CHOSE would be a filter on hostile input;
     this is a statement about what this module does."""
     surfaces = [
-        a2ui_channel.approval_surface(_action()),
-        a2ui_channel.access_surface(_access_request()),
-        a2ui_channel.renewal_surface(lease_id="l1", agent="argus"),
+        approval_surface(_action()),
+        access_surface(_access_request()),
+        renewal_surface(lease_id="l1", agent="argus"),
     ]
 
     for surface in surfaces:
@@ -420,8 +421,8 @@ def test_no_surface_component_carries_a_url() -> None:
     """`Image` takes an ArtifactRef precisely so an agent cannot express an
     arbitrary destination. Nothing here should be emitting one at all."""
     for surface in (
-        a2ui_channel.approval_surface(_action()),
-        a2ui_channel.access_surface(_access_request()),
+        approval_surface(_action()),
+        access_surface(_access_request()),
     ):
         rendered = surface.model_dump_json()
         assert "http://" not in rendered and "https://" not in rendered
@@ -431,14 +432,14 @@ def test_an_unknown_a2ui_message_type_is_refused() -> None:
     """Inventing one would put a message on the wire that no renderer has a
     branch for, and it would be dropped in silence."""
     with pytest.raises(ValueError, match="not an A2UI server-to-client message type"):
-        a2ui_channel.to_wire(a2ui_channel.approval_surface(_action()), message_type="invented")
+        a2ui_channel.to_wire(approval_surface(_action()), message_type="invented")
 
 
 def test_the_wire_shape_is_built_in_exactly_one_place() -> None:
     """The envelope is a GUESS - no canonical AG-UI wrapper for an A2UI payload
     is specified. It is bounded to `to_wire` and `EVENT_NAME`, and this asserts
     the event goes out through that seam rather than around it."""
-    event = a2ui_channel.surface_event(a2ui_channel.approval_surface(_action()))
+    event = a2ui_channel.surface_event(approval_surface(_action()))
 
     assert event.name == a2ui_channel.EVENT_NAME
     assert event.value is not None
@@ -536,9 +537,9 @@ def test_the_required_set_is_what_the_surfaces_actually_use() -> None:
     used = {
         component.component
         for surface in (
-            a2ui_channel.approval_surface(_action()),
-            a2ui_channel.access_surface(_access_request()),
-            a2ui_channel.renewal_surface(lease_id="l", agent="a"),
+            approval_surface(_action()),
+            access_surface(_access_request()),
+            renewal_surface(lease_id="l", agent="a"),
         )
         for component in surface.components
     }
