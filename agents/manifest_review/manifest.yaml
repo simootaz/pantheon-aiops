@@ -17,11 +17,18 @@ capabilities:
     description: Assess a manifest change for operational risk.
   - name: assess_blast_radius
     description: Estimate what a change can affect if it is wrong.
+# Three, and each answers one question a review needs: what did this change
+# from (pull_request, for the base sha), which files changed (diff), and what
+# they said at each revision (file_at).
+#
+# kubernetes.get and kubernetes.list are NOT here. They were, for two phases,
+# and nothing called them: nothing about the cluster changes what a diff
+# removed. They would answer what the change will LAND on, which is a real
+# question this agent does not ask.
 tools:
-  - kubernetes.get
-  - kubernetes.list
-  - gitlab.diff
+  - github.pull_request
   - github.diff
+  - github.file_at
 budget:
   max_tokens: 16384
   max_seconds: 120

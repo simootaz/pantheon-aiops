@@ -232,11 +232,19 @@ export type ProposedBy = string;
  * Why this Action was proposed, in terms of the Verdict.
  */
 export type Reason1 = string;
+/**
+ * The approval spent, when the rule required one. Null when it did not.
+ */
+export type ApprovalId = string | null;
 export type At = string;
 /**
  * Which connector executed it.
  */
 export type Connector = string;
+/**
+ * The policy rule that produced the decision, whichever way it went.
+ */
+export type DecidedBy = string;
 /**
  * Human-readable outcome. Never a credential.
  */
@@ -517,6 +525,10 @@ export type FindingKind = "observation" | "anomaly" | "correlation" | "risk" | "
  */
 export type Rationale = string | null;
 /**
+ * Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.
+ */
+export type Related = string[];
+/**
  * How much a Finding should worry the on-call engineer.
  */
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
@@ -593,6 +605,40 @@ export type Type7 = "verdict_ready";
 export type Confidence2 = number;
 export type ContributingFindings = Finding[];
 export type DecidedAt = string;
+/**
+ * Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.
+ */
+export type Agents = string[];
+/**
+ * The closed vocabulary shared by agents, verdicts and scenario ground truth.
+ *
+ * Adding a member is a deliberate act: it widens what an agent may conclude
+ * and what a scenario may assert. `UNKNOWN` exists so that "we do not know" is
+ * a statable conclusion rather than an absent one - an investigation that
+ * cannot say it will invent something instead.
+ */
+export type RootCauseCategory1 =
+  | "memory_leak"
+  | "resource_contention"
+  | "bad_deployment"
+  | "config_error"
+  | "disk_exhaustion"
+  | "capacity_saturation"
+  | "dependency_failure"
+  | "network_partition"
+  | "flaky_test"
+  | "data_corruption"
+  | "external_incident"
+  | "unknown";
+/**
+ * The competing hypothesis's own confidence.
+ */
+export type Confidence3 = number;
+export type FindingIds = string[];
+/**
+ * Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.
+ */
+export type Dissent = Dissent1[];
 /**
  * Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.
  */
@@ -684,6 +730,20 @@ export type OverrideAskDefault = boolean;
  */
 export type RevokedAt = string | null;
 /**
+ * Codename, e.g. 'argus'.
+ */
+export type Agent7 = string;
+export type SecondCeiling = number;
+export type Seconds = number;
+export type TokenCeiling = number;
+export type TokensSpent = number;
+export type ToolCallCeiling = number;
+export type ToolCalls = number;
+/**
+ * What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.
+ */
+export type Accounting = AgentAccounting[];
+/**
  * Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.
  */
 export type Audit = AuditEntry[];
@@ -766,6 +826,10 @@ export type StartedAt1 = string | null;
  */
 export type InvestigationState =
   "pending" | "planning" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
+/**
+ * Who this run belongs to. Never empty - see api/auth/dependencies.py.
+ */
+export type Tenant = string;
 /**
  * The only connector that may redeem this lease.
  */
@@ -1012,11 +1076,23 @@ export interface Parameters {
   [k: string]: unknown;
 }
 /**
- * What happened when an Action ran. Written once, never amended.
+ * What happened when an Action ran, and what let it. Written once, never amended.
+ *
+ * `decided_by` is required and cannot be empty. A receipt said what happened
+ * and never why it was allowed to: for a refusal the rule lived in an
+ * exception message, and for a success it was nowhere at all. "Why did this
+ * run" is the first question asked afterwards, and the record could not
+ * answer it.
+ *
+ * Required rather than defaulted, so a receipt that cannot say is
+ * unconstructible - a default would be filled in by the one call site that
+ * forgot, which is the site that most needed to say.
  */
 export interface ActionReceipt {
+  approval_id?: ApprovalId;
   at: At;
   connector: Connector;
+  decided_by: DecidedBy;
   detail?: Detail;
   lease_id?: LeaseId;
   state: ExecutionState1;
@@ -1065,6 +1141,11 @@ export interface AgentCapability {
  *
  * Attached to the Investigation, which agents can see - safe because every
  * reference here is a CredentialRef and never a value.
+ *
+ * FROZEN, and that is the whole of "immutable" above. The docstring said it
+ * for two phases while assignment worked fine, so an append-only log rested on
+ * a promise nothing enforced - and a trail that can be rewritten answers
+ * nothing. `tests/unit/test_audit_trail.py` plants the assignment.
  */
 export interface AuditEntry {
   action?: CredentialAction1;
@@ -1166,6 +1247,7 @@ export interface Finding {
   id: Id7;
   kind?: FindingKind;
   rationale?: Rationale;
+  related?: Related;
   severity: Severity;
   /**
    * What the claim is about.
@@ -1327,12 +1409,38 @@ export interface Verdict {
   confidence: Confidence2;
   contributing_findings?: ContributingFindings;
   decided_at: DecidedAt;
+  dissent?: Dissent;
   hypotheses?: Hypotheses;
   id: Id9;
   investigation_id: InvestigationId12;
   recommended_actions?: RecommendedActions;
   steps: Steps;
   summary: Summary1;
+}
+/**
+ * Evidence from this run that pointed somewhere other than the leading claim.
+ *
+ * WHAT DISSENT CAN HONESTLY MEAN HERE
+ * -------------------------------------
+ * No agent votes. Argus reports that a series moved; Lethe reports what
+ * appeared in the logs. Neither states an opinion about a root cause, so
+ * "the agents disagreed" cannot be read off anything they said.
+ *
+ * What IS observable is that the run produced more than one candidate and the
+ * leading one does not account for all the evidence. A reader told "memory
+ * leak, confidence 0.65" has no way to know that two of the five findings
+ * pointed at disk exhaustion - and that omission is the difference between a
+ * conclusion and a summary of the majority.
+ *
+ * So a Dissent is a competing hypothesis, named, with **who reported the
+ * evidence for it**. "Somebody disagreed" is not actionable; "Argus's disk
+ * signal pointed elsewhere" is.
+ */
+export interface Dissent1 {
+  agents?: Agents;
+  category: RootCauseCategory1;
+  confidence: Confidence3;
+  finding_ids?: FindingIds;
 }
 /**
  * One agent consultation Zeus intends to make.
@@ -1410,6 +1518,7 @@ export interface Grant {
  * One end-to-end run, from trigger to Verdict.
  */
 export interface Investigation {
+  accounting?: Accounting;
   audit?: Audit;
   completed_at?: CompletedAt;
   created_at: CreatedAt;
@@ -1421,11 +1530,35 @@ export interface Investigation {
   scenario?: Scenario;
   started_at?: StartedAt1;
   state: InvestigationState;
+  tenant?: Tenant;
   trigger: Trigger;
   /**
    * Absent until the run reaches a conclusion.
    */
   verdict?: Verdict | null;
+}
+/**
+ * What one agent's step consumed, beside what it was allowed.
+ *
+ * EVERY FIGURE CARRIES ITS CEILING
+ * ----------------------------------
+ * "spent 16000 tokens" cannot answer the question anybody asks, which is
+ * whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+ * different runs and the same number.
+ *
+ * Three resources because there are three ceilings on `AgentBudget`, and a
+ * breakdown missing one cannot explain a DEGRADED step that hit it. A run
+ * stopped by its token budget and one stopped by its clock look identical from
+ * the outside, and they are fixed differently.
+ */
+export interface AgentAccounting {
+  agent: Agent7;
+  second_ceiling?: SecondCeiling;
+  seconds?: Seconds;
+  token_ceiling?: TokenCeiling;
+  tokens_spent?: TokensSpent;
+  tool_call_ceiling?: ToolCallCeiling;
+  tool_calls?: ToolCalls;
 }
 /**
  * Why Delphi chose the model it chose, for one call.

@@ -19,7 +19,23 @@ The same boundary as ``core.cerberus.redemption``, for the same reason: the
 agent holds a reference, the server holds the capability. Enforced at the import
 graph by tests/unit/test_credential_safety.py.
 
+`artifact_resolution` is deliberately NOT re-exported below - but be clear about
+what that buys. Importing the submodule anywhere binds it as an attribute of
+this package, so `core.ui.artifact_resolution` is reachable whatever `__all__`
+says. A test asserting otherwise was written and failed, which is how this
+paragraph got written.
+
+The boundary is the IMPORT GRAPH, enforced by
+`tests/unit/test_credential_safety.py`. `__all__` buys the narrower thing: no
+name from the resolver arrives through `from core.ui import ...`, so reaching it
+has to be deliberate and is therefore visible to the guard.
+
 Phase: 4 - Delivery Flow
 """
 
-# TODO: Phase 4 - expose the surface builders
+from __future__ import annotations
+
+from core.ui.access_request import access_surface, renewal_surface
+from core.ui.approval import approval_surface
+
+__all__ = ["access_surface", "approval_surface", "renewal_surface"]

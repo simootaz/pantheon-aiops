@@ -16,6 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from api.auth.dependencies import Principal, Role, require
 from core.contracts.investigation import Investigation
 from core.store.investigations import InvestigationStore
 
@@ -36,10 +37,17 @@ def get_store(request: Request) -> InvestigationStore:
 @router.get("", response_model=list[Investigation], summary="Recent investigations")
 async def list_investigations(
     store: Annotated[InvestigationStore, Depends(get_store)],
+    principal: Annotated[Principal, require(Role.VIEWER, Role.OPERATOR, Role.APPROVER, Role.ADMIN)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[Investigation]:
-    """Newest first."""
-    return await store.recent(limit)
+    """Newest first, and only this caller's tenant.
+
+    The tenant comes from the verified `Principal`, never from a query
+    parameter. A `?tenant=` would be a claim rather than a fact, and the
+    endpoint would be an invitation to read somebody else's runs by typing
+    their name.
+    """
+    return await store.recent(limit, tenant=_scope(principal))
 
 
 @router.get(
@@ -50,17 +58,36 @@ async def list_investigations(
 async def get_investigation(
     investigation_id: UUID,
     store: Annotated[InvestigationStore, Depends(get_store)],
+    principal: Annotated[Principal, require(Role.VIEWER, Role.OPERATOR, Role.APPROVER, Role.ADMIN)],
 ) -> Investigation:
     """The Investigation, including its plan, findings and verdict.
 
     404 when it does not exist, which includes the window between an alert being
     accepted and Zeus writing the first row. The receiver returns 202 and an id;
     a reader that polls will see 404 and then the run.
+
+    404 ALSO WHEN IT BELONGS TO ANOTHER TENANT
+    --------------------------------------------
+    Not 403. A 403 confirms the thing exists, and for tenant isolation existence
+    is itself the disclosure: "that investigation is not yours" tells the caller
+    another tenant had an incident, and an id is guessable enough to ask about.
+
+    The message is identical to the missing case for the same reason.
     """
     investigation = await store.get(investigation_id)
-    if investigation is None:
+    if investigation is None or not principal.reads(investigation.tenant):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"no investigation {investigation_id}",
         )
     return investigation
+
+
+def _scope(principal: Principal) -> str | None:
+    """The tenant to narrow a listing to, or `None` for every tenant.
+
+    `None` only for a principal configured with `@*`. Returning it for anyone
+    else - an ADMIN, say - would make the scope something a role grants rather
+    than something the token table states.
+    """
+    return None if principal.reads_every_tenant else principal.tenant

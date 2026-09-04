@@ -111,10 +111,26 @@ class PostgresInvestigationStore:
             )
         return Investigation.model_validate_json(row["document"]) if row else None
 
-    async def recent(self, limit: int = 20) -> list[Investigation]:
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Investigation]:
+        """Newest first, narrowed in SQL rather than in Python.
+
+        Filtering after the fetch would read every tenant's rows into this
+        process to throw most of them away - and the LIMIT would have applied
+        to the wrong set, so a tenant with three runs among a hundred would get
+        an empty page.
+        """
         pool = await self._ready()
         async with pool.acquire() as connection:
-            rows = await connection.fetch(
-                "SELECT document FROM investigations ORDER BY created_at DESC LIMIT $1", limit
-            )
+            if tenant is None:
+                rows = await connection.fetch(
+                    "SELECT document FROM investigations ORDER BY created_at DESC LIMIT $1",
+                    limit,
+                )
+            else:
+                rows = await connection.fetch(
+                    "SELECT document FROM investigations WHERE document->>'tenant' = $1 "
+                    "ORDER BY created_at DESC LIMIT $2",
+                    tenant,
+                    limit,
+                )
         return [Investigation.model_validate_json(row["document"]) for row in rows]

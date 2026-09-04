@@ -1,6 +1,10 @@
-"""Hephaestus - triages failing CI pipelines and separates flake from real regression.
+"""Hephaestus - triages failing CI pipelines and separates flake from unknown.
 
 Phase: 4 - Delivery Flow
 """
 
-# TODO: Phase 4 - expose the Hephaestus agent entrypoint
+from __future__ import annotations
+
+from agents.ci_triage.agent import Hephaestus
+
+__all__ = ["Hephaestus"]

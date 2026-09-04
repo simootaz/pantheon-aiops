@@ -79,9 +79,10 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from core.bus import EventBus
 from core.contracts.events import FindingProducedEvent
 from core.contracts.finding import Finding, FindingKind, Severity
-from core.contracts.investigation import Trigger
+from core.contracts.investigation import AgentAccounting, Trigger
 from core.contracts.llm import ResolutionRecord
 from core.contracts.manifest import AgentManifest
+from core.guardrails.budget import TokenBudgetExceeded, TokenMeter
 from core.registry.loader import for_domain
 
 #: Namespace for deterministic Finding ids. Fixed forever: changing it would
@@ -135,6 +136,9 @@ class AgentContext:
     window_end: datetime
     #: Set by BaseAgent before `investigate` is called.
     tools: Any = None
+    #: The run's token budget, also set by BaseAgent. `None` outside a run(),
+    #: which is what makes `consult()` refuse rather than spend unmetered.
+    meter: TokenMeter | None = None
     params: dict[str, Any] = field(default_factory=dict)
     #: Every model consultation this run made, appended by the agent as it goes.
     #:
@@ -162,6 +166,9 @@ class AgentOutcome:
     started_at: datetime
     finished_at: datetime
     tool_calls: int
+    #: What this run consumed, beside what it was allowed. Built by `run()` from
+    #: the meter and the manifest, so a caller does not have to reach into either.
+    accounting: AgentAccounting | None = None
     degraded_reason: str | None = None
     retryable: bool = True
     #: Which model answered, and why, for every consultation this run made.
@@ -178,15 +185,62 @@ class BaseAgent(ABC):
     #: Folder under `agents/`. Set by each subclass; the manifest supplies the rest.
     domain: str
 
-    def __init__(self, bus: EventBus | None = None) -> None:
+    def __init__(self, bus: EventBus | None = None, delphi: Any | None = None) -> None:
         if not getattr(self, "domain", ""):
             raise TypeError(f"{type(self).__name__} must set `domain`")
         self.manifest: AgentManifest = for_domain(self.domain)
         self.bus = bus
+        # Injected so a test can hand over a scripted one. Built from settings on
+        # first use otherwise, because an agent that could not be constructed
+        # without a configured LLM could not be constructed in a unit test.
+        self._delphi = delphi
 
     @property
     def codename(self) -> str:
         return self.manifest.codename
+
+    async def consult(self, ctx: AgentContext, requirements: Any, **kwargs: Any) -> Any:
+        """The only way an agent reaches Delphi, so the token budget is enforced.
+
+        Metering here rather than in each agent is the same choice as the tool
+        allowlist: an agent that cannot exceed its budget is safe by
+        construction, one trusted to check first is safe by convention.
+        `tests/unit/test_agent_runtime.py` asserts no agent calls a gateway
+        directly, because a second path would make this one decorative.
+
+        The ceiling is checked BEFORE the call. A meter that only charges
+        afterwards cannot stop anything - the tokens are already spent.
+        """
+        meter = ctx.meter
+        if meter is None:  # pragma: no cover - run() always sets one
+            raise RuntimeError(
+                "no token meter on the context; consult() is only valid inside run()"
+            )
+
+        # Pessimistic on purpose: the prompt as counted, plus whatever ceiling
+        # the caller asked the provider for. Assuming the completion will be
+        # shorter than allowed is an assumption about output made before any
+        # exists.
+        prompt = str(kwargs.get("prompt", "")) + str(kwargs.get("system") or "")
+        worst_case = _estimate_tokens(prompt) + int(kwargs.get("max_tokens", 1024))
+        meter.check(requested_by=self.codename, worst_case=worst_case)
+
+        consultation = await self.delphi.consult(requirements, requested_by=self.codename, **kwargs)
+        meter.charge(
+            requested_by=self.codename,
+            prompt_tokens=getattr(consultation.completion, "prompt_tokens", 0),
+            completion_tokens=getattr(consultation.completion, "completion_tokens", 0),
+        )
+        return consultation
+
+    @property
+    def delphi(self) -> Any:
+        """The gateway, built from settings if nobody injected one."""
+        if self._delphi is None:
+            from core.llm.assembly import delphi_from_settings
+
+            self._delphi = delphi_from_settings()
+        return self._delphi
 
     # -- the one thing a subclass writes ----------------------------------
 
@@ -219,6 +273,9 @@ class BaseAgent(ABC):
         )
         self.bind_tools(tools)
         ctx.tools = tools
+        # One meter per run. A shared one would let a busy investigation exhaust
+        # a quiet one's budget, and it would present as a flaky agent.
+        ctx.meter = TokenMeter(ceiling=self.manifest.budget.max_tokens)
 
         findings: list[Finding] = []
         status = AgentStatus.COMPLETE
@@ -237,6 +294,11 @@ class BaseAgent(ABC):
         except TimeoutError:
             status = AgentStatus.DEGRADED
             reason = f"exceeded its {self.manifest.budget.max_seconds}s budget"
+            retryable = False
+            findings = [self._degraded_finding(ctx, reason, None)]
+        except TokenBudgetExceeded as spent:
+            status = AgentStatus.DEGRADED
+            reason = str(spent)
             retryable = False
             findings = [self._degraded_finding(ctx, reason, None)]
         except ToolBudgetExceeded as exhausted:
@@ -264,13 +326,27 @@ class BaseAgent(ABC):
         stamped = self._collapse_duplicates(stamped)
         await self._publish(ctx, stamped)
 
+        finished = datetime.now(UTC)
+        budget = self.manifest.budget
         return AgentOutcome(
             agent=self.codename,
             status=status,
             findings=stamped,
             started_at=started,
-            finished_at=datetime.now(UTC),
+            finished_at=finished,
             tool_calls=tools.calls_made,
+            # Built on every exit path, degraded included. A run stopped by its
+            # budget is the one anybody asks about, and an accounting record
+            # that only survives success cannot answer for it.
+            accounting=AgentAccounting(
+                agent=self.codename,
+                tokens_spent=ctx.meter.spent if ctx.meter else 0,
+                token_ceiling=budget.max_tokens,
+                tool_calls=tools.calls_made,
+                tool_call_ceiling=budget.max_tool_calls,
+                seconds=(finished - started).total_seconds(),
+                second_ceiling=budget.max_seconds,
+            ),
             degraded_reason=reason,
             retryable=retryable,
             # Read off the context on every exit path, degraded included. An
@@ -369,3 +445,20 @@ class BaseAgent(ABC):
                 FindingProducedEvent(investigation_id=ctx.investigation_id, finding=finding),
                 investigation_id=ctx.investigation_id,
             )
+
+
+def _estimate_tokens(text: str) -> int:
+    """A pessimistic token count for text nobody has tokenised yet.
+
+    Four characters per token is the usual rule of thumb, and it UNDER-counts
+    for code, JSON and non-Latin scripts - all of which agents send. This feeds
+    a ceiling test, so under-counting means letting through a call that should
+    have been refused. Three is the pessimistic direction, which is the one to
+    be wrong in.
+
+    Not a real tokeniser: importing one would tie every agent to a single
+    vendor's vocabulary, and this number is only compared against a budget
+    nobody has tuned to single tokens. The true count comes back from the
+    provider and is what gets charged.
+    """
+    return max(1, len(text) // 3)

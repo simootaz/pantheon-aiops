@@ -24,6 +24,7 @@ Phase: 1 - Contracts & First Agent Path
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -187,4 +188,86 @@ class EventEnvelope(ContractModel):
     )
 
 
-# TODO: Phase 3 - add delivery guarantees and replay cursors
+class DeliveryGuarantee(StrEnum):
+    """What a bus implementation promises. Declared, not assumed.
+
+    A consumer that needs "every event or tell me" cannot get it from a bus
+    that offers less, and the only thing worse than a bus that loses events is
+    one that loses them while something downstream believes it does not.
+
+    So the guarantee is a property of the implementation and is READ rather
+    than hoped for. `InMemoryEventBus` declares AT_MOST_ONCE, which is the
+    truth: nothing is persisted, nothing is acknowledged, and a process that
+    dies takes everything with it.
+    """
+
+    #: Delivered zero or one times. No durability, no acknowledgement.
+    AT_MOST_ONCE = "at_most_once"
+    #: Delivered at least once; a consumer must tolerate a repeat.
+    AT_LEAST_ONCE = "at_least_once"
+    #: Delivered exactly once. Nothing here offers this and probably nothing
+    #: will - it is listed so a consumer requiring it fails loudly against a
+    #: bus that does not, rather than being unable to express the requirement.
+    EXACTLY_ONCE = "exactly_once"
+
+
+class ReplayCursor(ContractModel):
+    """Where one consumer has read up to, and what it noticed missing.
+
+    A GAP IS A FACT, NOT A SKIP
+    -----------------------------
+    Sequence numbers are monotonic within an investigation, so a consumer that
+    sees 5 after 3 knows it missed 4. That is what makes AT_MOST_ONCE workable:
+    the loss is detectable at the consumer rather than invisible.
+
+    `gaps` counts them. A consumer reading a run with a non-zero gap count has a
+    partial picture and can say so - the same choice as `AgentDegraded`, where a
+    run that could not finish reports it instead of returning a short answer
+    that looks complete.
+
+    `sequence` is None until something has been seen. Not -1 and not 0: the bus
+    numbers from 0, so "seen nothing" and "seen the first event" are different
+    facts and a sentinel that conflated them would drop the first event of every
+    run.
+    """
+
+    investigation_id: UUID | None = Field(
+        default=None, description="The run this cursor is reading. Null for unscoped events."
+    )
+    sequence: int | None = Field(
+        default=None, ge=0, description="Last sequence seen. Null when nothing has been."
+    )
+    gaps: int = Field(default=0, ge=0, description="How many events are known to be missing.")
+
+    def accepts(self, envelope: EventEnvelope) -> bool:
+        """Whether this envelope is new to the cursor.
+
+        False for anything already seen. A consumer that reprocessed a repeat
+        would double-count, and on this bus a repeat is what a retry looks
+        like.
+        """
+        return self.sequence is None or envelope.sequence > self.sequence
+
+    def advanced(self, envelope: EventEnvelope) -> ReplayCursor:
+        """The cursor after reading `envelope`. Returns a new one.
+
+        Never rewinds. An envelope arriving out of order with a lower sequence
+        leaves the cursor where it is - moving it back would replay everything
+        after it, which turns one late event into a storm of duplicates.
+
+        The gap is counted from the distance, not from a boolean. Missing one
+        event and missing forty are different situations and only the count
+        says which.
+        """
+        if not self.accepts(envelope):
+            return self
+
+        missed = 0 if self.sequence is None else envelope.sequence - self.sequence - 1
+        return self.model_copy(
+            update={"sequence": envelope.sequence, "gaps": self.gaps + max(missed, 0)}
+        )
+
+    @property
+    def complete(self) -> bool:
+        """Whether this consumer has seen everything it was sent."""
+        return self.gaps == 0

@@ -165,4 +165,11 @@ class ResolutionRecord(ContractModel):
     resolved_at: datetime
 
 
-# TODO: Phase 2 - add streaming chunk contracts and rate-limit descriptors
+# TODO: Phase 4 - add streaming chunk contracts.
+#
+# BLOCKED ON A CONSUMER. Nothing streams: `Provider.complete` returns one
+# Completion, `STREAMING` is assumed baseline rather than probed, and the first
+# thing that would actually want chunks is the dashboard's investigation view.
+#
+# Rate-limit descriptors are separate and blocked differently - they need a
+# provider that REPORTS its limits, and the one adapter that exists reads none.

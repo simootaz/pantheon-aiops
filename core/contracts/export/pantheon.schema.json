@@ -508,8 +508,22 @@
     },
     "ActionReceipt": {
       "additionalProperties": false,
-      "description": "What happened when an Action ran. Written once, never amended.",
+      "description": "What happened when an Action ran, and what let it. Written once, never amended.\n\n`decided_by` is required and cannot be empty. A receipt said what happened\nand never why it was allowed to: for a refusal the rule lived in an\nexception message, and for a success it was nowhere at all. \"Why did this\nrun\" is the first question asked afterwards, and the record could not\nanswer it.\n\nRequired rather than defaulted, so a receipt that cannot say is\nunconstructible - a default would be filled in by the one call site that\nforgot, which is the site that most needed to say.",
       "properties": {
+        "approval_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The approval spent, when the rule required one. Null when it did not.",
+          "title": "Approval Id"
+        },
         "at": {
           "format": "date-time",
           "title": "At",
@@ -518,6 +532,12 @@
         "connector": {
           "description": "Which connector executed it.",
           "title": "Connector",
+          "type": "string"
+        },
+        "decided_by": {
+          "description": "The policy rule that produced the decision, whichever way it went.",
+          "minLength": 1,
+          "title": "Decided By",
           "type": "string"
         },
         "detail": {
@@ -547,9 +567,62 @@
       "required": [
         "at",
         "state",
-        "connector"
+        "connector",
+        "decided_by"
       ],
       "title": "ActionReceipt",
+      "type": "object"
+    },
+    "AgentAccounting": {
+      "additionalProperties": false,
+      "description": "What one agent's step consumed, beside what it was allowed.\n\nEVERY FIGURE CARRIES ITS CEILING\n----------------------------------\n\"spent 16000 tokens\" cannot answer the question anybody asks, which is\nwhether that was close to the limit. 16000 of 16384 and 16000 of 200000 are\ndifferent runs and the same number.\n\nThree resources because there are three ceilings on `AgentBudget`, and a\nbreakdown missing one cannot explain a DEGRADED step that hit it. A run\nstopped by its token budget and one stopped by its clock look identical from\nthe outside, and they are fixed differently.",
+      "properties": {
+        "agent": {
+          "description": "Codename, e.g. 'argus'.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "second_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Second Ceiling",
+          "type": "integer"
+        },
+        "seconds": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "token_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Token Ceiling",
+          "type": "integer"
+        },
+        "tokens_spent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Spent",
+          "type": "integer"
+        },
+        "tool_call_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Call Ceiling",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "AgentAccounting",
       "type": "object"
     },
     "AgentBudget": {
@@ -728,7 +801,7 @@
     },
     "AuditEntry": {
       "additionalProperties": false,
-      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.",
+      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.\n\nFROZEN, and that is the whole of \"immutable\" above. The docstring said it\nfor two phases while assignment worked fine, so an append-only log rested on\na promise nothing enforced - and a trail that can be rewritten answers\nnothing. `tests/unit/test_audit_trail.py` plants the assignment.",
       "properties": {
         "action": {
           "$ref": "#/$defs/CredentialAction",
@@ -1023,6 +1096,45 @@
       "title": "Dialect",
       "type": "string"
     },
+    "Dissent": {
+      "additionalProperties": false,
+      "description": "Evidence from this run that pointed somewhere other than the leading claim.\n\nWHAT DISSENT CAN HONESTLY MEAN HERE\n-------------------------------------\nNo agent votes. Argus reports that a series moved; Lethe reports what\nappeared in the logs. Neither states an opinion about a root cause, so\n\"the agents disagreed\" cannot be read off anything they said.\n\nWhat IS observable is that the run produced more than one candidate and the\nleading one does not account for all the evidence. A reader told \"memory\nleak, confidence 0.65\" has no way to know that two of the five findings\npointed at disk exhaustion - and that omission is the difference between a\nconclusion and a summary of the majority.\n\nSo a Dissent is a competing hypothesis, named, with **who reported the\nevidence for it**. \"Somebody disagreed\" is not actionable; \"Argus's disk\nsignal pointed elsewhere\" is.",
+      "properties": {
+        "agents": {
+          "description": "Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "category": {
+          "$ref": "#/$defs/RootCauseCategory",
+          "description": "What the dissenting evidence pointed at."
+        },
+        "confidence": {
+          "description": "The competing hypothesis's own confidence.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "finding_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Finding Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category",
+        "confidence"
+      ],
+      "title": "Dissent",
+      "type": "object"
+    },
     "EventEnvelope": {
       "additionalProperties": false,
       "description": "Transport wrapper carrying one event plus its correlation metadata.",
@@ -1295,6 +1407,15 @@
           "description": "Why the Evidence supports the claim.",
           "title": "Rationale"
         },
+        "related": {
+          "description": "Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Related",
+          "type": "array"
+        },
         "severity": {
           "$ref": "#/$defs/Severity"
         },
@@ -1535,6 +1656,14 @@
       "additionalProperties": false,
       "description": "One end-to-end run, from trigger to Verdict.",
       "properties": {
+        "accounting": {
+          "description": "What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.",
+          "items": {
+            "$ref": "#/$defs/AgentAccounting"
+          },
+          "title": "Accounting",
+          "type": "array"
+        },
         "audit": {
           "description": "Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.",
           "items": {
@@ -1625,6 +1754,13 @@
         },
         "state": {
           "$ref": "#/$defs/InvestigationState"
+        },
+        "tenant": {
+          "default": "default",
+          "description": "Who this run belongs to. Never empty - see api/auth/dependencies.py.",
+          "minLength": 1,
+          "title": "Tenant",
+          "type": "string"
         },
         "trigger": {
           "$ref": "#/$defs/Trigger"
@@ -2952,6 +3088,14 @@
           "format": "date-time",
           "title": "Decided At",
           "type": "string"
+        },
+        "dissent": {
+          "description": "Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.",
+          "items": {
+            "$ref": "#/$defs/Dissent"
+          },
+          "title": "Dissent",
+          "type": "array"
         },
         "hypotheses": {
           "description": "Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.",

@@ -85,7 +85,7 @@ class _RecordingStore:
         self.calls.append("get")
         return None
 
-    async def recent(self, limit: int = 20) -> list[Any]:
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Any]:
         self.calls.append("recent")
         return []
 
@@ -99,7 +99,7 @@ class _BrokenStore:
     async def get(self, investigation_id: Any) -> Any:  # pragma: no cover - never called
         raise AssertionError("readiness must not fetch by id")
 
-    async def recent(self, limit: int = 20) -> list[Any]:
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Any]:
         raise ConnectionRefusedError("the database is not there")
 
 

@@ -26,11 +26,11 @@ keep all of it honest. **No business logic.**
 | Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
 | Go | workspace over 5 modules, golangci-lint, compiling stubs |
 | TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
-| Contracts | 49 models, closed, exported to Go + TS |
+| Contracts | 54 models, closed, exported to Go + TS |
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |
-| Docs | 7 ADRs, repository map, architecture, this file |
+| Docs | 8 ADRs, repository map, architecture, this file |
 | **Guards** | **78, each verified against a planted violation** |
 
 Shipped as ten branches, two unplanned: `feature/go-base-relocation` and
@@ -81,40 +81,86 @@ one. A Verdict aggregates and proposes no hypotheses — see Phase 2.
   actually branch (`tests/coverage_floor.py`). The aggregate alone is flattered
   because most statements are Pydantic field declarations covered by import.
 
-## Phase 2 — Orchestrator & Investigation Flow 🚧 in progress
+## Phase 2 — Orchestrator & Investigation Flow 🚧 one capability short
 
-**One of six.** Zeus runs flow 1 end to end. Everything that would let an
-investigation *reason* rather than aggregate is still ahead — Delphi is the
-large one, and until it exists a Verdict proposes no hypotheses by design rather
-than by omission.
+**One of six.** Zeus runs flow 1 end to end, reaching all three agents. Delphi
+has landed — resolution, capability probing, a fallback chain and a completion
+cache — and `ResolutionRecord`s are written onto the Investigation.
 
-- ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. Plans one
-  step because one agent is implemented, and the plan is built from what is
-  implemented rather than what is rostered. No Temporal: a single step with no
+Correlation groups findings by co-occurrence and `core/orchestrator/
+hypotheses.py` ranks them, narrowly: a hypothesis is proposed only from a signal
+whose metric **is** the thing the category describes. Errors, latency and CPU
+corroborate and name nothing, so two of the five scenarios come back `UNKNOWN`
+with their evidence attached — predicted as misses before the ranker was
+written. `Verdict.dissent` records what the leading claim does not account for.
+
+Per-category root-cause detail moved to **Phase 4**. Half its blocker lifted —
+categories are produced now — and half did not: nothing computes a growth rate
+or a time-to-full, so the detail would be a shape nobody fills.
+
+**`make test-delphi` has now run against a real provider** — 5 passed,
+2026-08-31. Until that moment every Delphi test used `RecordingProvider` or a
+scripted fake, so "the adapter works" was asserted and "the provider answers"
+was not. It is now observed: the configured provider answers a real prompt, a
+wrong model id fails naming which one, the gateway reaches a model without
+anyone naming one, JSON mode produces JSON, and the provider lists what it
+serves.
+
+- ✅ **Zeus**: router, classifier, planner, dispatcher, aggregator. An alert
+  plans **two** steps — metrics and logs both cover it — and a human question
+  plans one, to Hermes. The plan is built from what is implemented rather than
+  what is rostered. No Temporal: a single step with no
   waits needs no durable execution, and `dispatcher.run_step` is the one
   function that would change — see ADR 0007 for what forces it.
 - `core/memory/` — vector store, repository, cache
 - 🚧 **Delphi**: gateway, resolver, catalog, `chat_completions` and tracing are
-  implemented and unit-gated. What remains is `ResolutionRecord` persistence
-  onto the Investigation, a live gate against a real model, and the remaining
-  dialect adapters (Phase 5). Nothing consults it yet - no agent reasons.
+  implemented, unit-gated **and proven against a real provider**. What remains
+  is the other dialect adapters (Phase 5). Nothing consults it yet - no agent
+  reasons.
 - **Lethe** and **Hermes**; Loki connector
 - `ResolutionRecord` persistence
 - Redaction wired into logging and tracing
 
-## Phase 3 — Guardrails, Approvals & Write Actions ⬜ not started
+## Phase 3 — Guardrails, Approvals & Write Actions ✅
 
-- `core/guardrails/` — policy, approval gate, budget
-- **Cerberus** implemented: store, policy, audit, broker, lease, redemption,
-  rotation, revocation, break-glass
-- **Aegis**; write tools behind approval
-- Auth and tenant scoping
+- ✅ `core/guardrails/` — policy, approval gate, budget, executor. An approval
+  binds to a **digest of the content the approver read**, not to an id, and the
+  last policy rule is REQUIRE_APPROVAL so an unclassified operation gets a
+  person rather than permission. Every receipt names the rule that decided it.
+- ✅ **Cerberus** — store, policy, audit, broker, lease, redemption, rotation,
+  revocation, break-glass. The vault has no plaintext getter; redemption is the
+  only producer and checks the lease against the context it is used in. Every
+  revocation kills the live leases too, or it takes effect in one TTL.
+- ✅ **Aegis**; the first write tool behind approval. No agent may declare a
+  mutating tool, which is safe by construction rather than by convention.
+- ✅ Auth — bearer tokens, four roles, constant-time comparison. The approver's
+  identity comes from the credential and no longer from the request body.
+- ✅ **Tenant scoping.** `Investigation.tenant` and `Principal.tenant`, with the
+  reads narrowed in the store rather than at each call site — one call site can
+  forget it, and the filter has to run before the limit. Another tenant's run
+  answers **404 rather than 403**, because existence is itself the disclosure.
+  Cross-tenant is `@*` in the token table and is not inherited from ADMIN. The
+  investigation reads are gated now: a scope an unauthenticated caller bypasses
+  is a scope in name.
 
 ## Phase 4 — Delivery Flow ⬜ not started
 
-- **Hephaestus** and **Themis**; GitLab and GitHub connectors
-- **AG-UI endpoint and translator**; A2UI surfaces for the Approval Gate and
-  Cerberus
+- ✅ **A pull request reaches Aegis and a failed run reaches Hephaestus**, end
+  to end: signed webhook, classifier, planner, params, dispatch.
+- ✅ **Hephaestus** (flake vs unknown, from reruns at one commit) and ✅ **Themis**
+  (merge frequency and review latency, both named for what they are rather than
+  for the DORA metric they resemble); ✅ **GitHub connector** (read-only: Actions
+  runs, jobs, pull requests, PR file patches) and ✅ **GitLab connector**.
+  **GitHub is the one this deployment uses**; GitLab is built and kept, not
+  invested in further.
+  ✅ **Aegis reads a real pull request.** `github.file_at` reads the bytes at
+  both shas rather than reconstructing from patches - GitHub omits `patch`
+  above ~20k of diff, so a patch-based reviewer silently skips the large
+  manifest changes most worth reviewing. Documents pair by identity, not
+  position.
+- ✅ **AG-UI endpoint and translator**; ✅ A2UI surfaces for the Approval Gate
+  and Cerberus. The A2UI envelope remains a **documented guess** - no canonical
+  AG-UI wrapper is specified - bounded to one function and one constant.
 - `ArtifactRef` resolution — server-side, same-investigation only
 - Dashboard: real investigation, agent, approval and settings views
 - Delphi settings surface: provider cards, tier pickers, per-agent overrides,
@@ -154,7 +200,7 @@ changing it. Nothing here is forgotten; each row is a debt with a due date.
 | `make dev` / `make sim` | wired | — | ✅ done at Phase 1, once `api.main:app` and `simulator.cli` became real |
 | **Simulator compression ceiling** | ~`tick_seconds / 0.29` — a tick costs two HTTP round trips whatever it covers | batched or in-process ingestion if a scenario ever needs more | **When a scenario cannot be expressed within it.** Not a defect: `RunReport.achieved_speed` and `kept_up` report the shortfall instead of hiding it, and the gate asserts on the speed actually delivered. Raising `tick_seconds` buys compression linearly and costs phase-boundary resolution |
 | **`gen_ts_api.sh`** | does not exist | additive generator for endpoint-surface types (paths, params, status codes) from OpenAPI | **Phase 1**, alongside real routes. Separate from `gen_ts.sh`: domain types come from JSON Schema so they are not shaped by routing accidents |
-| **`AgentBudget.max_tokens`** | carried on every manifest, enforced nowhere | enforced against Delphi's token meter | **Phase 2, when Delphi lands.** Nothing consumes tokens yet, so there is no meter to enforce against, and an enforcement path that cannot be tested is the unfailable-guard class. `test_nothing_reads_the_token_budget_yet` asserts the field stays untouched, so connecting it is a deliberate act rather than a half-finished one |
+| **`AgentBudget.max_tokens`** | ~~carried on every manifest, enforced nowhere~~ **enforced** in `core/guardrails/budget.py` against Delphi's token counts | — | **Done, 2026-08-28.** Metering lives in `BaseAgent.consult`, so an agent cannot exceed its budget by construction rather than by remembering to check; the ceiling is tested BEFORE the call, because a meter that only charges afterwards cannot stop anything. `test_nothing_reads_the_token_budget_yet` is **retired** and replaced by `test_only_the_runtime_reaches_a_gateway_directly`, which fails if a second, unmetered path to a gateway appears |
 | **Argus peer-relative needs 12 peers** | measured; `peer_z` refuses below `MIN_PEERS = 12` | either a measured floor below 12, or peers pooled across a wider scope | **Before Argus ships against a real cluster.** Peer-relative removes the temporal path's period-estimation blocker - seasonality is common-mode across peers, so it cancels with no window and no period. It has a **replica-count blocker of its own**: real services commonly run 2-3 replicas, and a seeded sweep found 100% of three-peer subsets exceed \|z\| = 8 on clean data, worst case 9444, while the *best* three-peer subset came in at 24.92 - so a particular small group can look well behaved while every neighbouring choice is catastrophic. The two paths must be compared with both limitations stated, or peer-relative looks free when it is not. **Open question, not pursued:** whether peers can be pooled across a wider scope - all pods of similar workload, all nodes in a pool - to reach a usable count |
 | **Chronos — deferred actions** | nothing; an agent that starts a long operation blocks past `max_seconds` and dies, or fires and forgets | `core/contracts/deferred.py`, a Temporal workflow per deferral, webhook completion with polling and a mandatory deadline behind it | **Phase 3 at the earliest**, after the Approval Gate — a deferred action is almost always a write, and the approval belongs to the moment of starting. Specified in [ADR 0007](docs/adr/0007-deferred-actions.md), status **Proposed**. The gap is concrete: `max_seconds` is 120 and a CI bisect takes 5-40 minutes, a chaos experiment up to 90. Waiting must not count against the budget or the same agent passes or fails depending on how busy an unrelated build queue was. First feature that genuinely requires Temporal rather than a queue. Arachne and Gaia both depend on this shape, so building either first means building a private version of it |
 | **Host suspension breaks long gates** | known, undefended | a documented pre-flight, or a gate that detects and reports the gap | **Before anyone else runs these gates.** A measurement spanning tens of minutes can be interrupted by the host sleeping. Loki's ingester then ages its **own** entry out of its ring - `unhealthy instances: 127.0.0.1:9095` - and every push returns 500 for up to the 10m forget period before it re-registers; observed as a 21-minute outage mid-run. Nothing restarts and nothing is OOM-killed, so the container looks healthy throughout. `ScenarioRunner` now survives it and records `degraded` on the run, and `agents/anomaly/calibration.aggregate` refuses to compute a bound over runs whose condition is unrecorded - but neither prevents the interruption, and a reader of the numbers still needs to know it can happen |

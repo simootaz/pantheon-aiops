@@ -3,4 +3,5 @@
 Phase: 4 - Delivery Flow
 """
 
-# TODO: Phase 4 - expose the gitlab MCP server
+# The server is connectors/gitlab/server.py, run as `python -m connectors.gitlab.server`.
+# Nothing imports it as a package attribute, so there is nothing to re-export.

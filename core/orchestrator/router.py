@@ -35,6 +35,7 @@ from core.contracts.investigation import Investigation, InvestigationState, Trig
 from core.contracts.plan import StepStatus
 from core.orchestrator import aggregator, dispatcher, planner
 from core.orchestrator.classifier import classify, scenario_of
+from core.orchestrator.correlation import correlate
 from core.store.investigations import InvestigationStore
 
 #: How far back an agent looks when the trigger does not say.
@@ -107,6 +108,7 @@ async def investigate(
     completed_steps = []
     findings = []
     resolutions = []
+    accounting = []
     for step in plan:
         await bus.publish(
             StepStartedEvent(investigation_id=investigation.id, agent=step.agent),
@@ -125,6 +127,10 @@ async def investigate(
         # `Investigation.resolutions` is what answers "what did this run cost",
         # and the runs anybody asks that about are the ones that went wrong.
         resolutions.extend(outcome.resolutions)
+        # Appended for every dispatched step, including the degraded ones -
+        # see AgentOutcome.accounting.
+        if outcome.accounting is not None:
+            accounting.append(outcome.accounting)
         await bus.publish(
             StepFinishedEvent(
                 investigation_id=investigation.id,
@@ -133,6 +139,11 @@ async def investigate(
             ),
             investigation_id=investigation.id,
         )
+
+    # After every step, before the verdict. Correlation reads what ALL the
+    # agents produced, so it cannot run per-step - and the verdict should carry
+    # the groups rather than leaving a reader to assemble them.
+    findings.extend(correlate(findings))
 
     verdict = aggregator.aggregate(investigation.id, findings, completed_steps)
     partial = any(s.status is not StepStatus.COMPLETE for s in completed_steps)
@@ -144,6 +155,7 @@ async def investigate(
             "plan": completed_steps,
             "findings": findings,
             "resolutions": resolutions,
+            "accounting": accounting,
             "verdict": verdict,
         }
     )

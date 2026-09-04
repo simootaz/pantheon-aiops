@@ -49,6 +49,26 @@ AGENT_IMPORTABLE: tuple[str, ...] = (
     "core.cerberus.redaction",
 )
 
-__all__ = ["AGENT_IMPORTABLE"]
+# Re-exported for agents, and DELIBERATELY only these two.
+#
+# The TODO here read "export request_access() and redact()". `request_access` is
+# a method on `Cerberus` rather than a free function - a module-level one would
+# need a process-wide broker, and a process-wide broker is a grant book nobody
+# passed in, which is how an agent ends up holding permissions from another run.
+#
+# So the CLASS is exported. An agent is handed an instance; it cannot make one
+# that answers differently from the one the runtime built.
+#
+# Nothing from `store` or `redemption` appears here, and that is the whole
+# point: what an agent can import is what is listed above, and this file is the
+# only thing under `core.cerberus` an agent should ever need to read.
+from core.cerberus.broker import AccessRefused, ApprovalRequired, Cerberus  # noqa: E402
+from core.cerberus.redaction import redact  # noqa: E402
 
-# TODO: Phase 3 - export request_access() and redact() from here
+__all__ = [
+    "AGENT_IMPORTABLE",
+    "AccessRefused",
+    "ApprovalRequired",
+    "Cerberus",
+    "redact",
+]

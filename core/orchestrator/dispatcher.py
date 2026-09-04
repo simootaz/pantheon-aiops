@@ -28,6 +28,7 @@ from uuid import UUID
 from agents._base.base_agent import AgentContext, AgentOutcome, AgentStatus, BaseAgent
 from core.contracts.investigation import Trigger
 from core.contracts.plan import PlanStep, StepStatus
+from core.orchestrator.classifier import subject_of
 
 #: Codename to the class that implements it. Not discovered by import scanning:
 #: a registry that finds agents by walking the filesystem will one day find a
@@ -75,6 +76,11 @@ async def run_step(
         trigger=trigger,
         window_start=window_start,
         window_end=window_end,
+        # What the trigger is ABOUT, when it is about one thing. Empty for an
+        # alert: Argus and Lethe take the window, which is already here. A pull
+        # request or a CI run is a subject rather than a window, and an agent
+        # pointed at one cannot find it from a time range.
+        params=subject_of(trigger),
     )
 
     started = datetime.now(UTC)

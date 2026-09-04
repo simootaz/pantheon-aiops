@@ -29,8 +29,31 @@ def register_implemented() -> None:
     else has been imported, and the failure shows up at dispatch.
     """
     from agents.anomaly.agent import Argus
+    from agents.ci_triage.agent import Hephaestus
+    from agents.log_clustering.agent import Lethe
+    from agents.manifest_review.agent import Aegis
+    from agents.nl_query.agent import Hermes
 
     register("argus", Argus)
+    register("lethe", Lethe)
+    register("hermes", Hermes)
+    # Reachable as of the webhook route: `classifier.subject_of` puts the pull
+    # request or the CI run on `ctx.params`, so these two are pointed at
+    # something rather than degrading with "no run was named". Registering them
+    # before that existed was refused by
+    # `test_nothing_is_registered_that_the_planner_will_never_name`.
+    register("aegis", Aegis)
+    register("hephaestus", Hephaestus)
+
+    # Themis is implemented and NOT registered, for the reason Aegis and
+    # Hephaestus were not until the webhook route existed: nothing can route to
+    # it. A delivery measurement answers a question nobody's incident asked -
+    # it belongs on a schedule, and `TriggerKind.SCHEDULE` reaches no classifier
+    # branch because nothing schedules anything until Temporal lands in Phase 5.
+    #
+    # Registering it would put an agent in a plan that no trigger produces, and
+    # `test_every_implemented_agent_is_reachable_by_some_trigger` would refuse
+    # it - correctly.
 
 
 __all__ = [

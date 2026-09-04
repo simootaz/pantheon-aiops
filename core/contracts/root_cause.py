@@ -86,4 +86,21 @@ class RootCauseHypothesis(ContractModel):
     reasoning: str | None = Field(default=None, description="Why the evidence implies this.")
 
 
-# TODO: Phase 2 - add per-category structured detail once agents populate them
+# TODO: Phase 4 - add per-category structured detail once something produces it.
+#
+# HALF OF THE ORIGINAL BLOCKER IS GONE, AND HALF IS NOT.
+#
+# The old reason was "no agent emits a RootCauseCategory, because nothing
+# proposes a hypothesis". That stopped being true: `core/orchestrator/
+# hypotheses.py` proposes them, so categories are now produced.
+#
+# What is still missing is the DETAIL. A structured memory-leak detail would
+# carry a growth rate and the pod it was measured on; a disk-exhaustion detail
+# would carry the fill rate and time-to-full. Nothing computes either. The
+# ranker names a category from the fact that a threshold was crossed, and it has
+# no more than that to put in a detail field.
+#
+# So adding one now means designing the shape of a number nobody produces, and
+# the categories are what simulator/scenarios/*.yaml scores against - a guessed
+# shape would be scored as though it were reasoning. Moved to Phase 4, where the
+# per-category work sits with the agents that would compute it.

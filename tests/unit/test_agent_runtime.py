@@ -508,26 +508,69 @@ def test_partial_is_derived_from_what_ran_not_asserted() -> None:
     assert verdict(StepStatus.COMPLETE, StepStatus.DEGRADED).degraded_agents == ["a1"]
 
 
-def test_nothing_reads_the_token_budget_yet() -> None:
-    """`max_tokens` is carried but unenforced, and must not be half-wired.
+def test_only_the_runtime_reaches_a_gateway_directly() -> None:
+    """Replaces `test_nothing_reads_the_token_budget_yet`, retired 2026-08-28.
 
-    Nothing consumes tokens until Delphi lands, so there is no meter to enforce
-    against. Writing an enforcement path that cannot be tested is the
-    unfailable-guard class. This asserts the field stays untouched, so connecting
-    it at Phase 2 is a conscious act rather than a half-finished one.
+    That guard asserted `AgentBudget.max_tokens` stayed UNREAD, because nothing
+    consumed tokens and an enforcement path with no meter to test against is the
+    unfailable-guard class. Delphi has landed and `Completion` carries token
+    counts, so the field is now enforced in `core/guardrails/budget.py` and the
+    old guard is gone rather than left passing over a condition that no longer
+    describes anything.
+
+    This is what replaces it. Metering lives in `BaseAgent.consult`, so an agent
+    calling a gateway directly would spend unmetered - and the enforcement would
+    be decorative rather than absent, which is worse because it reads as present.
     """
-    readers: list[str] = []
-    for directory in ("core", "agents", "api", "simulator"):
-        for path in sorted((REPO_ROOT / directory).rglob("*.py")):
-            for node in ast.walk(ast.parse(read_data(path))):
-                if isinstance(node, ast.Attribute) and node.attr == "max_tokens":
-                    readers.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+    #: The one legitimate call site: `BaseAgent.consult` IS the metered path,
+    #: and it has to reach the gateway to do its job. Named rather than pattern
+    #: matched, so adding a second exemption is a visible act.
+    runtime = REPO_ROOT / "agents" / "_base" / "base_agent.py"
 
-    assert not readers, (
-        "max_tokens is read at " + ", ".join(readers) + ". It is carried but not "
-        "enforced until Delphi provides a meter (see ROADMAP). Wiring it means "
-        "wiring it deliberately, with a test that can fail."
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "agents").rglob("*.py")):
+        if path == runtime:
+            continue
+        for node in ast.walk(ast.parse(read_data(path))):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute) or func.attr != "consult":
+                continue
+            # `self.consult(...)` is the metered path. Anything else is a second
+            # one, which is exactly what must not exist.
+            caller = func.value
+            if isinstance(caller, ast.Name) and caller.id == "self":
+                continue
+            offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+
+    assert not offenders, (
+        f"a gateway is consulted directly at {offenders}. Use `self.consult(ctx, ...)`, "
+        "which charges the run's token meter. A second path makes the budget "
+        "decorative - and a decorative guard is worse than a missing one."
     )
+    assert "consult" in read_data(runtime), (
+        "BaseAgent no longer defines consult(), so this guard has no metered path "
+        "to point agents at and would pass over a codebase with no metering at all"
+    )
+
+
+def test_the_runtime_gives_every_run_its_own_meter() -> None:
+    """A shared meter would let a busy investigation exhaust a quiet one's
+    budget, and it would present as a flaky agent rather than as a ceiling."""
+
+    async def quiet(_ctx: AgentContext) -> list[Finding]:
+        return []
+
+    agent = _Probe(quiet)
+    first, second = a_context(), a_context()
+
+    asyncio.run(agent.run(first))
+    asyncio.run(agent.run(second))
+
+    assert first.meter is not None and second.meter is not None
+    assert first.meter is not second.meter
+    assert first.meter.ceiling == agent.manifest.budget.max_tokens
 
 
 # --- retry semantics, encoded rather than promised ---------------------------

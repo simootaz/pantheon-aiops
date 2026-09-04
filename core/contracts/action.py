@@ -56,13 +56,32 @@ class ExecutionState(StrEnum):
 
 
 class ActionReceipt(ContractModel):
-    """What happened when an Action ran. Written once, never amended."""
+    """What happened when an Action ran, and what let it. Written once, never amended.
+
+    `decided_by` is required and cannot be empty. A receipt said what happened
+    and never why it was allowed to: for a refusal the rule lived in an
+    exception message, and for a success it was nowhere at all. "Why did this
+    run" is the first question asked afterwards, and the record could not
+    answer it.
+
+    Required rather than defaulted, so a receipt that cannot say is
+    unconstructible - a default would be filled in by the one call site that
+    forgot, which is the site that most needed to say.
+    """
 
     at: datetime
     state: ExecutionState
     connector: str = Field(description="Which connector executed it.")
     detail: str = Field(default="", description="Human-readable outcome. Never a credential.")
     lease_id: UUID | None = Field(default=None, description="The lease it was executed under.")
+    decided_by: str = Field(
+        min_length=1,
+        description="The policy rule that produced the decision, whichever way it went.",
+    )
+    approval_id: UUID | None = Field(
+        default=None,
+        description="The approval spent, when the rule required one. Null when it did not.",
+    )
 
 
 class Action(ContractModel):
@@ -117,4 +136,10 @@ class Action(ContractModel):
         return self
 
 
-# TODO: Phase 3 - link receipts to the guardrail decision that permitted them
+# Receipts name the rule that decided them - see `ActionReceipt.decided_by`, set
+# by `core/guardrails/executor.py`, which is the only module that writes one.
+#
+# Not a reference to a stored Ruling object. A receipt is written once and never
+# amended, and a pointer into a store that can change would make the record say
+# something different later than it said at the time - which is the one property
+# an execution record has to keep.

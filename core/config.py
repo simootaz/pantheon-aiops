@@ -113,6 +113,16 @@ class ApiSettings(BaseSettings):
     host: str = "0.0.0.0"  # nosec B104
     port: int = Field(default=8000, ge=1, le=65535)
 
+    #: `subject:role,role=token;subject:role=token`. Parsed by
+    #: `api/auth/dependencies.py`, which refuses a malformed entry rather than
+    #: skipping it - an ignored entry silently reduces the set of people who can
+    #: approve, and the symptom reads as one person's problem.
+    #:
+    #: Empty authenticates nobody. It does NOT authenticate everybody, which is
+    #: the bug this shape invites: an empty credential matching an unset
+    #: expectation. Production refuses to start without one.
+    tokens: SecretStr | None = None
+
 
 class PrometheusSettings(BaseSettings):
     model_config = _group("PROMETHEUS_")
@@ -128,6 +138,16 @@ class LokiSettings(BaseSettings):
     model_config = _group("LOKI_")
 
     url: HttpUrl = HttpUrl("http://localhost:3100")
+
+    #: The LogQL selector Lethe reads. Deliberately NOT the simulator's
+    #: `LOKI_JOB_LABEL`, which is what the simulator writes: one is a producer's
+    #: identity and one is a consumer's scope, they belong to different systems,
+    #: and in any real deployment they differ. The dev-shaped default happens to
+    #: match because the only producer here today is the simulator.
+    #:
+    #: One selector for both the incident and the reference window - narrowing it
+    #: per window would make them disagree about what "the logs" are.
+    selector: str = '{job="pantheon-sim"}'
 
     @property
     def base(self) -> str:
@@ -267,7 +287,21 @@ class GitLabSettings(BaseSettings):
 class GitHubSettings(BaseSettings):
     model_config = _group("GITHUB_")
 
+    #: github.com by default, and a setting rather than a constant so GitHub
+    #: Enterprise is reachable by configuration rather than by an edit. An
+    #: endpoint hardcoded in a connector is one that cannot be pointed anywhere
+    #: else without a release.
+    api_url: HttpUrl = HttpUrl("https://api.github.com")
     token: SecretStr | None = None
+    #: The secret GitHub signs webhook bodies with. Empty disables verification,
+    #: which is fine locally and is not fine anywhere a real GitHub can reach -
+    #: an unverified webhook endpoint is a way for anyone to start an
+    #: investigation against any repository name they care to type.
+    webhook_secret: SecretStr | None = None
+
+    @property
+    def base(self) -> str:
+        return _base(self.api_url)
 
 
 class KubernetesSettings(BaseSettings):
@@ -315,7 +349,9 @@ class SimulatorSettings(BaseSettings):
 #: added in the same session that wrote the claim.
 OPTIONAL_IN_PRODUCTION: dict[str, str] = {
     "GITHUB_TOKEN": "only needed by the GitHub connector; a Prometheus-only "
-    "deployment must not be forced to invent one",
+    "deployment must not be forced to invent one. Note the webhook secret IS "
+    "required, the same split as GitLab: a token reaches OUT, a secret guards "
+    "something reaching in",
     "GITLAB_TOKEN": "same - the GitLab connector is optional. Note the webhook "
     "token IS required: that one guards an inbound endpoint",
     "LLM_API_KEY": "a local provider needs none. DelphiSettings already refuses "
@@ -332,6 +368,19 @@ REQUIRED_IN_PRODUCTION: tuple[tuple[str, str, str], ...] = (
     ("object_storage", "secret_key", "S3_SECRET_KEY"),
     ("cerberus", "master_key", "CERBERUS_MASTER_KEY"),
     ("gitlab", "webhook_token", "GITLAB_WEBHOOK_TOKEN"),
+    # The same argument, and it applies whether or not this deployment uses
+    # GitHub: the endpoint is mounted regardless, so an unset secret is an open
+    # door for anyone who finds the URL to start an investigation against any
+    # repository name they care to type.
+    ("github", "webhook_secret", "GITHUB_WEBHOOK_SECRET"),
+    # Unset means no principal can authenticate, so every gated endpoint is a
+    # 401 and the approvals queue is unanswerable. Refused here rather than
+    # discovered when somebody tries to approve something at 03:00.
+    #
+    # Not the same check as `api/auth/dependencies.py`, which refuses an empty
+    # TABLE. `PANTHEON_API_TOKENS=";;"` is not None and parses to no
+    # principals, and only that one catches it.
+    ("api", "tokens", "PANTHEON_API_TOKENS"),
 )
 
 

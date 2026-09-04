@@ -139,16 +139,111 @@ def recipe_for(target: str) -> str:
     return "\n".join(lines)
 
 
-def test_test_sim_requires_the_stack_rather_than_skipping() -> None:
-    """A skipped gate is reported as a pass, and this one exists to assert data.
+def test_every_live_gate_requires_the_stack_rather_than_skipping() -> None:
+    """A skipped gate is reported as a pass, and these exist to assert data.
 
     `make test-sim` skipped all nine tests and exited 0 on a machine where Loki
-    was briefly unready. Without the env var it would do so again.
+    was briefly unready. Without the flag any of them would do so again.
+
+    Checked over the target's whole block - the recipe AND its target-specific
+    `export` - because the flag moved from one to the other and this guard went
+    looking in the old place. `test-delphi` is deliberately absent: it skips
+    without an API key on purpose, because a red gate meaning "you did not sign
+    up" trains people to ignore red gates.
     """
-    recipe = recipe_for("test-sim")
-    assert "PANTHEON_REQUIRE_STACK" in recipe, (
-        "make test-sim does not set PANTHEON_REQUIRE_STACK, so an unreachable "
-        f"stack makes the whole gate skip and exit 0. Recipe:\n{recipe}"
+    text = BODY
+    for gate in ("test-sim", "test-connectors", "test-loki", "test-flow-one"):
+        start = text.index(f"\n{gate}:")
+        block = text[start : text.index("\n\n", start)]
+        assert "PANTHEON_REQUIRE_STACK" in block, (
+            f"make {gate} does not set PANTHEON_REQUIRE_STACK, so an unreachable "
+            f"stack makes the whole gate skip and exit 0. Block:\n{block}"
+        )
+
+
+#: Commands and builtins cmd.exe does not have. Not an exhaustive list of
+#: coreutils - the ones this Makefile actually reached for, plus the obvious
+#: neighbours somebody would reach for next.
+#:
+#: `bash` is deliberately absent: `bash codegen/gen_go.sh` is fine, because Git
+#: for Windows ships bash and the recipe names it explicitly. The failure is
+#: assuming a POSIX shell is ALREADY underneath, not calling one on purpose.
+POSIX_ONLY = frozenset(
+    {
+        "[",
+        "test",
+        "cp",
+        "rm",
+        "mv",
+        "ln",
+        "chmod",
+        "touch",
+        "find",
+        "grep",
+        "sed",
+        "awk",
+        "cat",
+        "ls",
+        "head",
+        "tail",
+        "which",
+        "set",
+        ".",
+        "source",
+        "export",
+        "true",
+        "false",
+    }
+)
+
+
+def test_no_recipe_assumes_a_posix_shell() -> None:
+    """Every live gate, `make up`, `make clean` and `make help` were unrunnable
+    on Windows until 2026-08-31.
+
+    On Windows make runs recipes through cmd.exe. `make test-sim` reported
+    `'PANTHEON_REQUIRE_STACK' is not recognized as an internal or external
+    command`; `make up` reported the same about `'['`. The Makefile had been
+    written as though a POSIX shell were always underneath it, and CI runs
+    Linux, so nothing noticed until somebody ran the targets by hand.
+
+    THIS GUARD WAS TOO NARROW WHEN IT WAS FIRST WRITTEN
+    -----------------------------------------------------
+    It checked `VAR=value` prefixes and `set -a` and called itself
+    "no recipe uses POSIX-only shell syntax". `make up`'s `[ -f .env ] || cp`
+    sailed past it, and the user found it by running the target - two minutes
+    after this guard went green claiming to cover exactly that.
+
+    A guard whose name describes a class and whose body checks two members of
+    it is the family this repository keeps cataloguing: it has a subject, it is
+    green, and the new thing simply is not it. It now checks the FIRST WORD of
+    every pipeline segment, which is the mechanism rather than a sample of it.
+    """
+    offenders: list[str] = []
+    for line in BODY.splitlines():
+        if not line.startswith("	"):
+            continue
+        recipe = line.lstrip("	@").strip()
+        if recipe.startswith("#"):
+            continue
+
+        # Each segment of a pipeline or an `&&`/`||` chain runs as its own
+        # command, so each one's first word has to exist.
+        for segment in re.split(r"\||&&|\|\|", recipe):
+            words = segment.strip().split()
+            if not words:
+                continue
+            first = words[0]
+            if re.match(r"^[A-Z_][A-Z0-9_]*=", first) or first in POSIX_ONLY:
+                offenders.append(recipe)
+                break
+
+    listed = "; ".join(sorted(set(offenders)))
+    assert not offenders, (
+        f"recipes assuming a POSIX shell, which cmd.exe cannot run: {listed}. "
+        "Use a target-specific `export` for a variable, `uv run --env-file` for "
+        "a file, and `uv run python -m tooling.make_tasks` for anything that "
+        "wanted coreutils."
     )
 
 

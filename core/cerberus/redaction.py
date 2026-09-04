@@ -14,8 +14,9 @@ The third is the reason Cerberus exists. A secret that reaches a prompt has left
 the building: it is in a third party's logs, unauditable and unrevocable. See
 docs/adr/0005-credential-brokering.md.
 
-Wiring these into the actual sinks is Phase 2-3 work; the function itself is
-usable and tested now.
+All three sinks are wired: `core/llm/tracing.py` redacts a prompt before it
+reaches a span, `core/observability/logging.py` filters every log record, and
+prompts are digested rather than carried.
 
 Phase: 3 - Guardrails, Approvals & Write Actions
 """
@@ -89,10 +90,15 @@ def _redact_text(text: str, literals: Sequence[str]) -> str:
 
 
 def _known_literals(secrets: Iterable[str] | None) -> list[str]:
-    """Longest first, so a secret containing another is replaced whole."""
-    if not secrets:
-        return []
-    return sorted({s for s in secrets if s}, key=len, reverse=True)
+    """Longest first, so a secret containing another is replaced whole.
+
+    Redeemed credentials are always included, whatever the caller passed. A
+    caller that supplied its own list would otherwise silently opt out of
+    scrubbing the values this process decrypted - and that caller is a log
+    handler, which is the one place it matters most.
+    """
+    supplied = set(secrets) if secrets else set()
+    return sorted({s for s in supplied | set(REDEEMED.known()) if s}, key=len, reverse=True)
 
 
 def redact(value: Any, secrets: Iterable[str] | None = None) -> Any:
@@ -147,5 +153,97 @@ def contains_secret(value: Any, secrets: Iterable[str]) -> bool:
     return any(literal in haystack for literal in literals)
 
 
-# TODO: Phase 2 - wire into core.observability.logging and core.llm.tracing
-# TODO: Phase 3 - source known literals from the Cerberus store for live leases
+# --- secrets this process has actually produced -------------------------------------------
+#
+# The Phase 3 TODO here read "source known literals from the Cerberus store for
+# live leases". That is not possible, and finding out why is the useful part:
+# `store/vault.py` has NO PLAINTEXT GETTER. It holds sealed bytes and
+# `redemption.py` is the only module that opens one. A redactor that could read
+# the store would be a second producer of plaintext, which is the exact thing
+# the boundary exists to prevent - so the TODO asked for the one shape the
+# design forbids.
+#
+# The only moment a credential exists in the clear is redemption. So that is
+# where it is registered, by `redemption.redeem`, and this is the register.
+
+
+class RedeemedSecrets:
+    """Plaintext this process has already produced, kept so it can be scrubbed.
+
+    THE TRADE, STATED
+    -------------------
+    This holds decrypted credentials in memory for the life of the process. That
+    is a real exposure and it is the smaller one: the value was already produced
+    in the clear and handed to a connector, so the process holds it either way.
+    What this buys is that it cannot reach a log - and a credential in a log is
+    a credential in a log aggregator, an index, a backup and a laptop.
+
+    The same trade `configured_secrets()` already makes, for the same reason.
+
+    A MINIMUM LENGTH, WHICH IS NOT COSMETIC
+    -----------------------------------------
+    A short credential registered as a literal is a substring of everything. A
+    one-character secret would replace that character throughout every log line
+    in the process - the logs would survive as unreadable, the cause would be
+    invisible, and it would look like a formatter bug.
+
+    So a value below `MIN_LENGTH` is refused rather than registered. Refused
+    loudly: silently declining to protect a credential is worse than not
+    offering to, because the caller believes it is covered.
+    """
+
+    #: Below this a literal is a substring of ordinary text rather than a
+    #: secret. Eight because that is already shorter than any credential worth
+    #: the name, and the cost of the bound is only felt by values that should
+    #: not have been credentials.
+    MIN_LENGTH = 8
+
+    #: A ceiling, because a rotated credential's previous value stays registered
+    #: and nothing here can know when the last holder is done with it. Reached
+    #: only by a process rotating thousands of times, and a bound that is never
+    #: reached is still the difference between a leak and a bug.
+    MAX_HELD = 512
+
+    def __init__(self) -> None:
+        self._values: set[str] = set()
+
+    def register(self, value: str) -> None:
+        """Remember a plaintext credential so it is scrubbed from logs."""
+        if len(value) < self.MIN_LENGTH:
+            raise ValueError(
+                f"refusing to register a {len(value)}-character secret for redaction. "
+                f"Below {self.MIN_LENGTH} characters a literal is a substring of "
+                "ordinary text, and registering it would replace that text throughout "
+                "every log line in the process - which reads as a formatter bug."
+            )
+        if len(self._values) >= self.MAX_HELD:
+            raise RuntimeError(
+                f"{self.MAX_HELD} redeemed secrets are already held. Something is "
+                "redeeming without bound, and growing this set further trades a "
+                "leak for a different one."
+            )
+        self._values.add(value)
+
+    def forget(self, value: str) -> bool:
+        """Stop holding one. Returns whether it was held."""
+        held = value in self._values
+        self._values.discard(value)
+        return held
+
+    def clear(self) -> int:
+        """Drop everything. Returns how many were held."""
+        held = len(self._values)
+        self._values.clear()
+        return held
+
+    def known(self) -> list[str]:
+        return list(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+#: Process-wide, like the logging filter that reads it. One per process because
+#: a logger is per process: a registry scoped to a request would not be reachable
+#: from the handler that has to scrub the line.
+REDEEMED = RedeemedSecrets()

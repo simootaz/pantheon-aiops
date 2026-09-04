@@ -49,6 +49,13 @@ class ModelCallSpan:
     failed: bool = False
     error: str = ""
     fallback_used: bool = False
+    #: The completion came from the cache and no provider was called.
+    #:
+    #: Recorded because the alternative is a trace showing a model call that
+    #: took zero milliseconds and cost nothing, which reads as a suspiciously
+    #: fast provider rather than as a cache doing its job. Latency percentiles
+    #: computed over those would be measuring the cache hit rate.
+    cached: bool = False
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     #: Present only when a caller asked for it, and redacted when it is.
     prompt: str | None = None
