@@ -19,7 +19,7 @@
  *
  * Phase: 4 - Delivery Flow
  */
-import type { Investigation } from "@/types/generated/contracts";
+import type { Action, Investigation } from "@/types/generated/contracts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -101,7 +101,19 @@ export interface PendingApproval {
   expires_at: string;
   answered_by: string | null;
   reason: string | null;
+  /** The policy rule that sent this to a person. */
   rule: string;
+  /** Why that rule fired, in the rule's own words. */
+  because: string;
+  /**
+   * The Action as proposed - what the approver is asked to read.
+   *
+   * Nullable because a persisted row written before the gate carried one
+   * cannot grow it retrospectively. A view must degrade to "id and rule" for
+   * such a row rather than offer a button, because a button there would be
+   * "approve action 7f3a?" - the prompt `core/ui/approval.py` refuses to emit.
+   */
+  action: Action | null;
 }
 
 /** Requests waiting for a person. Oldest first; expired ones are not listed. */
@@ -109,17 +121,33 @@ export function pendingApprovals(token: string | null): Promise<PendingApproval[
   return read<PendingApproval[]>("/approvals", token);
 }
 
-/** Answer one. `approve` false is a rejection, which is also an answer. */
+/**
+ * Answer one. `approve` false is a rejection, which is also an answer.
+ *
+ * WHO IS ANSWERING IS NOT IN THE BODY
+ * -----------------------------------
+ * It comes from the bearer token. `api/routers/approvals.py` removed the
+ * `approver` field for the reason its docstring gives: the gate refuses a
+ * proposer approving their own request, and checking that against a name the
+ * caller just chose makes the rule hold for as long as they cooperate.
+ *
+ * THE ACTION GOES BACK IN
+ * -----------------------
+ * The gate re-validates the answer against the content the approver read. From
+ * here that check compares a served copy against itself and proves nothing -
+ * `may_execute` at execution time is what protects the run, against the Action
+ * the executor holds. Sending it anyway because the endpoint's contract is
+ * written for the caller that holds its own copy, and quietly omitting it
+ * would be a 422.
+ */
 export function respondToApproval(
   requestId: string,
   approve: boolean,
-  answeredBy: string,
+  action: Action,
+  reason: string,
   token: string | null,
 ): Promise<PendingApproval> {
-  return send<PendingApproval>(`/approvals/${requestId}`, token, {
-    approve,
-    answered_by: answeredBy,
-  });
+  return send<PendingApproval>(`/approvals/${requestId}`, token, { approve, reason, action });
 }
 
 /**

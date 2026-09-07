@@ -162,7 +162,14 @@ serves.
   and Cerberus. The A2UI envelope remains a **documented guess** - no canonical
   AG-UI wrapper is specified - bounded to one function and one constant.
 - `ArtifactRef` resolution — server-side, same-investigation only
-- Dashboard: real investigation, agent, approval and settings views
+- ⚠️ **Nothing opens an approval request.** The gate, the endpoints, the A2UI
+  surface and now the dashboard queue all exist and are tested; `open_request`
+  has no production caller. `executor.execute` refuses an Action that needs
+  approval when none was supplied - correctly - and no code path turns that
+  refusal into a person being asked. The queue is therefore correct and
+  permanently empty until that link is built.
+- Dashboard: ✅ investigation (list and detail) and ✅ approval views; agent and
+  settings views remain
 - Delphi settings surface: provider cards, tier pickers, per-agent overrides,
   **Test connection** probes, validation warnings
 

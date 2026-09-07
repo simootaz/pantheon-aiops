@@ -13,6 +13,7 @@ Phase: 3 - Guardrails, Approvals & Write Actions
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -318,3 +319,107 @@ def test_a_request_renders_without_leaking_anything() -> None:
     assert "action_digest" not in rendered, (
         "the digest is an internal check, not something an approver acts on"
     )
+
+
+# --- the queue can be answered by somebody who was not there ------------------------
+
+
+def test_a_waiting_request_carries_the_action_an_approver_must_read() -> None:
+    """A queue of ids is a queue nobody can answer.
+
+    `core/ui/approval.py` refuses to emit "approve action 7f3a?" because a gate
+    answered by reflex records a decision nobody made. A list endpoint that
+    served only an id and a rule would force every UI built on it straight back
+    into that prompt, and the refusal would hold in one module and nowhere else.
+    """
+    gate, _clock = _gate()
+    action = _needs_approval()
+    gate.open_request(action, evaluate(action, environment=Environment.STAGING))
+
+    (waiting,) = gate.pending()
+    rendered = waiting.as_dict()
+    carried = rendered["action"]
+
+    assert isinstance(carried, dict)
+    # The four fields the approval card is built from. An approver deciding
+    # without any one of them is deciding on less than the card would show.
+    assert carried["operation"] == action.operation
+    assert carried["blast_radius"] == action.blast_radius.value
+    assert carried["reason"] == action.reason
+    assert carried["target"]["name"] == action.target.name
+
+
+def test_the_carried_action_survives_being_answered() -> None:
+    """`respond` rebuilds the request, and a dropped field would be silent.
+
+    The answered request is what `GET /approvals/{id}` returns, so losing the
+    Action here would make an answered request unreadable - the one view where
+    somebody checks what they just agreed to.
+    """
+    gate, _clock = _gate()
+    action = _needs_approval()
+    opened = gate.open_request(action, evaluate(action, environment=Environment.STAGING))
+
+    answered = gate.respond(opened.id, action, approver="someone-else", approve=True)
+
+    assert answered.action == action
+
+
+def test_the_carried_action_is_json_ready() -> None:
+    """It crosses an HTTP boundary, and a dict of UUIDs does not.
+
+    Serialised here rather than at the response encoder, where the failure
+    would name a JSON type rather than the field that produced it.
+    """
+    import json
+
+    gate, _clock = _gate()
+    action = _needs_approval()
+    gate.open_request(action, evaluate(action, environment=Environment.STAGING))
+
+    (waiting,) = gate.pending()
+
+    # Round-tripped rather than merely dumped. `json.dumps` raising would fail
+    # the test, but a test whose only mechanism is an exception reports nothing
+    # when the call starts succeeding for the wrong reason - an `action` that
+    # silently became None serialises perfectly.
+    round_tripped = json.loads(json.dumps(waiting.as_dict()))
+
+    assert round_tripped["action"]["id"] == str(action.id)
+    # The instant, not its spelling: pydantic writes UTC as `Z` and
+    # `datetime.isoformat` writes `+00:00`, and both are ISO-8601. Asserting
+    # the text would be a test of pydantic's formatting choice, which is not
+    # what this file has an opinion about.
+    assert datetime.fromisoformat(round_tripped["action"]["proposed_at"]) == action.proposed_at
+
+
+def test_serving_the_action_does_not_serve_the_digest() -> None:
+    """The control on the previous three.
+
+    The digest stays internal. Publishing it beside the Action would invite a
+    caller to compare the two itself and conclude it had verified something -
+    and what it would have verified is that a stored copy equals itself.
+    """
+    gate, _clock = _gate()
+    action = _needs_approval()
+    gate.open_request(action, evaluate(action, environment=Environment.STAGING))
+
+    (waiting,) = gate.pending()
+
+    assert "action_digest" not in waiting.as_dict()
+
+
+def test_a_request_carrying_no_action_still_renders() -> None:
+    """Constructed directly, as the store rows a future persistence layer reads.
+
+    `action` is optional because a row written before this field existed cannot
+    grow one retrospectively. A view over such a row must degrade to "id and
+    rule" rather than fail - it is less than an approver needs, and refusing to
+    render it would hide the request entirely.
+    """
+    gate, _clock = _gate()
+    action = _needs_approval()
+    opened = gate.open_request(action, evaluate(action, environment=Environment.STAGING))
+    without = replace(opened, action=None)
+
+    assert without.as_dict()["action"] is None

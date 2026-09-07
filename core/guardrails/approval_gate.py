@@ -115,6 +115,20 @@ class ApprovalRequest:
     opened_at: datetime
     expires_at: datetime
 
+    #: The Action as proposed - what the approver is asked to read.
+    #:
+    #: Held because a queue that lists an id and a rule cannot be answered by
+    #: anyone. `core/ui/approval.py` refuses to emit "approve action 7f3a?" for
+    #: exactly that reason, and `GET /approvals` returning nothing more would
+    #: have forced every UI over it back into that prompt.
+    #:
+    #: It does NOT become the object execution is validated against. The digest
+    #: is still taken from the copy a responder holds, and `may_execute` checks
+    #: it again against the Action the executor is about to run - see the note
+    #: on `respond`, which says exactly what that check is and is not worth to
+    #: a caller who round-tripped this copy.
+    action: Action | None = None
+
     #: Set once, when someone answers. `None` while waiting.
     answered_at: datetime | None = None
     answered_by: str | None = None
@@ -167,6 +181,12 @@ class ApprovalRequest:
             "answered_by": self.answered_by,
             "reason": self.reason,
             "rule": self.ruling.rule,
+            "because": self.ruling.because,
+            # What the approver has to read. `mode="json"` so the UUIDs and
+            # datetimes inside are serialisable - a dict of Python objects
+            # would fail at the response encoder, not here, where the reason
+            # would be legible.
+            "action": None if self.action is None else self.action.model_dump(mode="json"),
         }
 
 
@@ -215,6 +235,7 @@ class ApprovalGate:
             ruling=ruling,
             opened_at=now,
             expires_at=now + self.ttl,
+            action=action,
         )
         self._requests[request.id] = request
         return request
@@ -248,6 +269,21 @@ class ApprovalGate:
         is about to execute *that object* and the digest has to be taken from
         the thing that will run - not from a stored copy that may have diverged
         from it.
+
+        WHAT THE DIGEST CHECK HERE IS WORTH, AND TO WHOM
+        --------------------------------------------------
+        To a caller holding its own copy: everything. To one that read the
+        Action from `as_dict` and sent it straight back, nothing - it is
+        comparing a stored copy against itself, and the check passes by
+        construction.
+
+        That is not a hole, because this is not the check that protects
+        execution. `may_execute` is, and it runs against the Action the
+        *executor* holds at the moment it runs - a different object, from a
+        different place, after any drift has had time to happen. Saying so here
+        rather than letting this read as a guarantee it cannot give for every
+        caller: a check believed to hold where it does not is worse than one
+        known to be advisory.
         """
         request = self._requests.get(request_id)
         if request is None:
@@ -288,6 +324,7 @@ class ApprovalGate:
             ruling=request.ruling,
             opened_at=request.opened_at,
             expires_at=request.expires_at,
+            action=request.action,
             answered_at=now,
             answered_by=approver,
             approved=approve,
