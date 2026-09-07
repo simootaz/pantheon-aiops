@@ -121,15 +121,15 @@ def test_every_rostered_agent_is_listed(client: TestClient) -> None:
 def test_the_roster_says_which_agents_actually_run(client: TestClient) -> None:
     """The load-bearing field.
 
-    Ten manifests validate and one agent has an implementation. A listing
-    without this would report ten working agents, which is the most misleading
-    thing this API could say - and it is exactly the distinction `PlanStep`
-    draws between COMPLETE and SKIPPED.
+    Ten manifests validate and six have code. A listing without this would
+    report ten working agents, which is the most misleading thing this API could
+    say - and it is exactly the distinction `PlanStep` draws between COMPLETE
+    and SKIPPED.
     """
     rows = client.get("/agents").json()
     implemented = {row["codename"] for row in rows if row["implemented"]}
 
-    assert implemented == set(dispatcher.AGENTS), (
+    assert implemented == set(dispatcher.IMPLEMENTATIONS), (
         "the roster's `implemented` disagrees with the dispatcher's registry, so "
         "the API is reporting an intention as a capability"
     )
@@ -138,6 +138,49 @@ def test_the_roster_says_which_agents_actually_run(client: TestClient) -> None:
         "every agent reports as implemented - either they all are, or this field "
         "has stopped being read from the registry"
     )
+
+
+def test_an_agent_that_exists_but_cannot_be_reached_says_both(client: TestClient) -> None:
+    """Written-and-unreachable is not the same fact as not-written.
+
+    Themis has an agent, tools and tests, and nothing routes to it: no trigger
+    produces a plan naming it until something schedules anything. On one field
+    it appeared exactly as Clio does, and Clio is a manifest with nothing behind
+    it - so the roster told a reader that an agent which runs does not exist.
+
+    Asserted on both fields rather than on the pair's names: a `dispatchable`
+    that merely copied `implemented` would satisfy a check for the field's
+    presence and report the same wrong thing.
+    """
+    rows = {row["codename"]: row for row in client.get("/agents").json()}
+
+    assert rows["themis"]["implemented"] is True, "Themis is written; the roster says otherwise"
+    assert rows["themis"]["dispatchable"] is False, (
+        "Themis is dispatchable, which would put an agent in a plan no trigger produces"
+    )
+
+    # Clio, the control: a manifest and nothing else. Without it, a roster that
+    # reported every agent as implemented would pass the two assertions above.
+    assert rows["clio"]["implemented"] is False
+    assert rows["clio"]["dispatchable"] is False
+
+    # And an agent that is both, so `dispatchable` is not simply always false.
+    assert rows["argus"]["implemented"] is True
+    assert rows["argus"]["dispatchable"] is True
+
+
+def test_dispatchable_is_never_wider_than_implemented(client: TestClient) -> None:
+    """An agent a plan may name, with no code behind it, is a run that crashes.
+
+    The two fields are read from two dicts and `register` writes both. A future
+    edit that wrote only `AGENTS` would produce exactly this, and `run_step`
+    would find the class - the failure would land in the agent's constructor
+    instead of at the registry, one layer from anything that explains it.
+    """
+    for row in client.get("/agents").json():
+        assert not (row["dispatchable"] and not row["implemented"]), (
+            f"{row['codename']} is dispatchable and not implemented"
+        )
 
 
 def test_one_manifest_comes_back_whole(client: TestClient) -> None:

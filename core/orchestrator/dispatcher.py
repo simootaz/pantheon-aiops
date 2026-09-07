@@ -33,12 +33,39 @@ from core.orchestrator.classifier import subject_of
 #: Codename to the class that implements it. Not discovered by import scanning:
 #: a registry that finds agents by walking the filesystem will one day find a
 #: half-written one, and the failure surfaces at dispatch.
+#:
+#: Dispatchable, which is NARROWER than implemented - see `IMPLEMENTATIONS`.
 AGENTS: dict[str, type[BaseAgent]] = {}
 
+#: Every agent whose code exists, dispatchable or not.
+#:
+#: WHY THIS IS A SECOND DICT AND NOT A FLAG ON THE FIRST
+#: ------------------------------------------------------
+#: Themis is written, tested, and unreachable: nothing schedules anything, so
+#: no trigger produces a plan naming it, and registering it as dispatchable is
+#: refused by `test_nothing_is_registered_that_the_planner_will_never_name`.
+#: Correctly - a registered agent no plan reaches is dead code that looks live.
+#:
+#: But with one dict, `/agents` reported Themis exactly as it reported Clio: a
+#: codename with `implemented: false`. Clio is a manifest with no code behind
+#: it. Themis is an agent waiting for a way in. Telling a reader those are the
+#: same thing is the same defect the roster's `implemented` field was added to
+#: fix, one level down - and the field's own name had stopped naming what it
+#: measured, which is how a label starts describing something it does not check.
+IMPLEMENTATIONS: dict[str, type[BaseAgent]] = {}
 
-def register(codename: str, agent: type[BaseAgent]) -> None:
-    """Make an implemented agent dispatchable."""
-    AGENTS[codename] = agent
+
+def register(codename: str, agent: type[BaseAgent], *, dispatchable: bool = True) -> None:
+    """Record an implementation, and say whether a plan may name it.
+
+    `dispatchable=False` is for an agent that exists and that nothing can route
+    to yet. It stays out of `AGENTS`, so `run_step` still refuses it and the
+    reachability guards still hold; it appears in `IMPLEMENTATIONS`, so the
+    roster can say "built, nothing routes to it" rather than "not built".
+    """
+    IMPLEMENTATIONS[codename] = agent
+    if dispatchable:
+        AGENTS[codename] = agent
 
 
 class AgentNotDispatchable(RuntimeError):

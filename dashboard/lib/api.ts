@@ -153,9 +153,15 @@ export function respondToApproval(
 /**
  * A row on the agent roster.
  *
- * `implemented` is the field that matters: the registry lists every agent the
- * platform names, and most of them are manifests with no code behind them yet.
- * A roster that hid that would be a list of promises.
+ * TWO FIELDS, BECAUSE THEY ARE TWO FACTS
+ * --------------------------------------
+ * `implemented` says code exists. `dispatchable` says a trigger can produce a
+ * plan that names it, and is narrower. Themis is the case that forces the
+ * split: written, tooled and tested, and unreachable until something schedules
+ * anything - on one field it read exactly as Clio does, and Clio is a manifest
+ * with nothing behind it.
+ *
+ * A roster with neither would be a list of promises.
  */
 export interface AgentSummary {
   codename: string;
@@ -164,6 +170,7 @@ export interface AgentSummary {
   capabilities: string[];
   tools: string[];
   implemented: boolean;
+  dispatchable: boolean;
 }
 
 /** Every agent on the roster, implemented or not. */

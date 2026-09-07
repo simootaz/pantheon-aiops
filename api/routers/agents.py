@@ -2,15 +2,24 @@
 
 WHAT A MANIFEST SAYS, AND WHAT IT DOES NOT
 -------------------------------------------
-Ten manifests load and validate. One agent has an implementation. A listing
-that showed only the manifests would tell a reader that Pantheon has ten working
-agents, which is the single most misleading thing this API could say - so
-`implemented` is on every row, and it comes from the dispatcher's registry
-rather than from the manifest.
+Ten manifests load and validate. Six have code behind them, and five of those
+can be reached by a trigger. A listing that showed only the manifests would tell
+a reader that Pantheon has ten working agents, which is the single most
+misleading thing this API could say - so `implemented` and `dispatchable` are
+both on every row, and both come from the dispatcher's registry rather than from
+the manifest.
 
 That distinction is the same one `PlanStep.status` draws between COMPLETE and
 SKIPPED: declaring an intention and doing the thing are different facts, and an
 interface that collapses them makes a stub indistinguishable from an agent.
+
+THE SECOND FIELD EXISTS BECAUSE THE FIRST HAD STOPPED BEING TRUE
+-----------------------------------------------------------------
+`implemented` was read from the dispatchable registry, so Themis - written,
+tested, and unreachable because nothing schedules anything yet - was reported
+the same way as Clio, which is a manifest and nothing else. The field's name had
+stopped naming what it measured. Splitting it is the fix; narrowing the claim in
+the docstring would have been the other one.
 
 Phase: 1 - Contracts & First Agent Path
 """
@@ -34,7 +43,10 @@ def _summarise(manifest: AgentManifest) -> AgentSummary:
         description=manifest.description,
         capabilities=[capability.name for capability in manifest.capabilities],
         tools=list(manifest.tools),
-        implemented=manifest.codename in dispatcher.AGENTS,
+        implemented=manifest.codename in dispatcher.IMPLEMENTATIONS,
+        # AGENTS, not IMPLEMENTATIONS. The narrower set: an agent is
+        # dispatchable only once some trigger produces a plan that names it.
+        dispatchable=manifest.codename in dispatcher.AGENTS,
     )
 
 
