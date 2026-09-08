@@ -35,7 +35,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from api.routers._runs import runner_for
+from api.routers._runs import gate_for, runner_for
 from api.routers.investigations import get_store
 from api.routers.webhooks import get_event_bus
 from core.bus import EventBus
@@ -156,6 +156,7 @@ async def receive_alertmanager(
             investigation_id=investigation_id,
             store=store,
             bus=bus,
+            gate=gate_for(request),
         )
 
     return AlertsAccepted(

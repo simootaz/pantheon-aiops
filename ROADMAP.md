@@ -162,12 +162,16 @@ serves.
   and Cerberus. The A2UI envelope remains a **documented guess** - no canonical
   AG-UI wrapper is specified - bounded to one function and one constant.
 - `ArtifactRef` resolution — server-side, same-investigation only
-- ⚠️ **Nothing opens an approval request.** The gate, the endpoints, the A2UI
-  surface and now the dashboard queue all exist and are tested; `open_request`
-  has no production caller. `executor.execute` refuses an Action that needs
-  approval when none was supplied - correctly - and no code path turns that
-  refusal into a person being asked. The queue is therefore correct and
-  permanently empty until that link is built.
+- ✅ **The approval request is opened.** `core/guardrails/proposal.py` is the
+  request half; Zeus calls it on the verdict's recommended actions, publishes
+  `ApprovalRequestedEvent` for each one waiting, and leaves the run in
+  AWAITING_APPROVAL. That state and that event both existed and neither had ever
+  been produced. ⚠️ **The queue is still empty in practice**, for a different
+  reason: `aggregator.aggregate` sets `recommended_actions=[]` and nothing
+  proposes a remediation. That is the remaining link, and it is a design
+  question rather than a wiring one - a remediation proposer needs a grounded
+  mapping from root cause to action, and `hypotheses.py` is the precedent for
+  refusing to invent one.
 - Dashboard: ✅ all four views - investigations (list and detail), approvals,
   agents, settings.
 - Delphi settings surface: ✅ provider cards, tier pickers, probes and validation

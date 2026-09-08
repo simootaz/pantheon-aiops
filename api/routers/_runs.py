@@ -35,6 +35,7 @@ from fastapi import Request
 
 from core.bus import EventBus
 from core.contracts.investigation import Trigger
+from core.guardrails.approval_gate import ApprovalGate
 from core.orchestrator.router import investigate
 from core.store.investigations import InvestigationStore
 
@@ -51,6 +52,7 @@ class InvestigationRunner(Protocol):
         investigation_id: UUID,
         store: InvestigationStore,
         bus: EventBus,
+        gate: ApprovalGate | None = None,
     ) -> None: ...
 
 
@@ -73,11 +75,16 @@ async def run_investigation(
     investigation_id: UUID,
     store: InvestigationStore,
     bus: EventBus,
+    gate: ApprovalGate | None = None,
 ) -> None:
     """Run Zeus for an accepted trigger, and never raise.
 
     See the module docstring: this runs after the response, so an exception
     reaches nobody.
+
+    `gate` is where a remediation the verdict recommends goes when policy says a
+    person must decide. Threaded through rather than reached for from module
+    state, so a test can watch what a run put in front of somebody.
     """
     try:
         await investigate(
@@ -85,6 +92,19 @@ async def run_investigation(
             store=store,
             bus=bus,
             investigation_id=investigation_id,
+            gate=gate,
         )
     except Exception:
         logger.exception("investigation %s failed", investigation_id)
+
+
+def gate_for(request: Request) -> ApprovalGate | None:
+    """The approval gate from application state.
+
+    `None` rather than a fresh one when it is missing. A gate constructed here
+    would take the requests and be discarded with the response, so a person
+    would be asked and no queue would ever hold the question - `investigate`
+    raises on that case instead, which is the loud version of the same fact.
+    """
+    gate: ApprovalGate | None = getattr(request.app.state, "approval_gate", None)
+    return gate

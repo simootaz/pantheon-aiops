@@ -271,13 +271,29 @@ def test_an_unsigned_malformed_body_is_a_401_and_not_a_400(client: TestClient) -
 
 
 class _Recorder:
-    """Stands in for the runner, so this stays offline."""
+    """Stands in for the runner, so this stays offline.
+
+    Named parameters rather than `**kwargs`. A recorder that swallowed whatever
+    it was handed would keep passing if a route stopped passing the approval
+    gate, and the run would then reach a verdict with nowhere to put a
+    remediation that needs a person.
+    """
 
     def __init__(self) -> None:
         self.runs: list[Any] = []
+        self.gates: list[Any] = []
 
-    async def __call__(self, *, trigger: Any, investigation_id: Any, store: Any, bus: Any) -> None:
+    async def __call__(
+        self,
+        *,
+        trigger: Any,
+        investigation_id: Any,
+        store: Any,
+        bus: Any,
+        gate: Any = None,
+    ) -> None:
         self.runs.append(trigger)
+        self.gates.append(gate)
 
 
 @pytest.fixture
@@ -356,3 +372,24 @@ def test_the_scheduled_trigger_is_the_one_that_was_published(
 
     (envelope,) = bus.published
     assert recorder.runs[0] == envelope.event.trigger  # type: ignore[union-attr]
+
+
+def test_the_run_is_given_somewhere_to_put_an_approval_request(
+    scheduled: tuple[TestClient, _Recorder],
+) -> None:
+    """A route that scheduled a run without the gate would break the chain here.
+
+    `investigate` raises when a verdict recommends something and no gate was
+    supplied - deliberately, because silently dropping it would report the run
+    complete with nobody asked. But that exception lands in a background task
+    after the response, where `run_investigation` logs it and nothing else sees
+    it. So the gate arriving is asserted at the point it is passed.
+    """
+    client, recorder = scheduled
+
+    _post(client, PULL_REQUEST, "pull_request")
+
+    assert recorder.gates[0] is not None, (
+        "the webhook scheduled a run with no approval gate, so any remediation "
+        "it recommends has nowhere to go"
+    )

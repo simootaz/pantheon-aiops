@@ -36,7 +36,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from api.routers._runs import runner_for
+from api.routers._runs import gate_for, runner_for
 from api.routers.investigations import get_store
 from core.bus import EventBus
 from core.config import get_settings
@@ -216,6 +216,7 @@ def _schedule(
         investigation_id=investigation_id,
         store=store,
         bus=bus,
+        gate=gate_for(request),
     )
     return True
 
