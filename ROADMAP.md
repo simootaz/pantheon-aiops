@@ -168,10 +168,14 @@ serves.
   approval when none was supplied - correctly - and no code path turns that
   refusal into a person being asked. The queue is therefore correct and
   permanently empty until that link is built.
-- Dashboard: ✅ investigation (list and detail) and ✅ approval views; agent and
-  settings views remain
-- Delphi settings surface: provider cards, tier pickers, per-agent overrides,
-  **Test connection** probes, validation warnings
+- Dashboard: ✅ all four views - investigations (list and detail), approvals,
+  agents, settings.
+- Delphi settings surface: ✅ provider cards, tier pickers, probes and validation
+  warnings. ⚠️ **Per-agent overrides are not built, and cannot be**:
+  `ResolutionPolicy.per_agent` is read by `core/llm/resolver.py` and nothing
+  persists or serves one - there is no store and no endpoint. A picker over
+  nothing would be a setting that silently does not take. Same for Cerberus
+  grants: the grant book is in-process with no API.
 
 ## Phase 5 — Proactive Flow ⬜ not started
 

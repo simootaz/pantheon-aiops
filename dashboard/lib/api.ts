@@ -50,7 +50,12 @@ async function read<T>(path: string, token: string | null): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function send<T>(path: string, token: string | null, body: unknown): Promise<T> {
+async function send<T>(
+  path: string,
+  token: string | null,
+  body: unknown,
+  method: "POST" | "PUT" = "POST",
+): Promise<T> {
   const headers: Record<string, string> = {
     accept: "application/json",
     "content-type": "application/json",
@@ -58,7 +63,7 @@ async function send<T>(path: string, token: string | null, body: unknown): Promi
   if (token) headers.authorization = `Bearer ${token}`;
 
   const response = await fetch(`${API_URL}${path}`, {
-    method: "POST",
+    method,
     headers,
     body: JSON.stringify(body),
   });
@@ -176,4 +181,92 @@ export interface AgentSummary {
 /** Every agent on the roster, implemented or not. */
 export function agents(token: string | null): Promise<AgentSummary[]> {
   return read<AgentSummary[]>("/agents", token);
+}
+
+/**
+ * One configured LLM provider.
+ *
+ * THERE IS NO KEY FIELD, AND THERE WILL NOT BE ONE
+ * -------------------------------------------------
+ * `has_key` is a boolean. `api/routers/providers.py` refuses to return the key
+ * even masked, for the reason its docstring gives: a masked key in a response
+ * body is still a key in a log, a browser cache and a screenshot, and "we only
+ * showed the last four" is how the first four leak too. Changing it means
+ * sending a new one.
+ */
+export interface Provider {
+  id: string;
+  provider_id: string;
+  display_name: string;
+  dialect: string;
+  base_url: string;
+  auth_mode: string;
+  enabled: boolean;
+  manual_models: string[];
+  has_key: boolean;
+  tiers: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * What a provider serves, and whether it was actually asked.
+ *
+ * `live` is the field a tier picker must not ignore. When the provider could
+ * not be reached the list falls back to `manual_models`, and binding a tier
+ * against that is binding against something nobody verified - which is the
+ * failure ADR 0004 puts at 03:00 rather than at settings time.
+ */
+export interface ProviderModels {
+  provider_id: string;
+  live: boolean;
+  models: string[];
+  tiers: Record<string, string>;
+  stale_tier_bindings: Record<string, string>;
+  warnings: string[];
+}
+
+/** What a probe observed. Capabilities are observed, never declared. */
+export interface ProbeResult {
+  provider_id: string;
+  probed: Array<Record<string, unknown>>;
+  reachable: string[];
+  unreachable: string[];
+}
+
+/** Every configured provider. Never carries a key. */
+export function providers(token: string | null): Promise<Provider[]> {
+  return read<Provider[]>("/providers", token);
+}
+
+/** Ask the provider what it serves. A network call on the server's side. */
+export function providerModels(id: string, token: string | null): Promise<ProviderModels> {
+  return read<ProviderModels>(`/providers/${id}/models`, token);
+}
+
+/** Bind models to tiers. The only place a human names a model. */
+export function bindTiers(
+  id: string,
+  tiers: Record<string, string | null>,
+  token: string | null,
+): Promise<Provider> {
+  return send<Provider>(`/providers/${id}/tiers`, token, tiers, "PUT");
+}
+
+/**
+ * Run the capability probes.
+ *
+ * EVERY PROBE IS A PAID REQUEST
+ * -----------------------------
+ * Charged to whoever pressed the button. Nothing calls this on render, on a
+ * timer, or as a side effect of opening a card - the endpoint's docstring is
+ * explicit that it runs on demand and never on a schedule, and a UI that probed
+ * automatically would turn "open the settings page" into a bill.
+ */
+export function probeProvider(
+  id: string,
+  models: string[] | null,
+  token: string | null,
+): Promise<ProbeResult> {
+  return send<ProbeResult>(`/providers/${id}/probe`, token, { models });
 }
