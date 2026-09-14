@@ -68,6 +68,19 @@ CHANGE_DOMAINS = ("manifest_review",)
 #: weather rather than the fault.
 CI_DOMAINS = ("ci_triage",)
 
+#: Scheduled jobs, by name, to the domains that answer them. A schedule is
+#: configured by us, so this is closed: a job name absent from here is a
+#: misconfiguration, and `api/routers/schedules.py` refuses it with a 422
+#: rather than starting a run nothing can plan.
+#:
+#: A measurement, not an incident. Themis reads a month of pull requests and
+#: reports what the numbers are; it does not explain anything, and a verdict
+#: that ranked its Finding into a root cause would be diagnosing an incident
+#: nobody claimed - see `Classification.explains`.
+SCHEDULED_JOBS: dict[str, tuple[str, ...]] = {
+    "delivery-health": ("dora",),
+}
+
 #: Workflow-run conclusions worth triaging. A run that succeeded, was cancelled
 #: or was skipped is not a failure - and starting an investigation for every
 #: green build is how a system teaches people to ignore it.
@@ -95,6 +108,13 @@ class Classification:
     severity: Severity
     certain: bool
     reason: str
+    #: Whether the run owes an EXPLANATION - candidate causes, ranked - or an
+    #: answer to what it was asked. An alert asks "why"; a question, a pull
+    #: request and a scheduled measurement do not, and a verdict that ranked
+    #: Hermes's answer into an UNKNOWN root cause was answering a question
+    #: nobody put. This is the classifier's to say because it is the one thing
+    #: that read the trigger, and it already gives the reason in words.
+    explains: bool = True
 
 
 def classify(trigger: Trigger) -> Classification:
@@ -108,6 +128,7 @@ def classify(trigger: Trigger) -> Classification:
             domains=QUESTION_DOMAINS,
             severity=severity,
             certain=True,
+            explains=False,
             reason="the trigger carries a question, which is answered rather than investigated",
         )
 
@@ -117,6 +138,7 @@ def classify(trigger: Trigger) -> Classification:
             domains=CHANGE_DOMAINS,
             severity=severity,
             certain=True,
+            explains=False,
             reason=(
                 f"the trigger carries pull request #{change['pull_request']} on "
                 f"{change['repository']}, which is reviewed rather than investigated - "
@@ -133,6 +155,19 @@ def classify(trigger: Trigger) -> Classification:
             reason=(
                 f"workflow run {run['run']} on {run['repository']} finished "
                 f"{run['conclusion']}; the failure is in the pipeline, not the cluster"
+            ),
+        )
+
+    job = scheduled_job_of(trigger)
+    if job is not None:
+        return Classification(
+            domains=SCHEDULED_JOBS[job["job"]],
+            severity=severity,
+            certain=True,
+            explains=False,
+            reason=(
+                f"scheduled job {job['job']!r} on {job['repository']}; a measurement "
+                "somebody configured to recur, not an incident"
             ),
         )
 
@@ -225,6 +260,29 @@ def failed_run_of(trigger: Trigger) -> dict[str, Any] | None:
     return {"repository": repository, "run": identifier, "conclusion": conclusion}
 
 
+def scheduled_job_of(trigger: Trigger) -> dict[str, Any] | None:
+    """The scheduled job a trigger names, when it is one.
+
+    Read from the KIND as well as the payload, the same rule as `question_of`:
+    a `job` key in an alert's annotations must not route an alert to Themis.
+    Returns the subject rather than a bool, because the agent needs the
+    repository and the window and there is no second place that knows them.
+    """
+    if trigger.kind is not TriggerKind.SCHEDULE:
+        return None
+    job = trigger.payload.get("job")
+    repository = trigger.payload.get("repository")
+    if not isinstance(job, str) or job not in SCHEDULED_JOBS:
+        return None
+    if not isinstance(repository, str) or not repository:
+        return None
+    subject: dict[str, Any] = {"job": job, "repository": repository}
+    window = trigger.payload.get("window_days")
+    if isinstance(window, int | float) and window > 0:
+        subject["window_days"] = window
+    return subject
+
+
 def subject_of(trigger: Trigger) -> dict[str, Any]:
     """What this trigger is ABOUT, as parameters an agent can act on.
 
@@ -236,7 +294,7 @@ def subject_of(trigger: Trigger) -> dict[str, Any]:
     because this module already reads the payload, and a second reader of the
     same payload is one that can disagree with the first.
     """
-    return pull_request_of(trigger) or failed_run_of(trigger) or {}
+    return pull_request_of(trigger) or failed_run_of(trigger) or scheduled_job_of(trigger) or {}
 
 
 def _repository_of(trigger: Trigger) -> str | None:

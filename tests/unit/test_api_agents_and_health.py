@@ -143,30 +143,50 @@ def test_the_roster_says_which_agents_actually_run(client: TestClient) -> None:
 def test_an_agent_that_exists_but_cannot_be_reached_says_both(client: TestClient) -> None:
     """Written-and-unreachable is not the same fact as not-written.
 
-    Themis has an agent, tools and tests, and nothing routes to it: no trigger
-    produces a plan naming it until something schedules anything. On one field
-    it appeared exactly as Clio does, and Clio is a manifest with nothing behind
-    it - so the roster told a reader that an agent which runs does not exist.
+    Themis was the live example - an agent, tools and tests, and nothing routed
+    to it - until `/triggers/schedule` gave it a way in. No rostered agent is in
+    that state today, so the state is produced here, by registering a stub the
+    way `register(..., dispatchable=False)` is meant to be used. The roster
+    must still tell it apart from Clio, which is a manifest and nothing else.
 
     Asserted on both fields rather than on the pair's names: a `dispatchable`
     that merely copied `implemented` would satisfy a check for the field's
     presence and report the same wrong thing.
     """
-    rows = {row["codename"]: row for row in client.get("/agents").json()}
+    from agents._base.base_agent import AgentContext, BaseAgent
+    from core.contracts.finding import Finding
 
-    assert rows["themis"]["implemented"] is True, "Themis is written; the roster says otherwise"
-    assert rows["themis"]["dispatchable"] is False, (
-        "Themis is dispatchable, which would put an agent in a plan no trigger produces"
+    class _Clio(BaseAgent):
+        """Clio's manifest is real and its agent is not. This stands in for one,
+        registered as implemented-but-not-dispatchable - the state Themis was in."""
+
+        domain = "reporting"
+
+        async def investigate(self, ctx: AgentContext) -> list[Finding]:
+            return []
+
+    original = dict(dispatcher.IMPLEMENTATIONS)
+    dispatcher.register("clio", _Clio, dispatchable=False)
+    try:
+        rows = {row["codename"]: row for row in client.get("/agents").json()}
+    finally:
+        dispatcher.IMPLEMENTATIONS.clear()
+        dispatcher.IMPLEMENTATIONS.update(original)
+
+    assert rows["clio"]["implemented"] is True
+    assert rows["clio"]["dispatchable"] is False, (
+        "a not-dispatchable registration was reported as dispatchable"
     )
 
-    # Clio, the control: a manifest and nothing else. Without it, a roster that
+    # Eris, the control: a manifest and nothing else. Without it, a roster that
     # reported every agent as implemented would pass the two assertions above.
-    assert rows["clio"]["implemented"] is False
-    assert rows["clio"]["dispatchable"] is False
+    assert rows["eris"]["implemented"] is False
+    assert rows["eris"]["dispatchable"] is False
 
     # And an agent that is both, so `dispatchable` is not simply always false.
-    assert rows["argus"]["implemented"] is True
-    assert rows["argus"]["dispatchable"] is True
+    # Themis, because it is the one this state was invented for.
+    assert rows["themis"]["implemented"] is True
+    assert rows["themis"]["dispatchable"] is True
 
 
 def test_dispatchable_is_never_wider_than_implemented(client: TestClient) -> None:

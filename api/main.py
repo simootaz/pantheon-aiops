@@ -32,6 +32,7 @@ from api.routers import (
     health,
     investigations,
     providers,
+    schedules,
     webhooks,
 )
 from core.bus import EventBus, InMemoryEventBus
@@ -175,6 +176,7 @@ def create_app(
     app.include_router(agui_router)
     app.include_router(webhooks.router)
     app.include_router(alerts.router)
+    app.include_router(schedules.router)
     app.include_router(investigations.router)
     app.include_router(agents.router)
     app.include_router(providers.router)

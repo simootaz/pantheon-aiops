@@ -67,6 +67,17 @@ def _a_pull_request(number: int = 12, repository: str = "acme/checkout") -> Trig
     )
 
 
+def _a_schedule(job: str = "delivery-health", repository: str = "acme/checkout") -> Trigger:
+    """What a CronJob posts to /triggers/schedule."""
+    return Trigger(
+        kind=TriggerKind.SCHEDULE,
+        received_at=datetime.now(UTC),
+        source="cronjob",
+        title=f"{job} on {repository}",
+        payload={"job": job, "repository": repository, "window_days": 28},
+    )
+
+
 def _a_failed_run(
     run_id: int = 99, conclusion: str = "failure", repository: str = "acme/checkout"
 ) -> Trigger:
@@ -621,6 +632,7 @@ def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
         "lethe": "agents.log_clustering.tools",
         "hermes": "agents.nl_query.tools",
         "moira": "agents.capacity.tools",
+        "themis": "agents.dora.tools",
     }
 
     for codename in sorted(planner.IMPLEMENTED.values()):
@@ -659,6 +671,7 @@ def test_every_implemented_agent_is_reachable_by_some_trigger() -> None:
         _a_question("what is the error rate?"),
         _a_pull_request(),
         _a_failed_run(),
+        _a_schedule(),
     ):
         reachable.update(classify(trigger).domains)
 

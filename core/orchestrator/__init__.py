@@ -54,20 +54,12 @@ def register_implemented() -> None:
     # Reachable through ALERT_DOMAINS: every alert is also a capacity question.
     register("moira", Moira)
 
-    # Themis is implemented and NOT dispatchable, for the reason Aegis and
-    # Hephaestus were not until the webhook route existed: nothing can route to
-    # it. A delivery measurement answers a question nobody's incident asked -
-    # it belongs on a schedule, and `TriggerKind.SCHEDULE` reaches no classifier
-    # branch because nothing schedules anything until Temporal lands in Phase 5.
-    #
-    # Making it dispatchable would put an agent in a plan that no trigger
-    # produces, and `test_nothing_is_registered_that_the_planner_will_never_name`
-    # would refuse it - correctly.
-    #
-    # Declared anyway, so the roster can tell it apart from Clio. This comment
-    # used to be the only record that Themis exists; `/agents` said `implemented:
-    # false` and a reader had no way to learn otherwise.
-    register("themis", Themis, dispatchable=False)
+    # Reachable through a scheduled job - `api/routers/schedules.py` - which is
+    # what a delivery measurement belongs on. This was `dispatchable=False` with
+    # a comment saying nothing could schedule anything until Temporal landed;
+    # `dispatcher.py` names what would force Temporal, and a CronJob firing a
+    # trigger is not on the list.
+    register("themis", Themis)
 
 
 __all__ = [

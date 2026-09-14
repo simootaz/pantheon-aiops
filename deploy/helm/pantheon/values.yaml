@@ -159,6 +159,29 @@ observability:
   otlpEndpoint: ""
   serviceName: pantheon
 
+# ---------------------------------------------------------------------------
+# Scheduled triggers - templates/schedules-cronjob.yaml
+#
+# Each job is a CronJob that POSTs to /triggers/schedule. The job name must be
+# one the classifier knows (core/orchestrator/classifier.py, SCHEDULED_JOBS) or
+# the API answers 422 and the Job fails - visibly, which is the point. Off by
+# default: enabling one needs a secret holding an OPERATOR bearer token, and
+# the chart does not generate API tokens.
+# ---------------------------------------------------------------------------
+schedules:
+  image:
+    repository: curlimages/curl
+    tag: "8.14.1"
+  jobs:
+    delivery-health:
+      enabled: false
+      job: delivery-health
+      schedule: "0 6 * * 1"        # Mondays at 06:00, cluster time
+      repository: ""               # owner/repo, required when enabled
+      windowDays: 28
+      existingSecret: ""           # secret holding the OPERATOR token
+      secretKey: token
+
 ingress:
   enabled: false
   className: ""

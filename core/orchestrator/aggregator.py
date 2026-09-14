@@ -45,18 +45,35 @@ from core.contracts.verdict import Dissent, Verdict
 from core.orchestrator.hypotheses import leading, rank
 
 
-def aggregate(investigation_id: UUID, findings: list[Finding], steps: list[PlanStep]) -> Verdict:
-    """One Verdict from what the agents returned and what actually ran."""
+def aggregate(
+    investigation_id: UUID,
+    findings: list[Finding],
+    steps: list[PlanStep],
+    *,
+    explains: bool = True,
+) -> Verdict:
+    """One Verdict from what the agents returned and what actually ran.
+
+    `explains` is what the classifier decided the run owes. False for a
+    question, a review or a scheduled measurement: those runs are asked
+    something and their Findings ARE the answer. Ranking them into candidate
+    causes produced an UNKNOWN root cause under every answer Hermes gave - a
+    diagnosis of an incident that was never claimed to have happened - and a
+    summary saying the agent "found nothing" beside a Finding that was the
+    whole point.
+    """
     anomalies = [f for f in findings if f.kind is FindingKind.ANOMALY]
     degraded = [f for f in findings if f.kind is FindingKind.DEGRADED]
 
-    hypotheses = rank(findings)
+    hypotheses = rank(findings) if explains else []
     front_runner = leading(hypotheses)
 
     return Verdict(
         id=uuid4(),
         investigation_id=investigation_id,
-        summary=_summary(anomalies, degraded, steps),
+        summary=_summary(anomalies, degraded, steps)
+        if explains
+        else _answer(findings, degraded, steps),
         hypotheses=hypotheses,
         # The LEADING one's confidence, or zero. Not the best score in the list:
         # two hypotheses tied at 0.55 are a run that reached no conclusion, and
@@ -105,6 +122,33 @@ def _dissent(
         for hypothesis in hypotheses
         if hypothesis.id != front_runner.id
     ]
+
+
+def _answer(findings: list[Finding], degraded: list[Finding], steps: list[PlanStep]) -> str:
+    """The summary for a run that was asked something rather than told to explain.
+
+    The Findings' own titles, because for an answered run each one IS the
+    answer - "checkout: 19 merges in 28 days, review latency p50 6.2 h" is what
+    the person asked for, and any paraphrase here would be a second place the
+    number lives. Refusals are still named, because an answer with a gap in it
+    should say where the gap is.
+    """
+    ran = [s for s in steps if s.status is not StepStatus.PENDING]
+    agents = ", ".join(sorted({s.agent for s in ran})) or "no agent"
+    answers = [f for f in findings if f.kind is not FindingKind.DEGRADED]
+
+    if not ran:
+        return "No agent was dispatched, so nothing was answered."
+
+    gap = (
+        f" {len(degraded)} step(s) could not complete, so this answer has a gap: "
+        + "; ".join(f.title for f in degraded)
+        if degraded
+        else ""
+    )
+    if not answers:
+        return f"{agents} produced no answer.{gap}"
+    return f"{agents} answered: " + " ".join(f.title for f in answers) + gap
 
 
 def _summary(anomalies: list[Finding], degraded: list[Finding], steps: list[PlanStep]) -> str:

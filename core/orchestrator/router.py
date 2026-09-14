@@ -33,7 +33,12 @@ from core.contracts.events import (
     StepStartedEvent,
     VerdictReadyEvent,
 )
-from core.contracts.investigation import Investigation, InvestigationState, Trigger
+from core.contracts.investigation import (
+    DEFAULT_TENANT,
+    Investigation,
+    InvestigationState,
+    Trigger,
+)
 from core.contracts.plan import StepStatus
 from core.guardrails.approval_gate import ApprovalGate
 from core.guardrails.proposal import Proposal, propose_all
@@ -60,6 +65,7 @@ async def investigate(
     investigation_id: UUID | None = None,
     lookback: timedelta = DEFAULT_LOOKBACK,
     gate: ApprovalGate | None = None,
+    tenant: str = DEFAULT_TENANT,
 ) -> Investigation:
     """Classify, plan, dispatch, aggregate, propose. Returns the Investigation.
 
@@ -77,6 +83,10 @@ async def investigate(
         trigger=trigger,
         created_at=now,
         scenario=scenario_of(trigger),
+        # From the receiver that established it - a scheduled run's principal -
+        # and the default for receivers that have none. Alertmanager and GitHub
+        # carry no identity, so their runs land in the default tenant.
+        tenant=tenant,
     )
     await store.save(investigation)
 
@@ -156,7 +166,9 @@ async def investigate(
     # the groups rather than leaving a reader to assemble them.
     findings.extend(correlate(findings))
 
-    verdict = aggregator.aggregate(investigation.id, findings, completed_steps)
+    verdict = aggregator.aggregate(
+        investigation.id, findings, completed_steps, explains=classification.explains
+    )
     partial = any(s.status is not StepStatus.COMPLETE for s in completed_steps)
 
     # Every remediation the verdict recommends goes through the policy, and the

@@ -31,6 +31,7 @@ IMPLEMENTED: dict[str, str] = {
     "manifest_review": "aegis",
     "ci_triage": "hephaestus",
     "capacity": "moira",
+    "dora": "themis",
 }
 
 

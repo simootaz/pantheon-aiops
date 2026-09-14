@@ -113,8 +113,10 @@ def _recommending(*actions: Action) -> Any:
     """
     real = aggregator.aggregate
 
-    def _aggregate(investigation_id: UUID, findings: list[Finding], steps: list[Any]) -> Verdict:
-        verdict = real(investigation_id, findings, steps)
+    def _aggregate(
+        investigation_id: UUID, findings: list[Finding], steps: list[Any], **kwargs: Any
+    ) -> Verdict:
+        verdict = real(investigation_id, findings, steps, **kwargs)
         return verdict.model_copy(update={"recommended_actions": list(actions)})
 
     return _aggregate

@@ -187,6 +187,17 @@ serves.
   alert. Memory is refused on every run until a limit metric exists - the
   Kubernetes read tools are the trigger. Six predictions committed before the
   agent, five hit, one missed by the generator's seasonal term and recorded.
+- ✅ **Themis is live** on `/triggers/schedule` with a CronJob in the chart.
+  "Nothing schedules until Temporal" was wrong: Temporal is for what happens
+  after a trigger, and a CronJob is a scheduler.
+- ✅ **Answered runs are not diagnosed.** A question, a review or a scheduled
+  measurement produced an UNKNOWN root cause under its own answer. The
+  classifier now says which runs owe an explanation, and the verdict listens.
+- ⚠️ **Hephaestus's flake verdict does not reach the ranker.** `FLAKY_TEST` is
+  named only from Argus's `ci_ratio` metric; Hephaestus decides flakiness
+  definitionally - same job, same commit, two outcomes - and its Finding is
+  corroborating. A CI run today ends UNKNOWN beside a Finding that says
+  FLAKE. The fix is in `hypotheses.py`, reading the triage payload.
 - **Mnemosyne**, **Clio**, **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches

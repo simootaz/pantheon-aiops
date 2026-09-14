@@ -34,7 +34,7 @@ from uuid import UUID
 from fastapi import Request
 
 from core.bus import EventBus
-from core.contracts.investigation import Trigger
+from core.contracts.investigation import DEFAULT_TENANT, Trigger
 from core.guardrails.approval_gate import ApprovalGate
 from core.orchestrator.router import investigate
 from core.store.investigations import InvestigationStore
@@ -53,6 +53,7 @@ class InvestigationRunner(Protocol):
         store: InvestigationStore,
         bus: EventBus,
         gate: ApprovalGate | None = None,
+        tenant: str = DEFAULT_TENANT,
     ) -> None: ...
 
 
@@ -76,6 +77,7 @@ async def run_investigation(
     store: InvestigationStore,
     bus: EventBus,
     gate: ApprovalGate | None = None,
+    tenant: str = DEFAULT_TENANT,
 ) -> None:
     """Run Zeus for an accepted trigger, and never raise.
 
@@ -93,6 +95,7 @@ async def run_investigation(
             bus=bus,
             investigation_id=investigation_id,
             gate=gate,
+            tenant=tenant,
         )
     except Exception:
         logger.exception("investigation %s failed", investigation_id)
