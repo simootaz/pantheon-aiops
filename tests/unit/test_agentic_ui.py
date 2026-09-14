@@ -23,9 +23,7 @@ from pydantic import ValidationError
 from core.cerberus.redaction import PLACEHOLDER, contains_secret, redact
 from core.contracts.ui import (
     A2UI_VERSION,
-    PANTHEON_CATALOG_ID,
     A2UIAction,
-    A2UIClientCapabilities,
     A2UIComponent,
     A2UIComponentType,
     A2UISurface,
@@ -154,18 +152,6 @@ def test_allowlist_reaches_typescript_so_the_renderer_cannot_drift() -> None:
         )
 
 
-def test_advertised_capabilities_are_the_allowlist() -> None:
-    """One artifact: allowlist, renderer and advertised capabilities cannot diverge.
-
-    A2UI carries this in A2A message metadata; AG-UI defines no analog, so this
-    is Pantheon convention - documented as such in ADR 0006.
-    """
-    capabilities = A2UIClientCapabilities()
-    assert set(capabilities.components) == set(A2UIComponentType)
-    assert capabilities.catalog_id == PANTHEON_CATALOG_ID
-    assert capabilities.a2ui_version == A2UI_VERSION
-
-
 def test_a2ui_version_is_the_stable_release_not_the_release_candidate() -> None:
     """v1.0 is a release candidate; the spec itself recommends v0.9.1."""
     assert A2UI_VERSION.startswith("v0.9"), (
@@ -289,6 +275,6 @@ def test_ui_contracts_carry_no_secret_shaped_properties() -> None:
     """ADR 0005's schema scan must cover the UI contracts too."""
     from tests.unit.test_credential_safety import _is_secret_shaped
 
-    for model in (A2UIComponent, A2UISurface, A2UIClientCapabilities):
+    for model in (A2UIComponent, A2UISurface):
         offenders = [name for name in model.model_fields if _is_secret_shaped(name)]
         assert not offenders, f"{model.__name__} exposes secret-shaped fields: {offenders}"

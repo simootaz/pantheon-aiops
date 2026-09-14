@@ -150,6 +150,12 @@ component that will be rejected.
 enum, so **the allowlist, the renderer and the advertised capabilities are one
 artifact**. There is no second list to keep in step, and a test asserts it.
 
+> **Reversed.** Nothing ever sent a run input, and the endpoint takes none. The
+> declaration is the `X-A2UI-Components` header and the model has been removed -
+> see the amendment at the end. The one-artifact property survives on the
+> client, where it is checked: `allowlist.ts` against the generated union in
+> both directions, and the header against `ALLOWED_COMPONENTS`.
+
 ## Security boundary
 
 > **Agent-generated UI is untrusted data, not code.**

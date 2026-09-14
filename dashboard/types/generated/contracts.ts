@@ -7,51 +7,11 @@
  */
 
 export type A2UiVersion = string;
-export type CatalogId = string;
-/**
- * The closed allowlist of A2UI components Pantheon will render.
- *
- * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
- * the catalog is chosen for what it *cannot* be abused to do.
- *
- * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
- * object key for an artifact Pantheon itself produced and stored. The agent
- * cannot express an arbitrary destination, so there is nothing to filter.
- *
- * Deliberately excluded, with reasons:
- *
- * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
- *   same ArtifactRef pattern when something does; the allowlist grows on
- *   demand, never speculatively.
- * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
- *   credential prompt. Credential requests travel one path only, through
- *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use.
- */
-export type A2UIComponentType =
-  | "Row"
-  | "Column"
-  | "Card"
-  | "List"
-  | "Text"
-  | "Image"
-  | "Icon"
-  | "Divider"
-  | "TextField"
-  | "CheckBox"
-  | "ChoicePicker"
-  | "DateTimeInput"
-  | "Button";
-/**
- * Every component the renderer accepts.
- */
-export type Components = A2UIComponentType[];
-export type A2UiVersion1 = string;
 /**
  * Set by the orchestrator. An agent cannot claim another identity.
  */
 export type AgentDisplayName = string;
-export type CatalogId1 = string;
+export type CatalogId = string;
 /**
  * Server-dispatched action name, from the catalog.
  */
@@ -81,26 +41,9 @@ export type ArtifactKind = "image";
  */
 export type Children = string[];
 /**
- * The closed allowlist of A2UI components Pantheon will render.
- *
- * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
- * the catalog is chosen for what it *cannot* be abused to do.
- *
- * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
- * object key for an artifact Pantheon itself produced and stored. The agent
- * cannot express an arbitrary destination, so there is nothing to filter.
- *
- * Deliberately excluded, with reasons:
- *
- * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
- *   same ArtifactRef pattern when something does; the allowlist grows on
- *   demand, never speculatively.
- * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
- *   credential prompt. Credential requests travel one path only, through
- *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use.
+ * Must be in the allowlist.
  */
-export type A2UIComponentType1 =
+export type A2UIComponentType =
   | "Row"
   | "Column"
   | "Card"
@@ -130,7 +73,7 @@ export type Label = string | null;
  * Display text, where the type takes one.
  */
 export type Text = string | null;
-export type Components1 = A2UIComponent[];
+export type Components = A2UIComponent[];
 /**
  * Set by the orchestrator. Never agent-supplied.
  */
@@ -892,7 +835,6 @@ export type SurfaceId = string;
  * Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by hand.
  */
 export interface PantheonContracts {
-  a2_u_i_client_capabilities?: A2UIClientCapabilities;
   a2_u_i_surface?: A2UISurface;
   access_request?: AccessRequest;
   action?: Action;
@@ -914,32 +856,16 @@ export interface PantheonContracts {
   verdict?: Verdict;
 }
 /**
- * What the client can render, declared once at run start.
- *
- * A2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI
- * defines no analog, so this is **Pantheon convention, not specification**: the
- * dashboard sends it in the AG-UI run input, and the agent is told what it may
- * emit before it emits anything.
- *
- * `components` is generated from A2UIComponentType, so what we advertise is
- * exactly what the renderer accepts - there is no second list to keep in step.
- */
-export interface A2UIClientCapabilities {
-  a2ui_version?: A2UiVersion;
-  catalog_id?: CatalogId;
-  components?: Components;
-}
-/**
  * A renderable surface, assembled by Pantheon rather than by an agent.
  *
  * Identity is set here, by the orchestrator, and never by the agent - A2UI
  * calls this out explicitly as an anti-impersonation measure.
  */
 export interface A2UISurface {
-  a2ui_version?: A2UiVersion1;
+  a2ui_version?: A2UiVersion;
   agent_display_name?: AgentDisplayName;
-  catalog_id?: CatalogId1;
-  components?: Components1;
+  catalog_id?: CatalogId;
+  components?: Components;
   data_model?: DataModel;
   icon_url?: IconUrl;
   id: Id1;
@@ -962,7 +888,7 @@ export interface A2UIComponent {
    */
   artifact_ref?: ArtifactRef | null;
   children?: Children;
-  component: A2UIComponentType1;
+  component: A2UIComponentType;
   data_path?: DataPath;
   id: Id;
   label?: Label;

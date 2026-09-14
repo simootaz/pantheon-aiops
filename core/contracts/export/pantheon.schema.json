@@ -6,9 +6,6 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "a2_u_i_client_capabilities": {
-      "$ref": "#/$defs/A2UIClientCapabilities"
-    },
     "a2_u_i_surface": {
       "$ref": "#/$defs/A2UISurface"
     },
@@ -106,32 +103,6 @@
         }
       },
       "title": "A2UIAction",
-      "type": "object"
-    },
-    "A2UIClientCapabilities": {
-      "additionalProperties": false,
-      "description": "What the client can render, declared once at run start.\n\nA2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI\ndefines no analog, so this is **Pantheon convention, not specification**: the\ndashboard sends it in the AG-UI run input, and the agent is told what it may\nemit before it emits anything.\n\n`components` is generated from A2UIComponentType, so what we advertise is\nexactly what the renderer accepts - there is no second list to keep in step.",
-      "properties": {
-        "a2ui_version": {
-          "default": "v0.9.1",
-          "title": "A2Ui Version",
-          "type": "string"
-        },
-        "catalog_id": {
-          "default": "pantheon.v1",
-          "title": "Catalog Id",
-          "type": "string"
-        },
-        "components": {
-          "description": "Every component the renderer accepts.",
-          "items": {
-            "$ref": "#/$defs/A2UIComponentType"
-          },
-          "title": "Components",
-          "type": "array"
-        }
-      },
-      "title": "A2UIClientCapabilities",
       "type": "object"
     },
     "A2UIComponent": {

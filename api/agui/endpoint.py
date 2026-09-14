@@ -1,12 +1,13 @@
 """AG-UI event endpoint, streamed over SSE.
 
-Supersedes api/ws/stream.py. Accepts an AG-UI run input - which carries the
-client's A2UIClientCapabilities - and streams standard AG-UI events for the
-lifetime of the run.
+Supersedes api/ws/stream.py. `GET /agui/{investigation_id}` streams standard
+AG-UI events for one investigation; `POST /agui/{investigation_id}/actions`
+takes a person's answer to a surface. There is no run input: Pantheon starts a
+run from a trigger, and a client joins one that is already going.
 
-The client declares its capabilities in the run input rather than the server
-guessing them, so an agent is told what the renderer accepts before it emits
-anything and never produces a component that will be rejected.
+The client declares what it can render in the `X-A2UI-Components` header rather
+than the server guessing, so a client that could not draw an approval prompt is
+refused before one is sent to it.
 
 WHAT THIS STREAMS, AND WHAT IT REFUSES TO
 -------------------------------------------

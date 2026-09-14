@@ -87,7 +87,6 @@ from core.contracts.root_cause import (
 )
 from core.contracts.ui import (
     A2UIAction,
-    A2UIClientCapabilities,
     A2UIComponent,
     A2UIComponentType,
     A2UISurface,
@@ -119,14 +118,12 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     Lease,
     AuditEntry,
     A2UISurface,
-    A2UIClientCapabilities,
     UIActionResponse,
 )
 
 __all__ = [
     "EXPORTED_MODELS",
     "A2UIAction",
-    "A2UIClientCapabilities",
     "A2UIComponent",
     "A2UIComponentType",
     "A2UISurface",
