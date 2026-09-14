@@ -6,14 +6,20 @@
 #
 # Phase: 1 - Contracts & First Agent Path
 
-# Both are transitive through next@15.5.23 and both carry HIGH advisories that
-# `trivy fs` fails CI on. Overridden rather than bumping the framework, so the
-# change is narrow and reversible when next ships them itself:
+# Both are transitive through next and both carry HIGH advisories that
+# `trivy fs` fails CI on. Overridden rather than waiting for next to ship them,
+# so the change is narrow and reversible:
 #
 #   sharp    GHSA-f88m-g3jw-g9cj  fixed in 0.35.0
+#   sharp    GHSA-rgj7-g3m4-5g8c  fixed in 0.35.4  (libheif; published after
+#                                                   0.35.3 had passed CI)
 #   postcss  CVE-2026-73646       fixed in 8.5.18
+#
+# A `>=` floor admits every later vulnerable release too - 0.35.3 satisfied
+# `>=0.35.0` and is exactly what the second advisory is against. The floor moves
+# with each advisory; it is not a promise about what comes after it.
 overrides:
-  sharp: '>=0.35.0'
+  sharp: '>=0.35.4'
   postcss: '>=8.5.18'
 # pnpm policy for the dashboard.
 #
