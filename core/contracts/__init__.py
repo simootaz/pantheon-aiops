@@ -49,6 +49,7 @@ from core.contracts.events import (
     VerdictReadyEvent,
 )
 from core.contracts.evidence import (
+    CapacityForecastPayload,
     Evidence,
     EvidenceKind,
     EvidenceSource,
@@ -145,6 +146,7 @@ __all__ = [
     "BlastRadius",
     "BreakGlassEvent",
     "Capability",
+    "CapacityForecastPayload",
     "CredentialAction",
     "CredentialRef",
     "CredentialScope",

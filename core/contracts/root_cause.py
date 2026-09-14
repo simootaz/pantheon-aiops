@@ -96,11 +96,20 @@ class RootCauseHypothesis(ContractModel):
 #
 # What is still missing is the DETAIL. A structured memory-leak detail would
 # carry a growth rate and the pod it was measured on; a disk-exhaustion detail
-# would carry the fill rate and time-to-full. Nothing computes either. The
-# ranker names a category from the fact that a threshold was crossed, and it has
-# no more than that to put in a detail field.
+# would carry the fill rate and time-to-full.
 #
-# So adding one now means designing the shape of a number nobody produces, and
-# the categories are what simulator/scenarios/*.yaml scores against - a guessed
-# shape would be scored as though it were reasoning. Moved to Phase 4, where the
-# per-category work sits with the agents that would compute it.
+# THE DISK HALF IS NOW PRODUCED, AND IT LIVES ON THE EVIDENCE
+# ------------------------------------------------------------
+# `agents/capacity/agent.py` computes a fill rate and a time-to-full and puts
+# them in `CapacityForecastPayload`, on the Finding's Evidence - which is where
+# a number an agent measured belongs. A detail field on the HYPOTHESIS would be
+# the ranker copying an agent's number into a second place, and the two would
+# be one edit from disagreeing. The memory half is still not computed: nothing
+# knows a container's limit, so there is no time-to-OOM to carry.
+#
+# So this stays a TODO for the reason it was one: adding a field here means
+# designing the shape of a number the RANKER does not produce, and the
+# categories are what simulator/scenarios/*.yaml scores against - a guessed
+# shape would be scored as though it were reasoning. If a per-category detail
+# is ever wanted on the hypothesis itself, it should reference the Evidence
+# that carries the number rather than restate it.

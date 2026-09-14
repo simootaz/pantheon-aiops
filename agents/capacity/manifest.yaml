@@ -17,10 +17,13 @@ capabilities:
     description: Project when a resource crosses its limit.
   - name: recommend_headroom
     description: Propose a request or limit that holds the forecast.
+# One tool. `kubernetes.list` and `kubernetes.top` were declared here and exist
+# in no language - the Go connector's read-only tools are scaffolding - and a
+# dispatchable agent naming a tool nothing implements is refused by
+# test_every_implemented_agent_can_reach_the_tools_it_declares. They return when
+# they exist, and with them a memory limit to project against.
 tools:
   - prometheus.query_range
-  - kubernetes.list
-  - kubernetes.top
 budget:
   max_tokens: 16384
   max_seconds: 300

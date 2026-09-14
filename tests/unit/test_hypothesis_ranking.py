@@ -17,6 +17,8 @@ import random
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
 from core.contracts.evidence import (
     Evidence,
     EvidenceSource,
@@ -28,6 +30,7 @@ from core.contracts.finding import Finding, FindingKind, Severity
 from core.contracts.root_cause import HypothesisStatus, RootCauseCategory
 from core.orchestrator.hypotheses import (
     BASE_CONFIDENCE,
+    CORROBORATION_STEP,
     MAX_CONFIDENCE,
     SIGNALS,
     leading,
@@ -458,3 +461,74 @@ def test_dissent_names_every_agent_that_contributed_to_it() -> None:
 
     (objection,) = verdict.dissent
     assert objection.agents == ["argus", "lethe"]
+
+
+# --- a capacity forecast corroborates, and never proposes ------------------------------
+
+
+def _forecast_finding(subject: ResourceRef) -> Finding:
+    """A Moira-shaped Finding: a projection, and no metric-window payload."""
+    from core.contracts.evidence import CapacityForecastPayload
+
+    return Finding(
+        id=uuid4(),
+        agent="moira",
+        kind=FindingKind.RISK,
+        title="disk on node node-a reaches full in 20.5 h at the current rate",
+        severity=Severity.MEDIUM,
+        confidence=0.99,
+        detected_at=NOW,
+        window_start=NOW - timedelta(hours=24),
+        window_end=NOW,
+        subject=subject,
+        evidence=[
+            Evidence(
+                id=uuid4(),
+                source=EvidenceSource(connector="prometheus", query=DISK),
+                observed_at=NOW,
+                summary="node=node-a is 82.5% full and filling at +0.86%/h",
+                subject=subject,
+                payload=CapacityForecastPayload(
+                    metric=DISK,
+                    unit="ratio",
+                    current=0.825,
+                    limit=1.0,
+                    rate_per_hour=0.0086,
+                    fit_r2=0.997,
+                    time_to_limit_hours=20.5,
+                ),
+            )
+        ],
+    )
+
+
+def test_prediction_6_a_forecast_raises_disk_exhaustion_by_one_step() -> None:
+    """docs/moira-predictions/01-disk-time-to-full.md, prediction 6.
+
+    The forecast carries no metric-window payload, so `_signal_of` returns
+    None and it is corroborating - the safe default for an evidence kind the
+    ranker does not recognise. It shares node-a with Argus's disk Finding, so it
+    attaches, and `_independent` counts (moira, risk) beside (argus, disk):
+    one more observation, one more step.
+    """
+    node = _ref("node", "node-a")
+    without = rank([_metric_finding(DISK, subject=node)])
+    with_forecast = rank([_metric_finding(DISK, subject=node), _forecast_finding(node)])
+
+    assert without[0].category is RootCauseCategory.DISK_EXHAUSTION
+    assert with_forecast[0].category is RootCauseCategory.DISK_EXHAUSTION
+    assert with_forecast[0].confidence == pytest.approx(without[0].confidence + CORROBORATION_STEP)
+
+
+def test_a_forecast_alone_proposes_nothing_but_unknown() -> None:
+    """The other half of "corroborating": it cannot name a cause by itself.
+
+    A projection says a disk is filling. That the fill IS the cause is the
+    metric's semantics, and the ranker reads those off a metric window - which
+    a forecast does not carry. A forecast with no anomaly beside it is evidence
+    without a claim, and the honest answer is UNKNOWN with it attached.
+    """
+    node = _ref("node", "node-a")
+    (only,) = rank([_forecast_finding(node)])
+
+    assert only.category is RootCauseCategory.UNKNOWN

@@ -34,6 +34,7 @@ def register_implemented() -> None:
     else has been imported, and the failure shows up at dispatch.
     """
     from agents.anomaly.agent import Argus
+    from agents.capacity.agent import Moira
     from agents.ci_triage.agent import Hephaestus
     from agents.dora.agent import Themis
     from agents.log_clustering.agent import Lethe
@@ -50,6 +51,8 @@ def register_implemented() -> None:
     # `test_nothing_is_registered_that_the_planner_will_never_name`.
     register("aegis", Aegis)
     register("hephaestus", Hephaestus)
+    # Reachable through ALERT_DOMAINS: every alert is also a capacity question.
+    register("moira", Moira)
 
     # Themis is implemented and NOT dispatchable, for the reason Aegis and
     # Hephaestus were not until the webhook route existed: nothing can route to

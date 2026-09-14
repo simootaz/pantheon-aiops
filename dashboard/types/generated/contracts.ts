@@ -348,7 +348,12 @@ export type Id6 = string;
  */
 export type ObservedAt = string;
 export type Payload1 =
-  MetricWindowPayload | LogClusterPayload | ManifestDiffPayload | K8SEventPayload | PipelineRunPayload;
+  | MetricWindowPayload
+  | LogClusterPayload
+  | ManifestDiffPayload
+  | K8SEventPayload
+  | PipelineRunPayload
+  | CapacityForecastPayload;
 /**
  * Middle of the baseline, by `estimator`.
  */
@@ -433,6 +438,37 @@ export type Ref = string;
  * e.g. 'failed', 'success'.
  */
 export type Status = string;
+/**
+ * The fitted value at the end of the window.
+ */
+export type Current = number;
+/**
+ * Coefficient of determination of the fit.
+ */
+export type FitR2 = number;
+export type Kind6 = "capacity_forecast";
+/**
+ * The line being projected to. The metric's own, never a stand-in.
+ */
+export type Limit = number;
+/**
+ * What was fitted, e.g. a used/total ratio.
+ */
+export type Metric1 = string;
+/**
+ * Least-squares slope over the window, in units per hour.
+ */
+export type RatePerHour = number;
+export type Samples1 = MetricSample[];
+/**
+ * Hours until the fitted line reaches `limit`. None when the trend does not reach it.
+ */
+export type TimeToLimitHours = number | null;
+/**
+ * Unit of `current`, `limit` and the rate.
+ */
+export type Unit1 = string;
+export type WindowSeconds1 = number;
 /**
  * When the connector ran, as distinct from what it observed.
  */
@@ -1288,6 +1324,38 @@ export interface PipelineRunPayload {
   project: Project;
   ref: Ref;
   status: Status;
+}
+/**
+ * A trend on a resource that has a limit, and when the trend crosses it.
+ *
+ * Three numbers and a statement about whether to trust them. `rate_per_hour`
+ * is a least-squares slope, which is what "rate" means; `time_to_limit_hours`
+ * is `(limit - current) / rate`, which is what "time to limit" means. Neither
+ * is a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried
+ * rather than thresholded away: a poor fit produces a Finding with a poor fit
+ * on it, not a suppressed one and not a confident one.
+ *
+ * `limit` is the metric's own limit - total bytes for a disk - and never a
+ * substitute. Eviction happens before full, and the kubelet's threshold is
+ * configuration this payload cannot read; projecting to it would be projecting
+ * against a number that means something else. `time_to_limit_hours` therefore
+ * reads as a latest-possible time, and the summary says "full".
+ *
+ * The samples are carried so the projection can be re-fitted by anything that
+ * disagrees with the method, and so a reader can see the trend rather than
+ * take the slope on trust.
+ */
+export interface CapacityForecastPayload {
+  current: Current;
+  fit_r2: FitR2;
+  kind?: Kind6;
+  limit: Limit;
+  metric: Metric1;
+  rate_per_hour: RatePerHour;
+  samples?: Samples1;
+  time_to_limit_hours?: TimeToLimitHours;
+  unit?: Unit1;
+  window_seconds?: WindowSeconds1;
 }
 /**
  * Where a piece of Evidence came from, so a human can go and look.

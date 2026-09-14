@@ -266,6 +266,9 @@ async def test_an_investigation_carries_its_correlations() -> None:
         dispatcher.AGENTS.clear()
         dispatcher.register("argus", _ReportsOnAPod)
         dispatcher.register("lethe", _ReportsOnAPodToo)
+        # The alert plan has a third step now. Quiet, so the correlation under
+        # test is between the two findings above and not about capacity.
+        dispatcher.register("moira", _ReportsNothing)
 
         investigation = await investigate(
             Trigger(
@@ -298,3 +301,10 @@ class _ReportsOnAPod(BaseAgent):
 
 class _ReportsOnAPodToo(_ReportsOnAPod):
     domain = "log_clustering"
+
+
+class _ReportsNothing(BaseAgent):
+    domain = "capacity"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []

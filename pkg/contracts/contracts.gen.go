@@ -1444,6 +1444,110 @@ func (j *Capability) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// A trend on a resource that has a limit, and when the trend crosses it.
+//
+// Three numbers and a statement about whether to trust them. `rate_per_hour`
+// is a least-squares slope, which is what "rate" means; `time_to_limit_hours`
+// is `(limit - current) / rate`, which is what "time to limit" means. Neither
+// is a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried
+// rather than thresholded away: a poor fit produces a Finding with a poor fit
+// on it, not a suppressed one and not a confident one.
+//
+// `limit` is the metric's own limit - total bytes for a disk - and never a
+// substitute. Eviction happens before full, and the kubelet's threshold is
+// configuration this payload cannot read; projecting to it would be projecting
+// against a number that means something else. `time_to_limit_hours` therefore
+// reads as a latest-possible time, and the summary says "full".
+//
+// The samples are carried so the projection can be re-fitted by anything that
+// disagrees with the method, and so a reader can see the trend rather than
+// take the slope on trust.
+type CapacityForecastPayload struct {
+	// The fitted value at the end of the window.
+	Current float64 `json:"current" yaml:"current" mapstructure:"current"`
+
+	// Coefficient of determination of the fit.
+	FitR2 float64 `json:"fit_r2" yaml:"fit_r2" mapstructure:"fit_r2"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// The line being projected to. The metric's own, never a stand-in.
+	Limit float64 `json:"limit" yaml:"limit" mapstructure:"limit"`
+
+	// What was fitted, e.g. a used/total ratio.
+	Metric string `json:"metric" yaml:"metric" mapstructure:"metric"`
+
+	// Least-squares slope over the window, in units per hour.
+	RatePerHour float64 `json:"rate_per_hour" yaml:"rate_per_hour" mapstructure:"rate_per_hour"`
+
+	// Samples corresponds to the JSON schema field "samples".
+	Samples []MetricSample `json:"samples,omitempty,omitzero" yaml:"samples,omitempty" mapstructure:"samples,omitempty"`
+
+	// Hours until the fitted line reaches `limit`. None when the trend does not reach
+	// it.
+	TimeToLimitHours interface{} `json:"time_to_limit_hours,omitempty,omitzero" yaml:"time_to_limit_hours,omitempty" mapstructure:"time_to_limit_hours,omitempty"`
+
+	// Unit of `current`, `limit` and the rate.
+	Unit string `json:"unit,omitempty,omitzero" yaml:"unit,omitempty" mapstructure:"unit,omitempty"`
+
+	// WindowSeconds corresponds to the JSON schema field "window_seconds".
+	WindowSeconds int `json:"window_seconds,omitempty,omitzero" yaml:"window_seconds,omitempty" mapstructure:"window_seconds,omitempty"`
+}
+
+type CapacityForecastPayloadTimeToLimitHours_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CapacityForecastPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["current"]; raw != nil && !ok {
+		return fmt.Errorf("field current in CapacityForecastPayload: required")
+	}
+	if _, ok := raw["fit_r2"]; raw != nil && !ok {
+		return fmt.Errorf("field fit_r2 in CapacityForecastPayload: required")
+	}
+	if _, ok := raw["limit"]; raw != nil && !ok {
+		return fmt.Errorf("field limit in CapacityForecastPayload: required")
+	}
+	if _, ok := raw["metric"]; raw != nil && !ok {
+		return fmt.Errorf("field metric in CapacityForecastPayload: required")
+	}
+	if _, ok := raw["rate_per_hour"]; raw != nil && !ok {
+		return fmt.Errorf("field rate_per_hour in CapacityForecastPayload: required")
+	}
+	type Plain CapacityForecastPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.FitR2 {
+		return fmt.Errorf("field %s: must be <= %v", "fit_r2", 1)
+	}
+	if 0 > plain.FitR2 {
+		return fmt.Errorf("field %s: must be >= %v", "fit_r2", 0)
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "capacity_forecast"
+	}
+	if plain.Kind != "capacity_forecast" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "capacity_forecast")
+	}
+	if v, ok := raw["unit"]; !ok || v == nil {
+		plain.Unit = ""
+	}
+	if v, ok := raw["window_seconds"]; !ok || v == nil {
+		plain.WindowSeconds = 0
+	}
+	if 0 > plain.WindowSeconds {
+		return fmt.Errorf("field %s: must be >= %v", "window_seconds", 0)
+	}
+	*j = CapacityForecastPayload(plain)
+	return nil
+}
+
 type CredentialAction string
 
 const CredentialActionNotApplicable CredentialAction = "not_applicable"
@@ -3870,126 +3974,8 @@ func (j *TriggerKind) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
-type InvestigationVerdict_0 = Verdict
-
-type FindingSubject_0 = ResourceRef
-
 // Verbatim, unparsed.
 type TriggerPayload map[string]interface{}
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
-
-type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
-	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
-	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
-	}
-	type Plain Trigger
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["title"]; !ok || v == nil {
-		plain.Title = ""
-	}
-	*j = Trigger(plain)
-	return nil
-}
-
-// The orchestrator's ranked conclusion for one Investigation.
-type Verdict struct {
-	// Confidence in the leading hypothesis.
-	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
-
-	// ContributingFindings corresponds to the JSON schema field
-	// "contributing_findings".
-	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
-
-	// DecidedAt corresponds to the JSON schema field "decided_at".
-	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
-
-	// Candidates the leading hypothesis does not account for. Empty when the run was
-	// unanimous OR when nothing led - see the validator below.
-	Dissent []Dissent `json:"dissent,omitempty,omitzero" yaml:"dissent,omitempty" mapstructure:"dissent,omitempty"`
-
-	// Ranked most-likely first. Empty means no explanation was reached, which is a
-	// legitimate outcome and must not be dressed up as one.
-	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
-
-	// Id corresponds to the JSON schema field "id".
-	Id string `json:"id" yaml:"id" mapstructure:"id"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
-
-	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
-	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
-
-	// What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed
-	// without knowing which agents completed is a verdict that cannot tell 'nobody
-	// found anything' from 'nobody looked'.
-	Steps []PlanStep `json:"steps" yaml:"steps" mapstructure:"steps"`
-
-	// What happened, in one paragraph, for a human.
-	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
-	}
-	if _, ok := raw["decided_at"]; raw != nil && !ok {
-		return fmt.Errorf("field decided_at in Verdict: required")
-	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
-	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["steps"]; raw != nil && !ok {
-		return fmt.Errorf("field steps in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
-	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
-	}
-	*j = Verdict(plain)
-	return nil
-}
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
-type EvidenceSubject_0 = ResourceRef
 
 // An inbound trigger was accepted and an Investigation created for it.
 //
@@ -4033,6 +4019,124 @@ func (j *TriggerReceivedEvent) UnmarshalJSON(value []byte) error {
 	*j = TriggerReceivedEvent(plain)
 	return nil
 }
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["decided_at"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_at in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["steps"]; raw != nil && !ok {
+		return fmt.Errorf("field steps in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
+	return nil
+}
+
+// The orchestrator's ranked conclusion for one Investigation.
+type Verdict struct {
+	// Confidence in the leading hypothesis.
+	Confidence float64 `json:"confidence" yaml:"confidence" mapstructure:"confidence"`
+
+	// ContributingFindings corresponds to the JSON schema field
+	// "contributing_findings".
+	ContributingFindings []Finding `json:"contributing_findings,omitempty,omitzero" yaml:"contributing_findings,omitempty" mapstructure:"contributing_findings,omitempty"`
+
+	// DecidedAt corresponds to the JSON schema field "decided_at".
+	DecidedAt time.Time `json:"decided_at" yaml:"decided_at" mapstructure:"decided_at"`
+
+	// Candidates the leading hypothesis does not account for. Empty when the run was
+	// unanimous OR when nothing led - see the validator below.
+	Dissent []Dissent `json:"dissent,omitempty,omitzero" yaml:"dissent,omitempty" mapstructure:"dissent,omitempty"`
+
+	// Ranked most-likely first. Empty means no explanation was reached, which is a
+	// legitimate outcome and must not be dressed up as one.
+	Hypotheses []RootCauseHypothesis `json:"hypotheses,omitempty,omitzero" yaml:"hypotheses,omitempty" mapstructure:"hypotheses,omitempty"`
+
+	// Id corresponds to the JSON schema field "id".
+	Id string `json:"id" yaml:"id" mapstructure:"id"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// RecommendedActions corresponds to the JSON schema field "recommended_actions".
+	RecommendedActions []Action `json:"recommended_actions,omitempty,omitzero" yaml:"recommended_actions,omitempty" mapstructure:"recommended_actions,omitempty"`
+
+	// What actually ran. REQUIRED, and deliberately not defaulted: a verdict formed
+	// without knowing which agents completed is a verdict that cannot tell 'nobody
+	// found anything' from 'nobody looked'.
+	Steps []PlanStep `json:"steps" yaml:"steps" mapstructure:"steps"`
+
+	// What happened, in one paragraph, for a human.
+	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
+}
+
+type FindingSubject_0 = ResourceRef
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trigger) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
+	}
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
+	}
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
+	}
+	type Plain Trigger
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["title"]; !ok || v == nil {
+		plain.Title = ""
+	}
+	*j = Trigger(plain)
+	return nil
+}
+
+type A2UIComponentAction_0 = A2UIAction
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
+
+type EvidenceSubject_0 = ResourceRef
+
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+
+type AuditEntryCredentialRef_0 = CredentialRef
 
 type UIActionResponseContext map[string]interface{}
 
@@ -4123,4 +4227,4 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type A2UIComponentAction_0 = A2UIAction
+type InvestigationVerdict_0 = Verdict

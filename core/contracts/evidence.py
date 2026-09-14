@@ -48,6 +48,7 @@ class EvidenceKind(StrEnum):
     MANIFEST_DIFF = "manifest_diff"
     K8S_EVENT = "k8s_event"
     PIPELINE_RUN = "pipeline_run"
+    CAPACITY_FORECAST = "capacity_forecast"
 
 
 class ResourceRef(ContractModel):
@@ -226,12 +227,56 @@ class PipelineRunPayload(ContractModel):
     commit_sha: str | None = None
 
 
+class CapacityForecastPayload(ContractModel):
+    """A trend on a resource that has a limit, and when the trend crosses it.
+
+    Three numbers and a statement about whether to trust them. `rate_per_hour`
+    is a least-squares slope, which is what "rate" means; `time_to_limit_hours`
+    is `(limit - current) / rate`, which is what "time to limit" means. Neither
+    is a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried
+    rather than thresholded away: a poor fit produces a Finding with a poor fit
+    on it, not a suppressed one and not a confident one.
+
+    `limit` is the metric's own limit - total bytes for a disk - and never a
+    substitute. Eviction happens before full, and the kubelet's threshold is
+    configuration this payload cannot read; projecting to it would be projecting
+    against a number that means something else. `time_to_limit_hours` therefore
+    reads as a latest-possible time, and the summary says "full".
+
+    The samples are carried so the projection can be re-fitted by anything that
+    disagrees with the method, and so a reader can see the trend rather than
+    take the slope on trust.
+    """
+
+    kind: Literal["capacity_forecast"] = "capacity_forecast"
+    metric: str = Field(description="What was fitted, e.g. a used/total ratio.")
+    unit: str = Field(default="", description="Unit of `current`, `limit` and the rate.")
+    samples: list[MetricSample] = Field(default_factory=list)
+    current: float = Field(description="The fitted value at the end of the window.")
+    limit: float = Field(
+        description="The line being projected to. The metric's own, never a stand-in."
+    )
+    rate_per_hour: float = Field(
+        description="Least-squares slope over the window, in units per hour."
+    )
+    fit_r2: float = Field(ge=0.0, le=1.0, description="Coefficient of determination of the fit.")
+    time_to_limit_hours: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Hours until the fitted line reaches `limit`. None when the trend does not reach it."
+        ),
+    )
+    window_seconds: int = Field(default=0, ge=0)
+
+
 EvidencePayload = Annotated[
     MetricWindowPayload
     | LogClusterPayload
     | ManifestDiffPayload
     | K8sEventPayload
-    | PipelineRunPayload,
+    | PipelineRunPayload
+    | CapacityForecastPayload,
     Field(discriminator="kind"),
 ]
 """Discriminated union of everything Evidence can carry."""

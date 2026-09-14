@@ -43,7 +43,14 @@ SEVERITY_LABELS = {
 #:
 #: Lethe is second because its window read is the slower of the two and the
 #: dispatcher runs steps in order - not because its findings matter less.
-ALERT_DOMAINS = ("anomaly", "log_clustering")
+#:
+#: Capacity is third. An alert says something moved; Argus says what, Lethe says
+#: what the logs said, and Moira says whether it is about to get worse - which
+#: on `disk_pressure` is the whole question. It reads every alert rather than
+#: only ones that name a disk, for the reason Argus scans every metric: the
+#: trigger's labels are operator-supplied text, and a fill is a fact about the
+#: window, not about the alertname.
+ALERT_DOMAINS = ("anomaly", "log_clustering", "capacity")
 
 #: A question is answered, not investigated. Argus and Lethe scan a window and
 #: report what moved; neither answers "what is the error rate right now", and

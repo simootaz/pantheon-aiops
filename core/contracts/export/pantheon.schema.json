@@ -956,6 +956,87 @@
       "title": "Capability",
       "type": "string"
     },
+    "CapacityForecastPayload": {
+      "additionalProperties": false,
+      "description": "A trend on a resource that has a limit, and when the trend crosses it.\n\nThree numbers and a statement about whether to trust them. `rate_per_hour`\nis a least-squares slope, which is what \"rate\" means; `time_to_limit_hours`\nis `(limit - current) / rate`, which is what \"time to limit\" means. Neither\nis a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried\nrather than thresholded away: a poor fit produces a Finding with a poor fit\non it, not a suppressed one and not a confident one.\n\n`limit` is the metric's own limit - total bytes for a disk - and never a\nsubstitute. Eviction happens before full, and the kubelet's threshold is\nconfiguration this payload cannot read; projecting to it would be projecting\nagainst a number that means something else. `time_to_limit_hours` therefore\nreads as a latest-possible time, and the summary says \"full\".\n\nThe samples are carried so the projection can be re-fitted by anything that\ndisagrees with the method, and so a reader can see the trend rather than\ntake the slope on trust.",
+      "properties": {
+        "current": {
+          "description": "The fitted value at the end of the window.",
+          "title": "Current",
+          "type": "number"
+        },
+        "fit_r2": {
+          "description": "Coefficient of determination of the fit.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Fit R2",
+          "type": "number"
+        },
+        "kind": {
+          "const": "capacity_forecast",
+          "default": "capacity_forecast",
+          "title": "Kind",
+          "type": "string"
+        },
+        "limit": {
+          "description": "The line being projected to. The metric's own, never a stand-in.",
+          "title": "Limit",
+          "type": "number"
+        },
+        "metric": {
+          "description": "What was fitted, e.g. a used/total ratio.",
+          "title": "Metric",
+          "type": "string"
+        },
+        "rate_per_hour": {
+          "description": "Least-squares slope over the window, in units per hour.",
+          "title": "Rate Per Hour",
+          "type": "number"
+        },
+        "samples": {
+          "items": {
+            "$ref": "#/$defs/MetricSample"
+          },
+          "title": "Samples",
+          "type": "array"
+        },
+        "time_to_limit_hours": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hours until the fitted line reaches `limit`. None when the trend does not reach it.",
+          "title": "Time To Limit Hours"
+        },
+        "unit": {
+          "default": "",
+          "description": "Unit of `current`, `limit` and the rate.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "window_seconds": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Window Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric",
+        "current",
+        "limit",
+        "rate_per_hour",
+        "fit_r2"
+      ],
+      "title": "CapacityForecastPayload",
+      "type": "object"
+    },
     "CredentialAction": {
       "description": "Read and write are separate grants.\n\nApproving read never implies write, mirroring the connector split between\ninternal/readonly and internal/write.\n\nNOT_APPLICABLE exists for audit entries that concern no single access -\nbreak-glass and rotation, for instance. It is meaningful only on AuditEntry;\na Grant, Lease or AccessRequest carrying it is invalid, and Phase 3\nvalidation rejects it.\n\nIt is also why AuditEntry.action is not simply nullable: a nullable enum\nemits `anyOf: [$ref, null]`, which go-jsonschema v0.24.1 turns into two\nconflicting UnmarshalJSON methods on the same Go type. Stating \"not\napplicable\" explicitly is clearer than an implicit null convention anyway.",
       "enum": [
@@ -1212,6 +1293,7 @@
         "payload": {
           "discriminator": {
             "mapping": {
+              "capacity_forecast": "#/$defs/CapacityForecastPayload",
               "k8s_event": "#/$defs/K8sEventPayload",
               "log_cluster": "#/$defs/LogClusterPayload",
               "manifest_diff": "#/$defs/ManifestDiffPayload",
@@ -1235,6 +1317,9 @@
             },
             {
               "$ref": "#/$defs/PipelineRunPayload"
+            },
+            {
+              "$ref": "#/$defs/CapacityForecastPayload"
             }
           ],
           "title": "Payload"

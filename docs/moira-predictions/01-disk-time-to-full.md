@@ -171,3 +171,51 @@ its own 24-hour window ending at the incident's end and puts *that* window on
 the Finding. This changes no prediction; it changes what a prediction about a
 five-minute window would have said, which is "R² near zero", and is the reason
 none of the above was written about one.
+
+---
+
+## Results — 2026-09-14, same day, offline against the generator
+
+Scored by `agents/capacity/tests/test_agent.py` (P1–P4) and
+`tests/unit/test_hypothesis_ranking.py` (P6), fitting the deterministic
+generator's own series over Moira's 24-hour window. The numbers are in
+[`data/disk-fit-offline.json`](data/disk-fit-offline.json). The Prometheus-backed
+gate divides by the compression factor and has not yet run on this machine.
+
+| # | Predicted | Measured | |
+| --- | --- | --- | --- |
+| 1 | rate 0.0092 ± 0.001 /h | **0.00903 /h** | hit |
+| 2 | R² > 0.99 over the fill | **0.9990** | hit |
+| 3a | 42.4 h to full from the midpoint, ±10 % | **44.9 h** (6 %) | hit |
+| 3b | 18.5 h to full from 90 %, ±10 % | **20.5 h** (11 %) | **miss** |
+| 4 | no disk Finding on `memory_leak` | none; 3 139 h to full, R² 0.32 | hit |
+| 5 | memory DEGRADED on every scenario | DEGRADED, named, not retryable | hit, as predicted |
+| 6 | `disk_exhaustion` confidence up by exactly one step | +0.10 | hit |
+
+**The miss, and what it was.** P3b was computed as `(1 − 0.8304) / 0.00915`
+from two instantaneous samples. Over Moira's actual 24-hour window ending at
+90 %, the fitted rate is 0.00855 /h and the fitted `current` 0.825 — both
+pulled by the generator's 1 % seasonal term, which it applies to disk with a
+daily period even though the docstring on `_node_disk` says disk has no rhythm
+of its own. At the top of the ramp that 1 % is ±0.0088 absolute, comparable to
+an hour's fill, and any window shorter than a full cycle picks up a tilt from
+where in the cycle it starts. Windows of 6, 12, 18, 24 and 36 hours ending at
+the same point give 15.9, 19.9, 21.5, 20.5 and 19.0 hours to full.
+
+This was the first item under *what would make me wrong*. It is a miss all the
+same: the tolerance was 10 % and the error is 11 %, and a tolerance widened
+after the fact to admit it would be a prediction fitted to its answer. The test
+holds the measured 20.5 h and says which prediction it was.
+
+**What it says about Moira.** Nothing to fix. The seasonal tilt is a property
+of the series, a real disk with a diurnal write pattern has one too, and a
+forecast that reported 20.5 h when the answer was 18.5 h is late by two hours
+on a three-day fill. What would narrow it is a longer window, and 24 hours
+already covers the cycle; what would remove it is a seasonal model, which
+would be a parameter with a period nobody has measured on a real cluster.
+
+**What it says about the generator.** `_node_disk` documents that disk has no
+daily rhythm of its own and then applies `SEASONAL_AMPLITUDE[DISK_USED] = 0.01`
+through `sample()`. The 2026-08-17 fix made the table read; it did not ask
+whether disk should be in it. Left as found, and noted: it is the second time
+this record has found something about the generator rather than the agent.

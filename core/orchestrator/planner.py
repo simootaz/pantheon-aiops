@@ -30,6 +30,7 @@ IMPLEMENTED: dict[str, str] = {
     "nl_query": "hermes",
     "manifest_review": "aegis",
     "ci_triage": "hephaestus",
+    "capacity": "moira",
 }
 
 

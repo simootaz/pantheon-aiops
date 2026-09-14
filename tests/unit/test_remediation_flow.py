@@ -51,13 +51,22 @@ class _QuietLethe(BaseAgent):
         return []
 
 
+class _QuietMoira(BaseAgent):
+    domain = "capacity"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []
+
+
 @pytest.fixture
 def registered() -> Any:
-    """Two quiet agents, restored afterwards. The findings are not the subject."""
+    """The alert plan's agents, all quiet, restored afterwards. The findings are
+    not the subject."""
     original = dict(dispatcher.AGENTS)
     dispatcher.AGENTS.clear()
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _QuietLethe)
+    dispatcher.register("moira", _QuietMoira)
     yield
     dispatcher.AGENTS.clear()
     dispatcher.AGENTS.update(original)

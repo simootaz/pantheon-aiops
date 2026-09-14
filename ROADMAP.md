@@ -26,7 +26,7 @@ keep all of it honest. **No business logic.**
 | Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
 | Go | workspace over 5 modules, golangci-lint, compiling stubs |
 | TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
-| Contracts | 53 models, closed, exported to Go + TS |
+| Contracts | 54 models, closed, exported to Go + TS |
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |
@@ -183,7 +183,11 @@ serves.
 
 ## Phase 5 — Proactive Flow ⬜ not started
 
-- **Moira**, **Mnemosyne**, **Clio**, **Eris**; Litmus connector
+- ✅ **Moira**, from Prometheus alone: disk time-to-full, reachable on every
+  alert. Memory is refused on every run until a limit metric exists - the
+  Kubernetes read tools are the trigger. Six predictions committed before the
+  agent, five hit, one missed by the generator's seasonal term and recorded.
+- **Mnemosyne**, **Clio**, **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches
 - End-to-end tests against the simulator
