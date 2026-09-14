@@ -331,11 +331,19 @@ class SimulatorSettings(BaseSettings):
     model_config = _group("SIM_")
 
     webhook_url: HttpUrl = HttpUrl("http://localhost:8000/webhooks/gitlab")
+    #: Where synthetic GitHub deliveries go. The scenario runner sends these;
+    #: GitHub is the forge this deployment uses, and a GitLab pipeline hook
+    #: starts no investigation because the classifier reads GitHub's shapes.
+    github_webhook_url: HttpUrl = HttpUrl("http://localhost:8000/webhooks/github")
     default_speed: float = Field(default=500.0, gt=0.0)
 
     @property
     def webhook(self) -> str:
         return _base(self.webhook_url)
+
+    @property
+    def github_webhook(self) -> str:
+        return _base(self.github_webhook_url)
 
 
 #: Secrets deliberately allowed to be absent in production, and why. Every
