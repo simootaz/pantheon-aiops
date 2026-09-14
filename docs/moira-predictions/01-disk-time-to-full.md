@@ -145,3 +145,29 @@ That Moira predicts eviction. It predicts full. That Moira handles memory. It
 refuses, and says why. That 72 h is anything but a parameter — it is the
 scenario's own timescale, and it is on the Finding so a reader can disagree
 with it.
+
+## Addendum, written while building the agent and still before any measurement
+
+Two things I did not see until the code was in front of me. Recorded here
+rather than folded into the predictions above, so the record shows what was
+known when.
+
+**Compression does not cancel for a rate.** Argus's z-scores are ratios and the
+simulator's speed factor divides out. A slope does not: at 500×, Prometheus
+sees the 60-hour ramp go by in 7.2 wall minutes, and Moira - which reads wall
+time - will report a rate of roughly 0.0092 × 500 ≈ 4.6 per hour and a
+time-to-full of 42 h / 500 ≈ 5 minutes. So P1 and P3 are predictions about the
+generator's **simulated** series, which is what the offline test in
+`agents/capacity/tests/` fits directly. Under `make test-sim` the same
+predictions hold after dividing by the speed, and the integration assertion
+will be written that way. A Moira that reported simulated hours under
+compression would be one that knew it was being simulated.
+
+**The incident window is the wrong window for a trend.** The router hands every
+agent a five-minute lookback, which is right for "what just moved" and useless
+for a fill measured in days - five minutes of a 60-hour ramp moves the ratio by
+0.0008 against 0.002 of noise, and the fit would report the noise. Moira reads
+its own 24-hour window ending at the incident's end and puts *that* window on
+the Finding. This changes no prediction; it changes what a prediction about a
+five-minute window would have said, which is "R² near zero", and is the reason
+none of the above was written about one.
