@@ -498,10 +498,43 @@ def _count_models() -> int:
     )
 
 
+#: A test function as pytest collects one: sync or async, at module level or
+#: indented inside a `Test*` class.
+_TEST_FUNCTION = re.compile(r"^[ 	]*(?:async[ 	]+)?def test_", re.MULTILINE)
+
+
+def _test_roots() -> list[Path]:
+    """Where pytest looks, read from `pyproject.toml` rather than restated here.
+
+    Restating it is how this counter came to skip `agents/*/tests/`: pytest was
+    told to collect from `tests` and `agents`, and this looked only in `tests`.
+    Two lists of where tests live is one that can be wrong without failing.
+    """
+    import tomllib
+
+    config = tomllib.loads(read_data(REPO_ROOT / "pyproject.toml"))
+    roots: list[str] = config["tool"]["pytest"]["ini_options"]["testpaths"]
+    return [REPO_ROOT / root for root in roots]
+
+
 def _count_tests() -> int:
+    """Test functions pytest collects, before parametrisation expands them.
+
+    THIS UNDERCOUNTED BY 27 PER CENT, AND ENFORCED THE UNDERCOUNT
+    ---------------------------------------------------------------
+    It matched `^def test_` under `tests/`. That missed every `async def test_`
+    - 283 of them - and all 83 tests in `agents/*/tests/`, which pytest collects
+    because `testpaths` names `agents`. The README said 996 while 1362 existed,
+    and this guard, whose whole job is keeping that number true, passed it: it
+    was checking the prose against a count with the same blind spots.
+
+    It surfaced when seven async tests were added and the count did not move.
+    Every earlier batch had moved it, because they happened to be sync.
+    """
     return sum(
-        len(re.findall(r"^def test_", read_data(path), re.MULTILINE))
-        for path in sorted((REPO_ROOT / "tests").rglob("test_*.py"))
+        len(_TEST_FUNCTION.findall(read_data(path)))
+        for root in _test_roots()
+        for path in sorted(root.rglob("test_*.py"))
     )
 
 

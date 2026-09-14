@@ -1784,6 +1784,37 @@ reads.**
 > If a test reads real configuration, it must not also hardcode a value that
 > configuration determines. Run it under a different one before believing it.
 
+## A counting guard with the same blind spots as the prose it checked, 2026-09-14
+
+`test_every_typed_count_in_the_docs_is_true` exists because *"a number in prose
+is a claim, and it goes stale in total silence."* Its test count matched
+`^def test_` under `tests/`.
+
+| Missed | Test functions |
+|---|---|
+| `async def test_` in `tests/` | 283 |
+| everything in `agents/*/tests/`, which pytest collects because `testpaths` names `agents` | 83 |
+| **counted, of 1362** | **996** |
+
+The README said 996. The guard agreed, because both were blind to the same 366
+tests. It had been planted and verified in both directions — against a
+**changed README**, never against a **changed test population**. A plant that
+edits the prose proves the comparison works; it says nothing about whether the
+count being compared is the one the prose names.
+
+It surfaced when seven async tests were added and the count did not move, after
+four consecutive batches of sync tests had each moved it. It was invisible for
+exactly as long as nobody wrote an async test in a commit that also watched the
+number.
+
+**The fix** reads `testpaths` from `pyproject.toml` rather than restating it,
+and matches sync and async functions at any indentation. Plants now cover the
+population side: dropping `async` gives 1042, dropping `agents` gives 1279, and
+both fail against the README.
+
+> A guard comparing a document to a derived count has two halves to verify. Plant
+> a change in the document, **and** plant something the count should see.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you
