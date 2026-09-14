@@ -27,6 +27,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ALLOWED_COMPONENTS } from "@/components/a2ui/allowlist";
 import type { Investigation } from "@/types/generated/contracts";
 import { InvestigationStore, type JsonPatchOperation } from "./investigation-state";
 import { backoffMs, isRetryable, readStream, StreamError } from "./stream";
@@ -113,6 +114,10 @@ export function useInvestigation(
           url: `${API_URL}/agui/${investigationId}`,
           token,
           signal: controller.signal,
+          // The generated allowlist, not a hand-written list: what this client
+          // declares is then exactly what the renderer accepts, and neither
+          // can drift from the other.
+          components: ALLOWED_COMPONENTS,
         })) {
           if (cancelled) return;
           const event = raw as AguiEvent;
@@ -139,8 +144,8 @@ export function useInvestigation(
         if (isRetryable(caught)) {
           schedule();
         } else {
-          // A 401, 403 or 404. Retrying produces a log full of failures and
-          // never a connection, so the view is told to stop waiting.
+          // A 401, 403, 404 or 406. Retrying produces a log full of failures
+          // and never a connection, so the view is told to stop waiting.
           setFatal(true);
         }
       }

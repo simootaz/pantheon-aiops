@@ -268,7 +268,9 @@ later tempted to drop one as duplicated effort should read this paragraph first.
 ## Dashboard impact (branch 4)
 
 - `dashboard/lib/agui/` — `@ag-ui/client` `HttpAgent`, plus middleware for
-  logging and reconnection.
+  logging and reconnection. **Reversed** — see the amendment at the end: the
+  stream is read with `fetch`, and `HttpAgent` targeted a route that never
+  existed.
 - `dashboard/components/a2ui/` — the renderer, switching **exhaustively over the
   generated `A2UIComponentType`**, rejecting anything else.
 - The four route pages consume the AG-UI event stream rather than bespoke
@@ -313,3 +315,58 @@ later tempted to drop one as duplicated effort should read this paragraph first.
 | **0** | Contracts, structure, allowlist, all guards; `api/ws/` removed |
 | **4** | AG-UI endpoint and translator, A2UI surfaces for Approval Gate and Cerberus, dashboard client and renderer |
 | **5** | Replay from snapshot + patches; revisit the envelope and A2UI v1.0 |
+
+---
+
+## Amendment — the dashboard reads the stream with `fetch`, not `HttpAgent`
+
+_2026-09-14, on branch `feature/lethe-detection`._
+
+**What this ADR chose.** `@ag-ui/client` `HttpAgent`, "plus middleware for
+logging and reconnection" — see *Dashboard impact* above.
+
+**What happened.** The client was written against a transport that never
+existed on the server. `HttpAgent.runAgent` POSTs a run input to `/agui`; the
+endpoint Phase 4 built is `GET /agui/{investigation_id}` for the stream and
+`POST /agui/{investigation_id}/actions` for answers. Nothing imported the
+module, so nothing noticed. The dashboard's actual stream reader,
+`dashboard/lib/agui/stream.ts`, was written separately with `fetch` and a
+`ReadableStream`, because `EventSource` cannot set headers and authenticating
+one means a token in a query string — the same thing both forge connectors
+refuse on the way out.
+
+**The capability declaration went down with it.** This ADR's client advertised
+`a2uiClientCapabilities` in the run input. That was the only producer of a
+declaration, it targeted the missing route, and the server's check
+(`unsupported_components`) was called by nothing but its own tests. The
+endpoint's docstring nonetheless said a client lacking a component was "told at
+handshake time, in the response". It was not.
+
+**The decision now.**
+
+| | Before | Now |
+|---|---|---|
+| Transport | `HttpAgent`, run input POSTed to `/agui` | `fetch` on `GET /agui/{id}`, SSE framing parsed in `stream.ts` |
+| Credential | `content-type` header only | `Authorization` header, never a query parameter |
+| Catalog declaration | `forwardedProps.a2uiClientCapabilities`, sent nowhere | `X-A2UI-Components` header, generated from `ALLOWED_COMPONENTS` |
+| Server behaviour | nothing read it | **406** when a required component is missing; `X-A2UI-Capabilities: undeclared` when no catalog was sent |
+
+A GET has no body, so the declaration is a header. It is not a credential; the
+header is for tidiness rather than for the reason the token is in one.
+
+**Why 406 and not a warning event.** The failure being prevented is an approval
+prompt the client drops, leaving the run in `AWAITING_APPROVAL` on a person who
+was never shown it. A warning event is sent to the same client that cannot
+render the thing it warns about. Content negotiation already has a status for
+"I cannot produce something you can accept".
+
+**Why an undeclared catalog still streams.** No header is a client that did not
+say — not one that renders nothing. `cerberus/policy/scope.py` draws the same
+line between an unset field on a grant and one on a request. Refusing it would
+lock out curl and every read-only consumer.
+
+**Consequences.** `@ag-ui/client` and `@ag-ui/core` are now imported by nothing
+in `dashboard/`. They are left in `package.json` for this change and removed
+separately, because removing them rewrites the lockfile and that belongs in a
+commit a reviewer can read on its own. The `ag_ui` Python SDK is unaffected —
+the server still emits canonical AG-UI event types.

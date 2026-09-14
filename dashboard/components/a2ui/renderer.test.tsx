@@ -81,3 +81,14 @@ describe("Image is reference-based", () => {
     expect("src" in target).toBe(false);
   });
 });
+
+describe("what the dashboard declares", () => {
+  it("covers every component Pantheon builds an approval prompt from", () => {
+    // Mirrors REQUIRED_COMPONENTS in api/agui/endpoint.py. If the allowlist ever
+    // lost one of these, the dashboard's own streams would start drawing 406s -
+    // which is the correct outcome, and this says why before a user finds out.
+    for (const required of ["Card", "Row", "Text", "Button"]) {
+      expect(ALLOWED_COMPONENTS).toContain(required);
+    }
+  });
+});

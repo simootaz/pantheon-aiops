@@ -981,3 +981,163 @@ async def test_a_terminal_event_ends_the_generator_within_a_bounded_time() -> No
     drained = await asyncio.wait_for(_drain(), timeout=5.0)
 
     assert drained[-1].type is EventType.RUN_FINISHED
+
+
+# --- the catalog handshake -----------------------------------------------------------------------
+#
+# The module docstring claimed a client missing a component was "told at handshake
+# time, in the response" for as long as nothing did it: `unsupported_components`
+# was called only by the three tests above, and the dashboard sent its catalog to
+# `POST /agui`, which has never existed. These go through a real request, because
+# the tests above would keep passing if the endpoint stopped calling the function.
+
+EVERY_COMPONENT = ",".join(member.value for member in A2UIComponentType)
+
+
+async def _saved_run() -> tuple[Any, Any]:
+    from core.store.investigations import InMemoryInvestigationStore
+
+    store = InMemoryInvestigationStore()
+    run = _investigation().model_copy(update={"tenant": "acme"})
+    await store.save(run)
+    return store, run
+
+
+@pytest.mark.asyncio
+async def test_a_client_that_cannot_render_a_button_is_refused_before_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """406, naming what it lacks.
+
+    A Button is how an approval is answered. A client that cannot draw one would
+    be sent the card, drop it, and leave the run in AWAITING_APPROVAL on a person
+    who was never shown anything - which since the router began publishing
+    approval surfaces is a thing that actually happens.
+    """
+    store, run = await _saved_run()
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{run.id}",
+            headers={"Authorization": "Bearer t1", "X-A2UI-Components": "Card,Row,Text"},
+        )
+
+    assert response.status_code == 406
+    assert "Button" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_client_declaring_the_full_catalog_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The control. A handshake that refused everybody would pass the test above."""
+    store, run = await _saved_run()
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{run.id}",
+            headers={"Authorization": "Bearer t1", "X-A2UI-Components": EVERY_COMPONENT},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-a2ui-capabilities"] == "verified"
+
+
+@pytest.mark.asyncio
+async def test_an_undeclared_catalog_streams_and_says_it_was_not_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No header is a client that did not say, not one that renders nothing.
+
+    Refusing it would lock out curl and every read-only consumer. But it is not
+    silent: the header says the check did not happen, which is where somebody
+    looks when a card never appeared.
+    """
+    store, run = await _saved_run()
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(f"/agui/{run.id}", headers={"Authorization": "Bearer t1"})
+
+    assert response.status_code == 200
+    assert response.headers["x-a2ui-capabilities"] == "undeclared"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_declaration_is_a_client_that_renders_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`""` and no header are different answers, and only one is "unknown".
+
+    A parser that collapsed both to `None` would wave through a client that said
+    in so many words that it can draw nothing.
+    """
+    store, run = await _saved_run()
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{run.id}", headers={"Authorization": "Bearer t1", "X-A2UI-Components": ""}
+        )
+
+    assert response.status_code == 406
+
+
+@pytest.mark.asyncio
+async def test_a_newer_client_is_not_refused_for_knowing_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown names are dropped, not rejected.
+
+    A client built against a later catalog declares components this server has
+    never heard of. Refusing it would break every upgrade that lands client-first.
+    """
+    store, run = await _saved_run()
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{run.id}",
+            headers={
+                "Authorization": "Bearer t1",
+                "X-A2UI-Components": f"{EVERY_COMPONENT},Hologram,Sparkline",
+            },
+        )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_whitespace_around_names_is_not_a_missing_component(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`"Card, Row"` is how a person writes a list. Reading " Row" as unknown
+    would refuse a complete renderer over a space."""
+    store, run = await _saved_run()
+    spaced = ", ".join(member.value for member in A2UIComponentType)
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{run.id}", headers={"Authorization": "Bearer t1", "X-A2UI-Components": spaced}
+        )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_another_tenants_run_is_a_404_even_for_an_inadequate_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tenant check runs first.
+
+    A 406 for somebody else's investigation would confirm it exists, which is
+    exactly the disclosure the 404 is there to prevent.
+    """
+    store, run = await _saved_run()
+    theirs = run.model_copy(update={"id": uuid4(), "tenant": "globex"})
+    await store.save(theirs)
+
+    with _authorised(store, monkeypatch) as client:
+        response = client.get(
+            f"/agui/{theirs.id}",
+            headers={"Authorization": "Bearer t1", "X-A2UI-Components": "Text"},
+        )
+
+    assert response.status_code == 404

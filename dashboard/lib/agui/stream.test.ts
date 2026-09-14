@@ -8,8 +8,15 @@
  *
  * Phase: 4 - Delivery Flow
  */
-import { describe, expect, it } from "vitest";
-import { backoffMs, isRetryable, parseFrames, StreamError } from "./stream";
+import { describe, expect, it, vi } from "vitest";
+import {
+  backoffMs,
+  COMPONENTS_HEADER,
+  isRetryable,
+  parseFrames,
+  readStream,
+  StreamError,
+} from "./stream";
 
 describe("parseFrames", () => {
   it("returns an incomplete frame as the remainder rather than dropping it", () => {
@@ -97,5 +104,55 @@ describe("backoffMs", () => {
     const samples = new Set(Array.from({ length: 20 }, () => backoffMs(8)));
 
     expect(samples.size).toBeGreaterThan(1);
+  });
+});
+
+describe("the component catalog", () => {
+  /** Capture the headers one `readStream` call sends, answering with an empty stream. */
+  async function headersSent(components?: readonly string[]): Promise<Headers> {
+    let captured: Headers | undefined;
+    vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
+      captured = new Request(input, init).headers;
+      return Promise.resolve(new Response("", { status: 200 }));
+    });
+    try {
+      for await (const _ of readStream({ url: "http://api/agui/x", token: "t", components })) {
+        // an empty body yields nothing
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    if (!captured) throw new Error("no request was made");
+    return captured;
+  }
+
+  it("is declared in a header the server reads", async () => {
+    // The server refuses the stream at handshake when an approval prompt could
+    // not be drawn. Before this, the declaration went to `POST /agui`, a route
+    // that never existed, from a module nothing imported.
+    const sent = await headersSent(["Card", "Row", "Text", "Button"]);
+
+    expect(sent.get(COMPONENTS_HEADER)).toBe("Card,Row,Text,Button");
+  });
+
+  it("is omitted when the caller did not say", async () => {
+    // "Did not say" streams and is flagged; it must not become a declaration.
+    const sent = await headersSent(undefined);
+
+    expect(sent.get(COMPONENTS_HEADER)).toBeNull();
+  });
+
+  it("sends an empty declaration rather than dropping it", async () => {
+    // An empty list says "renders nothing". Truthiness would turn that into
+    // "did not say", and the server would wave it through.
+    const sent = await headersSent([]);
+
+    expect(sent.get(COMPONENTS_HEADER)).toBe("");
+  });
+});
+
+describe("a 406", () => {
+  it("is not retried, because the renderer does not change between attempts", () => {
+    expect(isRetryable(new StreamError(406, "cannot render Button"))).toBe(false);
   });
 });

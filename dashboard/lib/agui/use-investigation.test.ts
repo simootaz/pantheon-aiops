@@ -3,10 +3,13 @@
  *
  * Phase: 4 - Delivery Flow
  */
-import { describe, expect, it } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { ALLOWED_COMPONENTS } from "@/components/a2ui/allowlist";
 import type { Investigation } from "@/types/generated/contracts";
 import { InvestigationStore } from "./investigation-state";
-import { applyEvent, isTerminal } from "./use-investigation";
+import { COMPONENTS_HEADER } from "./stream";
+import { applyEvent, isTerminal, useInvestigation } from "./use-investigation";
 
 function baseInvestigation(): Investigation {
   return {
@@ -88,5 +91,29 @@ describe("isTerminal", () => {
     // A stream closed early is a client that stops seeing the rest of the run.
     expect(isTerminal({ type: "STEP_FINISHED" })).toBe(false);
     expect(isTerminal({ type: "STATE_DELTA" })).toBe(false);
+  });
+});
+
+describe("the stream the hook opens", () => {
+  it("declares the renderer's full catalog, so the server can check it", async () => {
+    // `stream.test.ts` proves `readStream` sends a catalog it is given. This
+    // proves the hook gives it one. Without it, a hook that stopped passing
+    // `components` would stream every run as "undeclared" and never be refused
+    // over an approval prompt it could not draw.
+    const seen: Headers[] = [];
+    vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
+      seen.push(new Request(input, init).headers);
+      // Never resolves: the test is about the request, not the response, and
+      // an answered stream would start the reconnect timer.
+      return new Promise<Response>(() => {});
+    });
+
+    const { unmount } = renderHook(() => useInvestigation("run-1", "token"));
+    await waitFor(() => expect(seen).toHaveLength(1));
+
+    expect(seen[0]?.get(COMPONENTS_HEADER)).toBe(ALLOWED_COMPONENTS.join(","));
+
+    unmount();
+    vi.unstubAllGlobals();
   });
 });

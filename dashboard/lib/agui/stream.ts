@@ -35,12 +35,25 @@ export interface StreamFrame {
   data: string;
 }
 
+/** The header the server reads this client's renderable components from. */
+export const COMPONENTS_HEADER = "x-a2ui-components";
+
 /** Everything a caller needs to open one stream. */
 export interface StreamOptions {
   url: string;
   /** Bearer token. Sent as a header, never as a query parameter. */
   token?: string;
   signal?: AbortSignal;
+  /**
+   * The A2UI components this client can draw.
+   *
+   * Sent so the server can refuse the stream at handshake when an approval
+   * prompt could not be rendered - rather than sending one this client would
+   * drop, and leaving the run waiting on a person who was never shown it.
+   * Omitted means "did not say", which the server streams and flags, and is
+   * NOT the same as an empty list, which says this client draws nothing.
+   */
+  components?: readonly string[];
 }
 
 /**
@@ -90,6 +103,11 @@ export function parseFrames(buffer: string): { frames: StreamFrame[]; rest: stri
 export async function* readStream(options: StreamOptions): AsyncGenerator<unknown> {
   const headers: Record<string, string> = { accept: "text/event-stream" };
   if (options.token) headers.authorization = `Bearer ${options.token}`;
+  // `!== undefined`, not truthiness: an empty list is a declaration, and
+  // dropping it would turn "renders nothing" into "did not say".
+  if (options.components !== undefined) {
+    headers[COMPONENTS_HEADER] = options.components.join(",");
+  }
 
   const response = await fetch(options.url, {
     headers,
@@ -161,11 +179,15 @@ export function backoffMs(attempt: number): number {
  * A 401 or 403 is not: the token is wrong or lacks a role, and retrying it
  * every thirty seconds produces a log full of failures and never a connection.
  * A 404 is not either - the run does not exist for this reader, and it will not
- * start existing.
+ * start existing. Nor a 406: this client cannot render something the server
+ * sends, and the renderer does not change between attempts.
  */
 export function isRetryable(error: unknown): boolean {
   if (error instanceof StreamError) {
-    return error.status !== 401 && error.status !== 403 && error.status !== 404;
+    return !NOT_RETRYABLE.has(error.status);
   }
   return true;
 }
+
+/** Statuses no number of retries will change. */
+const NOT_RETRYABLE: ReadonlySet<number> = new Set([401, 403, 404, 406]);

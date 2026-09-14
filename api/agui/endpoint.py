@@ -18,9 +18,30 @@ somebody else's run answers 404.
 CAPABILITIES ARE CHECKED, NOT TRUSTED AND NOT IGNORED
 -------------------------------------------------------
 A client that declares a component catalog missing something Pantheon emits is
-told at handshake time, in the response, rather than being sent a surface it
+refused at handshake time with a **406**, rather than being sent a surface it
 will drop in silence. A dropped approval prompt is an approval nobody is asked
 for, and the run waits forever on a person who was never shown anything.
+
+The catalog travels in the `X-A2UI-Components` header, because this is a GET
+and a GET has no body. It is not a credential, so the header is for tidiness
+rather than for the reason the token is in one.
+
+THIS PARAGRAPH USED TO BE UNTRUE
+----------------------------------
+It said the same thing before anything did it. `unsupported_components` was
+called only by tests, and the dashboard's capability declaration was sent - by
+a module nothing imported - to `POST /agui`, a route that has never existed.
+Two correct halves and no join. It mattered little while no run published an
+approval surface; it matters now that `core/orchestrator/router.py` does.
+
+AN UNDECLARED CATALOG IS NOT CHECKED, AND SAYS SO
+---------------------------------------------------
+No header means the client did not say, which is a different fact from saying
+it renders nothing - the same distinction `cerberus/policy/scope.py` draws
+between an unset field on a grant and one on a request. Refusing it would lock
+out curl and every read-only consumer over surfaces they may never be sent. So
+it streams, and the response carries `X-A2UI-Capabilities: undeclared`, which
+is visible to anyone debugging a card that never appeared.
 
 Pantheon emits a fixed, small set of component types - `a2ui_channel` builds
 every surface - so the check is a subset test against something knowable rather
@@ -137,11 +158,16 @@ async def stream(
     store: Annotated[InvestigationStore, Depends(get_store)],
     principal: Annotated[Principal, require(Role.VIEWER, Role.OPERATOR, Role.APPROVER, Role.ADMIN)],
     accept: Annotated[str | None, Header()] = None,
+    x_a2ui_components: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse:
     """Stream this investigation. 404 for one belonging to another tenant.
 
     404 rather than 403, the same as `GET /investigations/{id}`: a 403 confirms
     the run exists, and for tenant isolation existence is itself the disclosure.
+
+    The tenant check runs BEFORE the catalog check. A 406 for somebody else's
+    investigation would say it exists, which is the disclosure the 404 is there
+    to prevent.
     """
     investigation = await store.get(investigation_id)
     if investigation is None or not principal.reads(investigation.tenant):
@@ -149,6 +175,20 @@ async def stream(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"no investigation {investigation_id}",
         )
+
+    declared = declared_components(x_a2ui_components)
+    if declared is not None:
+        missing = unsupported_components(declared)
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                detail=(
+                    f"this client cannot render {', '.join(missing)}, and Pantheon builds "
+                    "approval and access prompts from them. Streaming anyway would send "
+                    "a prompt it drops, and the run would wait on a person who was "
+                    "never shown one."
+                ),
+            )
 
     async def frames() -> AsyncIterator[str]:
         async for event in _events_for(request, investigation_id, store):
@@ -162,8 +202,30 @@ async def stream(
             # one lump when the run ends, which is the opposite of the point.
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            # Whether the catalog was checked. Visible in a network tab, which
+            # is where somebody looks when an approval card never appeared.
+            "X-A2UI-Capabilities": "undeclared" if declared is None else "verified",
         },
     )
+
+
+def declared_components(header: str | None) -> list[A2UIComponentType] | None:
+    """The catalog a client declared, or `None` when it declared nothing.
+
+    `None` and `[]` are different answers and are kept apart: no header is a
+    client that did not say, and an empty header is one that said it renders
+    nothing - which `unsupported_components` then refuses, correctly.
+
+    Names this server does not know are dropped rather than rejected. A client
+    built against a newer catalog declares components this version has never
+    heard of, and refusing it for knowing more would break every upgrade that
+    lands client-first. What matters is whether the ones Pantheon SENDS are
+    present, and an unknown name cannot be one of those.
+    """
+    if header is None:
+        return None
+    known = {member.value: member for member in A2UIComponentType}
+    return [known[name] for name in (part.strip() for part in header.split(",")) if name in known]
 
 
 @router.post("/{investigation_id}/actions", summary="Answer an A2UI surface")
