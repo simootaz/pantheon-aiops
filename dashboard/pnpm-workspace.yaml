@@ -35,12 +35,9 @@ allowBuilds:
   # adopted.
   sharp: false
 
-# pnpm 11 withholds packages younger than its minimum release age. The AG-UI
-# SDK publishes frequently and its current release is newer than that window, so
-# these are excluded explicitly rather than by lowering the policy for
-# everything.
-minimumReleaseAgeExclude:
-  - '@ag-ui/client@0.0.58'
-  - '@ag-ui/core@0.0.58'
-  - '@ag-ui/encoder@0.0.58'
-  - '@ag-ui/proto@0.0.58'
+# pnpm 11 withholds packages younger than its minimum release age, and nothing
+# here is excluded from that. There were four exclusions, for the AG-UI SDK; the
+# SDK is no longer a dependency - the stream is read with fetch, see the
+# amendment to docs/adr/0006-agentic-ui-protocols.md - and an exemption from a
+# supply-chain policy for a package that is not installed is a hole waiting for
+# that name to come back.

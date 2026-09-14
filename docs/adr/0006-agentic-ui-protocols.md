@@ -371,8 +371,10 @@ say — not one that renders nothing. `cerberus/policy/scope.py` draws the same
 line between an unset field on a grant and one on a request. Refusing it would
 lock out curl and every read-only consumer.
 
-**Consequences.** `@ag-ui/client` and `@ag-ui/core` are now imported by nothing
-in `dashboard/`. They are left in `package.json` for this change and removed
-separately, because removing them rewrites the lockfile and that belongs in a
-commit a reviewer can read on its own. The `ag_ui` Python SDK is unaffected —
-the server still emits canonical AG-UI event types.
+**Consequences.** `@ag-ui/client` and `@ag-ui/core` were imported by nothing
+in `dashboard/` once `client.ts` went, and are removed - in their own commit,
+because removing them rewrites the lockfile. The four `minimumReleaseAgeExclude`
+entries that existed only for the SDK went with them: an exemption from a
+supply-chain policy for a package that is not installed is a hole waiting for
+that name to come back. The `ag_ui` Python SDK is unaffected — the server still
+emits canonical AG-UI event types.
