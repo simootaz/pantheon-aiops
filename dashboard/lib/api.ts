@@ -85,6 +85,27 @@ export function recentInvestigations(token: string | null, limit = 20): Promise<
   return read<Investigation[]>(`/investigations?limit=${limit}`, token);
 }
 
+/**
+ * One moment in a run, as the API orders them.
+ *
+ * `kind` is the server's closed set (`core/reporting/timeline.py`). A Finding
+ * is placed when it was REPORTED, and its summary says what window it covers -
+ * placing it at the window would put an anomaly on the timeline before anyone
+ * had noticed it.
+ */
+export interface TimelineEntry {
+  at: string;
+  kind: string;
+  actor: string;
+  summary: string;
+  ref: string | null;
+}
+
+/** What happened in one run, oldest first. Derived on the server on every read. */
+export function investigationTimeline(id: string, token: string | null): Promise<TimelineEntry[]> {
+  return read<TimelineEntry[]>(`/investigations/${id}/timeline`, token);
+}
+
 /** One investigation, whole. 404 covers "no such run" and "not yours" alike. */
 export function investigation(id: string, token: string | null): Promise<Investigation> {
   return read<Investigation>(`/investigations/${id}`, token);

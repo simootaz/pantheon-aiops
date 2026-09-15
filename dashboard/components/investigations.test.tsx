@@ -10,7 +10,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Finding, Investigation, InvestigationState } from "@/types/generated/contracts";
-import { Gaps, Row, Status } from "./investigations";
+import { Gaps, Row, Status, Timeline } from "./investigations";
 
 function finding(kind: Finding["kind"], overrides: Partial<Finding> = {}): Finding {
   return {
@@ -151,5 +151,63 @@ describe("Gaps", () => {
       />,
     );
     expect(screen.getByText(/2 steps could not run/)).toBeDefined();
+  });
+});
+
+describe("Timeline", () => {
+  it("renders entries in the order the server sent them, not re-sorted", () => {
+    // The server keeps ties in record order: steps before findings. Two
+    // entries at one second whose kinds sort the OTHER way alphabetically, so
+    // a client that re-sorted - by timestamp, then by anything - would swap
+    // them. A plant that sorted by timestamp then kind passed a fixture where
+    // the alphabet happened to agree with the server.
+    const { container } = render(
+      <Timeline
+        entries={[
+          {
+            at: "2026-09-15T10:00:12Z",
+            kind: "step_started",
+            actor: "lethe",
+            summary: "lethe dispatched",
+            ref: null,
+          },
+          {
+            at: "2026-09-15T10:00:12Z",
+            kind: "finding",
+            actor: "argus",
+            summary: "argus reported anomaly",
+            ref: "f1",
+          },
+        ]}
+      />,
+    );
+
+    const items = Array.from(container.querySelectorAll("li")).map((li) => li.textContent ?? "");
+    expect(items[0]).toContain("lethe dispatched");
+    expect(items[1]).toContain("argus reported anomaly");
+  });
+
+  it("renders nothing for a run with no entries yet", () => {
+    const { container } = render(<Timeline entries={[]} />);
+
+    expect(container.textContent).toBe("");
+  });
+
+  it("marks a degraded step so a partial run is visibly partial", () => {
+    render(
+      <Timeline
+        entries={[
+          {
+            at: "2026-09-15T10:00:15Z",
+            kind: "degraded",
+            actor: "lethe",
+            summary: "lethe could not look: no lease",
+            ref: "f2",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/could not look/).className).toContain("amber");
   });
 });

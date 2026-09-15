@@ -15,10 +15,11 @@
  */
 "use client";
 
-import { use } from "react";
-import { FindingRow, Gaps, Status } from "@/components/investigations";
+import { use, useEffect, useState } from "react";
+import { FindingRow, Gaps, Status, Timeline } from "@/components/investigations";
 import { Loading, Refused, SignedOut } from "@/components/states";
 import { useInvestigation } from "@/lib/agui/use-investigation";
+import { investigationTimeline, type TimelineEntry } from "@/lib/api";
 import { headline } from "@/lib/investigations";
 import { useToken } from "@/lib/session";
 
@@ -31,6 +32,31 @@ export default function InvestigationPage({ params }: { params: Promise<{ id: st
     ready && token ? id : null,
     token ?? undefined,
   );
+  const [entries, setEntries] = useState<TimelineEntry[]>([]);
+
+  // Re-read when the run's state changes - the timeline is derived on the
+  // server from the row, so a new step or a verdict is a new timeline. Keyed
+  // on the state rather than the whole object so a patch that changes nothing
+  // the timeline shows does not refetch it.
+  const state = investigation?.state;
+  useEffect(() => {
+    // `state` is undefined until the snapshot arrives, which is the same
+    // fact as "no investigation yet" and the one this effect keys on.
+    if (!ready || !token || state === undefined) return;
+    let cancelled = false;
+    investigationTimeline(id, token)
+      .then((found) => {
+        if (!cancelled) setEntries(found);
+      })
+      .catch(() => {
+        // The stream is the primary view; a timeline that could not be read
+        // leaves the section empty rather than replacing the run with an error.
+        if (!cancelled) setEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, token, ready, state]);
 
   if (!ready) return <Loading what="session" />;
   if (!token) return <SignedOut />;
@@ -79,6 +105,13 @@ export default function InvestigationPage({ params }: { params: Promise<{ id: st
         <p className="mt-4 rounded border border-slate-200 p-4 text-sm dark:border-slate-800">
           {investigation.verdict.summary}
         </p>
+      )}
+
+      {entries.length > 0 && (
+        <>
+          <h2 className="mt-6 text-lg font-semibold">Timeline</h2>
+          <Timeline entries={entries} />
+        </>
       )}
 
       <h2 className="mt-6 text-lg font-semibold">Findings</h2>

@@ -11,6 +11,7 @@
  */
 import Link from "next/link";
 import type { JSX } from "react";
+import type { TimelineEntry } from "@/lib/api";
 import { degraded, headline, isPartial, isTerminal } from "@/lib/investigations";
 import type { Investigation } from "@/types/generated/contracts";
 
@@ -105,5 +106,42 @@ export function FindingRow({
         {finding.agent} · {finding.severity}
       </span>
     </li>
+  );
+}
+
+/** How an entry reads at a glance. Degraded and verdict stand out; the rest recede. */
+const ENTRY_TONE: Record<string, string> = {
+  degraded: "text-amber-600 dark:text-amber-400",
+  verdict: "font-medium",
+  completed: "text-slate-500 dark:text-slate-400",
+  trigger: "font-medium",
+};
+
+/**
+ * What happened, in order.
+ *
+ * Rendered from the server's ordering rather than re-sorted here: the server
+ * keeps ties in record order, and a client-side sort by timestamp alone would
+ * put a step's finish before its start whenever an agent was fast.
+ */
+export function Timeline({ entries }: { entries: TimelineEntry[] }): JSX.Element | null {
+  if (entries.length === 0) return null;
+
+  return (
+    <ol className="mt-2 border-l border-slate-200 pl-4 dark:border-slate-800">
+      {entries.map((entry) => (
+        // Lifecycle entries carry no record id, so the key is the entry's own
+        // identity: when, what, who, and the record or the text.
+        <li
+          key={`${entry.at}|${entry.kind}|${entry.actor}|${entry.ref ?? entry.summary}`}
+          className="py-1.5 text-sm"
+        >
+          <span className="mr-2 text-xs text-slate-500 dark:text-slate-400">
+            {entry.at.slice(11, 19)}
+          </span>
+          <span className={ENTRY_TONE[entry.kind] ?? ""}>{entry.summary}</span>
+        </li>
+      ))}
+    </ol>
   );
 }

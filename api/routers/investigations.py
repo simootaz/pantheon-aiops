@@ -11,13 +11,16 @@ Phase: 2 - Orchestrator & Investigation Flow
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 
 from api.auth.dependencies import Principal, Role, require
 from core.contracts.investigation import Investigation
+from core.reporting import timeline
 from core.store.investigations import InvestigationStore
 
 router = APIRouter(prefix="/investigations", tags=["investigations"])
@@ -81,6 +84,51 @@ async def get_investigation(
             detail=f"no investigation {investigation_id}",
         )
     return investigation
+
+
+class TimelineRow(BaseModel):
+    """One entry, as the API serves it. Mirrors `core.reporting.TimelineEntry`."""
+
+    at: datetime
+    kind: str
+    actor: str
+    summary: str
+    ref: str | None = None
+
+
+@router.get(
+    "/{investigation_id}/timeline",
+    response_model=list[TimelineRow],
+    summary="What happened in one investigation, in order",
+)
+async def get_timeline(
+    investigation_id: UUID,
+    store: Annotated[InvestigationStore, Depends(get_store)],
+    principal: Annotated[Principal, require(Role.VIEWER, Role.OPERATOR, Role.APPROVER, Role.ADMIN)],
+) -> list[TimelineRow]:
+    """The run's own records, ordered by when each was written.
+
+    Derived on every read rather than stored: it is a pure function of the
+    Investigation, and a stored copy would be one more thing that can disagree
+    with the row it was derived from. Same 404 as the read beside it, for the
+    same reason - existence is the disclosure.
+    """
+    investigation = await store.get(investigation_id)
+    if investigation is None or not principal.reads(investigation.tenant):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no investigation {investigation_id}",
+        )
+    return [
+        TimelineRow(
+            at=entry.at,
+            kind=entry.kind.value,
+            actor=entry.actor,
+            summary=entry.summary,
+            ref=entry.ref,
+        )
+        for entry in timeline(investigation)
+    ]
 
 
 def _scope(principal: Principal) -> str | None:

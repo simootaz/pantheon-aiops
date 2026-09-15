@@ -204,7 +204,12 @@ serves.
   the same subject, and what they concluded. Exact on the trigger's labels -
   the vector store ADR 0008 deferred turns out not to be what the first
   question needs, and its trigger is restated there.
-- **Clio**, **Eris**; Litmus connector
+- ✅ **The timeline**, as a rendering rather than an agent: `core/reporting/`,
+  served on every investigation and drawn on the detail page. Clio's
+  remaining capabilities - a postmortem narrative, an executive summary -
+  need Delphi and somewhere to write to; **no S3 write path exists in
+  Python** and there is no MinIO here to verify one against, so they wait.
+- **Clio** (postmortem, summary), **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches
 - End-to-end tests against the simulator
