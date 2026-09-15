@@ -193,11 +193,13 @@ serves.
 - ✅ **Answered runs are not diagnosed.** A question, a review or a scheduled
   measurement produced an UNKNOWN root cause under its own answer. The
   classifier now says which runs owe an explanation, and the verdict listens.
-- ⚠️ **Hephaestus's flake verdict does not reach the ranker.** `FLAKY_TEST` is
-  named only from Argus's `ci_ratio` metric; Hephaestus decides flakiness
-  definitionally - same job, same commit, two outcomes - and its Finding is
-  corroborating. A CI run today ends UNKNOWN beside a Finding that says
-  FLAKE. The fix is in `hypotheses.py`, reading the triage payload.
+- ✅ **Hephaestus's flake verdict reaches the ranker.** It lived in a tag and
+  the title; the ranker reads neither. `PipelineRunPayload.attempt_conclusions`
+  now carries the recorded outcomes and `hypotheses.py` applies the definition
+  to them - two outcomes for one job at one commit - so the agent and the
+  ranker cannot disagree about what a flake is. A plant that read the tag
+  survived every test through the agent, because the agent writes both; the
+  test that caught it sets the tag and the outcomes against each other.
 - **Mnemosyne**, **Clio**, **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches

@@ -162,6 +162,12 @@ class Hephaestus(BaseAgent):
                         status="failed",
                         failed_jobs=[triage.job],
                         commit_sha=head_sha,
+                        # The definition, on the evidence. The verdict is
+                        # also in the title and the tags, and the ranker
+                        # reads neither: a title is prose and a tag is a
+                        # label, and both change when somebody improves the
+                        # wording. This is the two outcomes themselves.
+                        attempt_conclusions=[outcome.conclusion for outcome in triage.attempts],
                     ),
                 )
             ],

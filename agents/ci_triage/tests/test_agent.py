@@ -396,3 +396,73 @@ async def test_an_already_unwrapped_answer_is_accepted() -> None:
 
 def test_a_run_with_no_usable_id_contributes_no_outcomes() -> None:
     assert outcomes_from([{"id": None}], {1: [{"name": "unit", "conclusion": "failure"}]}) == []
+
+
+# --- the definition travels on the evidence, and the ranker reads it ---------------
+
+
+@pytest.mark.asyncio
+async def test_the_recorded_outcomes_are_on_the_evidence() -> None:
+    """The verdict is in the title and the tags too, and the ranker reads
+    neither: a title is prose and a tag is a label. What names FLAKY_TEST
+    downstream is the two outcomes themselves."""
+    forge = _Forge(
+        runs=[{"id": 1}, {"id": 2}],
+        jobs={
+            1: [{"name": "unit", "conclusion": "failure"}],
+            2: [{"name": "unit", "conclusion": "success"}],
+        },
+    )
+
+    (finding,) = (await _triage(forge)).findings
+    (evidence,) = finding.evidence
+
+    assert evidence.payload.kind == "pipeline_run"
+    assert sorted(evidence.payload.attempt_conclusions) == ["failure", "success"]
+
+
+@pytest.mark.asyncio
+async def test_a_flake_reaches_the_verdict_as_flaky_test() -> None:
+    """Before this, a CI run ended UNKNOWN beside a Finding that said FLAKE.
+
+    `FLAKY_TEST` was named only from Argus's `ci_ratio` metric. Hephaestus
+    decides flakiness definitionally and its Finding was corroborating - so
+    the one agent whose whole job is this verdict could not deliver it to the
+    verdict.
+    """
+    from core.contracts.root_cause import RootCauseCategory
+    from core.orchestrator.hypotheses import leading, rank
+
+    forge = _Forge(
+        runs=[{"id": 1}, {"id": 2}],
+        jobs={
+            1: [{"name": "unit", "conclusion": "failure"}],
+            2: [{"name": "unit", "conclusion": "success"}],
+        },
+    )
+    findings = (await _triage(forge)).findings
+
+    front = leading(rank(findings))
+
+    assert front is not None
+    assert front.category is RootCauseCategory.FLAKY_TEST
+    assert front.proposed_by == "zeus"
+
+
+@pytest.mark.asyncio
+async def test_a_failure_nobody_reran_does_not_reach_the_verdict_as_a_flake() -> None:
+    """The control, and Hephaestus's own answer: one failure is UNKNOWN.
+
+    The ranker reads the same outcomes and reaches the same answer - by
+    applying the definition, not by reading the word - so the two cannot
+    disagree about what a flake is.
+    """
+    from core.contracts.root_cause import RootCauseCategory
+    from core.orchestrator.hypotheses import rank
+
+    forge = _Forge(runs=[{"id": 1}], jobs={1: [{"name": "unit", "conclusion": "failure"}]})
+    findings = (await _triage(forge)).findings
+
+    (only,) = rank(findings)
+
+    assert only.category is RootCauseCategory.UNKNOWN

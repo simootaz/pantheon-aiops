@@ -201,22 +201,57 @@ def rank(findings: list[Finding]) -> list[RootCauseHypothesis]:
     return sorted(hypotheses, key=lambda h: (-h.confidence, h.category.value))
 
 
+#: A CI job's conclusions that count as a pass and as a failure. The same two
+#: sets Hephaestus uses; `cancelled` and `skipped` are in neither, because a
+#: run somebody interrupted is not an outcome of the job.
+_CI_PASSED = frozenset({"success"})
+_CI_FAILED = frozenset({"failure", "timed_out"})
+
+#: The one signal that is not a metric: two recorded outcomes for one job at
+#: one commit. Named here rather than in `SIGNALS` because it is read off the
+#: attempt list, not off a metric name.
+FLAKE_SIGNAL = Signal(
+    metric="ci:attempt_conclusions",
+    names=RootCauseCategory.FLAKY_TEST,
+    because=(
+        "the same job at the same commit both passed and failed, which is "
+        "non-determinism by definition rather than an inference from it"
+    ),
+)
+
+
 def _signal_of(finding: Finding) -> Signal | None:
     """The signal behind a Finding, read off its Evidence rather than its title.
 
-    `None` when the Finding carries no metric - a log-cluster Finding, for
-    instance. That is corroborating by default, which is the safe direction: a
-    new evidence kind cannot start naming causes by being unrecognised.
+    `None` when the Finding carries nothing a category is defined by - a
+    log-cluster Finding, a forecast, a CI failure that never passed. That is
+    corroborating by default, which is the safe direction: a new evidence kind
+    cannot start naming causes by being unrecognised.
     """
     for evidence in finding.evidence:
-        if evidence.kind is not EvidenceKind.METRIC_WINDOW:
-            continue
-        metric = getattr(evidence.payload, "metric", None)
-        if isinstance(metric, str):
-            found = SIGNALS.get(metric)
-            if found is not None:
-                return found
+        if evidence.kind is EvidenceKind.METRIC_WINDOW:
+            metric = getattr(evidence.payload, "metric", None)
+            if isinstance(metric, str):
+                found = SIGNALS.get(metric)
+                if found is not None:
+                    return found
+        elif evidence.kind is EvidenceKind.PIPELINE_RUN and _both_outcomes(
+            getattr(evidence.payload, "attempt_conclusions", [])
+        ):
+            return FLAKE_SIGNAL
     return None
+
+
+def _both_outcomes(conclusions: list[str]) -> bool:
+    """Whether one job at one commit both passed and failed - the definition.
+
+    A list of failures alone is a failure nobody re-ran, and names nothing:
+    Hephaestus reports that as UNKNOWN, and the ranker agrees by reading the
+    same outcomes and reaching the same answer, rather than by reading the
+    word.
+    """
+    seen = set(conclusions)
+    return bool(seen & _CI_PASSED) and bool(seen & _CI_FAILED)
 
 
 def _hypothesis(

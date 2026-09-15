@@ -2478,8 +2478,16 @@
     },
     "PipelineRunPayload": {
       "additionalProperties": false,
-      "description": "One CI pipeline run and the jobs that failed in it.",
+      "description": "One CI pipeline run and the jobs that failed in it.\n\n`attempt_conclusions` is what lets a reader apply the definition of a flake\nfor themselves: the same job at the same commit finishing two different\nways is non-determinism, read off two recorded outcomes rather than\ninferred from one. Hephaestus fills it from every run it read at the\ncommit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and\nfrom nothing else - not the title, not the tags, which are prose and\nlabels. Before this field the verdict lived in a tag, the ranker could not\nsee it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.",
       "properties": {
+        "attempt_conclusions": {
+          "description": "Conclusion of every recorded run of the failed job at `commit_sha`, in run order. Two distinct values is a flake by definition. Empty when the payload is not a triage.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Attempt Conclusions",
+          "type": "array"
+        },
         "commit_sha": {
           "anyOf": [
             {

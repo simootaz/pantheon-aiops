@@ -532,3 +532,82 @@ def test_a_forecast_alone_proposes_nothing_but_unknown() -> None:
     (only,) = rank([_forecast_finding(node)])
 
     assert only.category is RootCauseCategory.UNKNOWN
+
+
+# --- a flake is named from the outcomes, not from the word --------------------------
+
+
+def _ci_finding(conclusions: list[str], *, tags: list[str]) -> Finding:
+    """A Hephaestus-shaped Finding whose tags and outcomes can be set apart."""
+    from core.contracts.evidence import PipelineRunPayload
+
+    subject = ResourceRef(kind="pipeline", name="acme/checkout#unit")
+    return Finding(
+        id=uuid4(),
+        agent="hephaestus",
+        kind=FindingKind.OBSERVATION,
+        title="unit at abc1234",
+        severity=Severity.MEDIUM,
+        confidence=1.0,
+        detected_at=NOW,
+        window_start=NOW - timedelta(minutes=10),
+        window_end=NOW,
+        subject=subject,
+        tags=tags,
+        evidence=[
+            Evidence(
+                id=uuid4(),
+                source=EvidenceSource(connector="github", query="runs?head_sha=abc1234"),
+                observed_at=NOW,
+                summary="s",
+                subject=subject,
+                payload=PipelineRunPayload(
+                    pipeline_id="1",
+                    project="acme/checkout",
+                    ref="abc1234",
+                    status="failed",
+                    failed_jobs=["unit"],
+                    commit_sha="abc1234",
+                    attempt_conclusions=conclusions,
+                ),
+            )
+        ],
+    )
+
+
+def test_a_flake_is_read_off_the_outcomes_and_not_the_tag() -> None:
+    """The label and the thing, set against each other.
+
+    Hephaestus writes both, so every test through the agent passes whether the
+    ranker reads the outcomes or the word. A plant that read `"flake" in tags`
+    survived all of them. Here the tag says one thing and the outcomes say the
+    other, twice, and only a ranker reading the outcomes gets both right.
+    """
+    outcomes_say_flake = _ci_finding(["failure", "success"], tags=["ci", "unknown"])
+    tag_says_flake = _ci_finding(["failure", "failure"], tags=["ci", "flake"])
+
+    assert rank([outcomes_say_flake])[0].category is RootCauseCategory.FLAKY_TEST
+    assert rank([tag_says_flake])[0].category is RootCauseCategory.UNKNOWN
+
+
+def test_cancelled_and_skipped_are_not_outcomes() -> None:
+    """A run somebody interrupted is not the job finishing two different ways.
+
+    The same two sets Hephaestus uses, so the ranker cannot call a flake that
+    the agent would not - and `test_a_cancelled_attempt_does_not_make_a_failure_
+    flaky` in the agent's tests is the same rule one layer up.
+    """
+    interrupted = _ci_finding(["failure", "cancelled"], tags=["ci"])
+    skipped = _ci_finding(["failure", "skipped", "failure"], tags=["ci"])
+
+    assert rank([interrupted])[0].category is RootCauseCategory.UNKNOWN
+    assert rank([skipped])[0].category is RootCauseCategory.UNKNOWN
+
+
+def test_a_timeout_is_a_failure_for_the_definition_too() -> None:
+    """`timed_out` then `success` at one commit is a flake - the agent says so,
+    and the ranker must not disagree over the spelling of failure."""
+    assert (
+        rank([_ci_finding(["timed_out", "success"], tags=["ci"])])[0].category
+        is RootCauseCategory.FLAKY_TEST
+    )

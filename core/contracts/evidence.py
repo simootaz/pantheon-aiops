@@ -215,7 +215,17 @@ class K8sEventPayload(ContractModel):
 
 
 class PipelineRunPayload(ContractModel):
-    """One CI pipeline run and the jobs that failed in it."""
+    """One CI pipeline run and the jobs that failed in it.
+
+    `attempt_conclusions` is what lets a reader apply the definition of a flake
+    for themselves: the same job at the same commit finishing two different
+    ways is non-determinism, read off two recorded outcomes rather than
+    inferred from one. Hephaestus fills it from every run it read at the
+    commit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and
+    from nothing else - not the title, not the tags, which are prose and
+    labels. Before this field the verdict lived in a tag, the ranker could not
+    see it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.
+    """
 
     kind: Literal["pipeline_run"] = "pipeline_run"
     pipeline_id: str
@@ -225,6 +235,14 @@ class PipelineRunPayload(ContractModel):
     failed_jobs: list[str] = Field(default_factory=list)
     duration_seconds: float | None = Field(default=None, ge=0.0)
     commit_sha: str | None = None
+    attempt_conclusions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Conclusion of every recorded run of the failed job at `commit_sha`, in run "
+            "order. Two distinct values is a flake by definition. Empty when the payload "
+            "is not a triage."
+        ),
+    )
 
 
 class CapacityForecastPayload(ContractModel):

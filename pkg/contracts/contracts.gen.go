@@ -3276,7 +3276,21 @@ func (j *PermissionMode) UnmarshalJSON(value []byte) error {
 }
 
 // One CI pipeline run and the jobs that failed in it.
+//
+// `attempt_conclusions` is what lets a reader apply the definition of a flake
+// for themselves: the same job at the same commit finishing two different
+// ways is non-determinism, read off two recorded outcomes rather than
+// inferred from one. Hephaestus fills it from every run it read at the
+// commit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and
+// from nothing else - not the title, not the tags, which are prose and
+// labels. Before this field the verdict lived in a tag, the ranker could not
+// see it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.
 type PipelineRunPayload struct {
+	// Conclusion of every recorded run of the failed job at `commit_sha`, in run
+	// order. Two distinct values is a flake by definition. Empty when the payload is
+	// not a triage.
+	AttemptConclusions []string `json:"attempt_conclusions,omitempty,omitzero" yaml:"attempt_conclusions,omitempty" mapstructure:"attempt_conclusions,omitempty"`
+
 	// CommitSha corresponds to the JSON schema field "commit_sha".
 	CommitSha interface{} `json:"commit_sha,omitempty,omitzero" yaml:"commit_sha,omitempty" mapstructure:"commit_sha,omitempty"`
 
