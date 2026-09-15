@@ -341,8 +341,63 @@ def test_chart_has_a_validation_template_that_fails_closed() -> None:
         "credential (bundled MinIO, external storage, Delphi)"
     )
     assert "productionMode" in body
-    for guarded in ("minio.existingSecret", "external.existingSecret", "delphi.existingSecret"):
+    for guarded in (
+        "minio.existingSecret",
+        "external.existingSecret",
+        "delphi.existingSecret",
+        "api.existingSecret",
+    ):
         assert guarded in body, f"validation.yaml does not guard {guarded}"
+
+
+def test_the_chart_sets_the_environment_from_a_value_not_the_namespace() -> None:
+    """`PANTHEON_ENV: {{ .Release.Namespace }}` was the configmap for two phases.
+
+    `Environment` is a closed enum, so any install in a namespace not literally
+    named local, ci, staging or production - `pantheon`, say, or `helm
+    template`'s own `default` - crashed the API at startup on a validation
+    error. A rendered chart cannot show that: the value is a string either way.
+    """
+    body = read_mechanism(CHART / "templates" / "configmap.yaml")
+
+    assert "PANTHEON_ENV: {{ .Values.environment" in body
+    assert ".Release.Namespace" not in body, "the environment is the namespace again"
+
+    validation = read_mechanism(CHART / "templates" / "validation.yaml")
+    for member in ("local", "ci", "staging", "production"):
+        assert f'"{member}"' in validation, f"validation.yaml does not admit {member!r}"
+
+
+def test_the_chart_documents_the_same_production_secrets_the_code_requires() -> None:
+    """Two lists of what production cannot start without, held equal.
+
+    `REQUIRED_IN_PRODUCTION` in core/config.py is what the app refuses to start
+    without. `api.existingSecret` in values.yaml is where the chart says to put
+    them. A key added to one and not the other is a deployment that renders,
+    installs, and crashes at the first request - so the comment in values.yaml
+    naming the keys is held equal to the code here, minus the two the chart
+    supplies through other secrets.
+    """
+    import re as _re
+
+    from core.config import REQUIRED_IN_PRODUCTION
+
+    #: Supplied by the chart from other secrets, so not the operator's to put in
+    #: api.existingSecret: S3 through the MinIO or external-storage secret, and
+    #: Postgres through its own - once the chart renders one, which it does
+    #: not yet; POSTGRES_PASSWORD is listed here so this test says so when it
+    #: starts to.
+    supplied_elsewhere = {"S3_SECRET_KEY", "POSTGRES_PASSWORD"}
+    required = {env for _group, _field, env in REQUIRED_IN_PRODUCTION} - supplied_elsewhere
+
+    values = read_data(CHART / "values.yaml")
+    api_block = values[values.index("\napi:") : values.index("\nworker:")]
+    documented = set(_re.findall(r"#\s+([A-Z][A-Z0-9_]+)\s{2,}", api_block))
+
+    assert documented == required, (
+        f"values.yaml documents {sorted(documented)} for api.existingSecret; the code "
+        f"requires {sorted(required)} in production. Fix the list that is wrong."
+    )
 
 
 def test_generated_secret_is_marked_and_protected() -> None:

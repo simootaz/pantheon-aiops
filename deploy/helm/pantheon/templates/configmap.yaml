@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "pantheon.labels" . | nindent 4 }}
 data:
-  PANTHEON_ENV: {{ .Release.Namespace | quote }}
+  PANTHEON_ENV: {{ .Values.environment | quote }}
   PANTHEON_API_PORT: {{ .Values.api.port | quote }}
 
   S3_ENDPOINT_URL: {{ include "pantheon.s3Endpoint" . | quote }}

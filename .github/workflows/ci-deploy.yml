@@ -55,7 +55,37 @@ jobs:
             echo "::error::values-prod.yaml rendered without a credential; it must fail closed" >&2
             exit 1
           fi
+          # The application's own secrets - API tokens, webhook secrets, the
+          # Cerberus master key. The app refuses to start without them in
+          # production, and the chart must refuse to render rather than ship a
+          # deployment that crashes at the first request.
+          if helm template pantheon "${chart}" -f "${chart}/values-prod.yaml" \
+               --set api.existingSecret="" >/dev/null 2>&1; then
+            echo "::error::values-prod.yaml rendered without api.existingSecret; it must fail closed" >&2
+            exit 1
+          fi
           echo "fail-closed behaviour confirmed"
+
+      - name: The environment is a value, not the namespace
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/pantheon
+          # PANTHEON_ENV used to be {{ .Release.Namespace }}. Environment is a
+          # closed enum in core/config.py, so an install in any namespace not
+          # literally named one of its four values crashed at startup - a fact
+          # no rendered manifest shows, which is why this renders in a namespace
+          # the enum does not contain and reads the value back.
+          rendered=$(helm template pantheon "${chart}" --namespace pantheon | grep -E '^\s*PANTHEON_ENV:' | head -1)
+          case "${rendered}" in
+            *'"local"'*|*'"ci"'*|*'"staging"'*|*'"production"'*) echo "PANTHEON_ENV is a valid environment: ${rendered}" ;;
+            *) echo "::error::PANTHEON_ENV is not one of the four environments the app accepts: ${rendered}" >&2; exit 1 ;;
+          esac
+          # And an invalid value is refused at render, before it can crash a pod.
+          if helm template pantheon "${chart}" --set environment=pantheon >/dev/null 2>&1; then
+            echo "::error::an environment outside the enum rendered; validation.yaml must refuse it" >&2
+            exit 1
+          fi
+          echo "invalid environment refused at render"
 
   terraform:
     name: terraform fmt + validate

@@ -33,6 +33,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "pantheon.fullname" . }}-config
+            {{- with .Values.api.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
             {{- if .Values.minio.enabled }}
             - secretRef:
                 name: {{ include "pantheon.minioSecretName" . }}

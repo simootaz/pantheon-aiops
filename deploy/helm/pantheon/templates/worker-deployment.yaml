@@ -30,6 +30,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "pantheon.fullname" . }}-config
+            {{- with .Values.api.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
             {{- if .Values.delphi.enabled }}
             {{- with .Values.delphi.existingSecret }}
             - secretRef:

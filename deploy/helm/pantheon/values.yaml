@@ -7,6 +7,14 @@
 # See templates/validation.yaml.
 productionMode: false
 
+# What the application thinks it is running in: one of local, ci, staging,
+# production - the closed set in core/config.py. This used to be the release
+# NAMESPACE, so any install in a namespace not literally named one of those
+# four crashed at startup on an enum error, and `helm template` could not see
+# it. productionMode and this must agree; templates/validation.yaml refuses a
+# render where they do not.
+environment: staging
+
 nameOverride: ""
 fullnameOverride: ""
 
@@ -20,6 +28,17 @@ api:
   enabled: true
   replicas: 1
   port: 8000
+  # A pre-created secret holding the application's own credentials, mounted as
+  # environment on the api and the worker. In production the app refuses to
+  # start without every one of these - core/config.py, REQUIRED_IN_PRODUCTION -
+  # so productionMode fails the render when this is empty, which is the same
+  # refusal earlier and nearer the person. Keys the secret must hold:
+  #   PANTHEON_API_TOKENS      subject:role,role@tenant=token;...
+  #   GITHUB_WEBHOOK_SECRET    what GitHub signs deliveries with
+  #   GITLAB_WEBHOOK_TOKEN     the X-Gitlab-Token a GitLab hook sends
+  #   CERBERUS_MASTER_KEY      wraps every credential the vault holds
+  # tests/unit/test_helm_chart.py holds this list equal to the code's.
+  existingSecret: ""
   resources:
     requests:
       cpu: 100m
