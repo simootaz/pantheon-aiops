@@ -37,6 +37,7 @@ def register_implemented() -> None:
     from agents.capacity.agent import Moira
     from agents.ci_triage.agent import Hephaestus
     from agents.dora.agent import Themis
+    from agents.knowledge.agent import Mnemosyne
     from agents.log_clustering.agent import Lethe
     from agents.manifest_review.agent import Aegis
     from agents.nl_query.agent import Hermes
@@ -53,6 +54,9 @@ def register_implemented() -> None:
     register("hephaestus", Hephaestus)
     # Reachable through ALERT_DOMAINS: every alert is also a capacity question.
     register("moira", Moira)
+    # And a memory question. Its one tool is provided by the dispatcher rather
+    # than a connector, because it closes over the investigation store.
+    register("mnemosyne", Mnemosyne)
 
     # Reachable through a scheduled job - `api/routers/schedules.py` - which is
     # what a delivery measurement belongs on. This was `dispatchable=False` with

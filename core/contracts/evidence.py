@@ -49,6 +49,7 @@ class EvidenceKind(StrEnum):
     K8S_EVENT = "k8s_event"
     PIPELINE_RUN = "pipeline_run"
     CAPACITY_FORECAST = "capacity_forecast"
+    PRIOR_INCIDENT = "prior_incident"
 
 
 class ResourceRef(ContractModel):
@@ -288,13 +289,40 @@ class CapacityForecastPayload(ContractModel):
     window_seconds: int = Field(default=0, ge=0)
 
 
+class PriorIncidentPayload(ContractModel):
+    """An earlier investigation of the same alert on the same subject.
+
+    Context for the person reading the run, and deliberately NOT evidence about
+    the present: what a prior verdict concluded says nothing about what is
+    happening now, and `hypotheses.rank` excludes a Finding whose evidence is
+    only this kind. A ranker that let last Tuesday's verdict raise confidence
+    in this Tuesday's would entrench the first mistake anybody made.
+
+    `category` and `confidence` are the prior verdict's LEADING hypothesis, or
+    absent when it had none - a run that ended UNKNOWN, or one still going.
+    """
+
+    kind: Literal["prior_incident"] = "prior_incident"
+    investigation_id: UUID
+    created_at: datetime
+    state: str = Field(description="The prior run's InvestigationState, as it stands now.")
+    category: str | None = Field(
+        default=None, description="The prior verdict's leading root-cause category, if any."
+    )
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    partial: bool = Field(
+        default=False, description="Whether a step of the prior run reported being unable to look."
+    )
+
+
 EvidencePayload = Annotated[
     MetricWindowPayload
     | LogClusterPayload
     | ManifestDiffPayload
     | K8sEventPayload
     | PipelineRunPayload
-    | CapacityForecastPayload,
+    | CapacityForecastPayload
+    | PriorIncidentPayload,
     Field(discriminator="kind"),
 ]
 """Discriminated union of everything Evidence can carry."""

@@ -269,6 +269,7 @@ async def test_an_investigation_carries_its_correlations() -> None:
         # The alert plan has a third step now. Quiet, so the correlation under
         # test is between the two findings above and not about capacity.
         dispatcher.register("moira", _ReportsNothing)
+        dispatcher.register("mnemosyne", _ReportsNothingEither)
 
         investigation = await investigate(
             Trigger(
@@ -305,6 +306,13 @@ class _ReportsOnAPodToo(_ReportsOnAPod):
 
 class _ReportsNothing(BaseAgent):
     domain = "capacity"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []
+
+
+class _ReportsNothingEither(BaseAgent):
+    domain = "knowledge"
 
     async def investigate(self, ctx: AgentContext) -> list[Finding]:
         return []

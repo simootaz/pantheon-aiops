@@ -32,6 +32,7 @@ IMPLEMENTED: dict[str, str] = {
     "ci_triage": "hephaestus",
     "capacity": "moira",
     "dora": "themis",
+    "knowledge": "mnemosyne",
 }
 
 

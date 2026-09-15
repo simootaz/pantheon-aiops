@@ -58,6 +58,13 @@ class _QuietMoira(BaseAgent):
         return []
 
 
+class _QuietMnemosyne(BaseAgent):
+    domain = "knowledge"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []
+
+
 @pytest.fixture
 def registered() -> Any:
     """The alert plan's agents, all quiet, restored afterwards. The findings are
@@ -67,6 +74,7 @@ def registered() -> Any:
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _QuietLethe)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     yield
     dispatcher.AGENTS.clear()
     dispatcher.AGENTS.update(original)

@@ -141,6 +141,8 @@ async def investigate(
             trigger=trigger,
             window_start=window_start,
             window_end=window_end,
+            store=store,
+            tenant=tenant,
         )
         completed_steps.append(finished)
         findings.extend(outcome.findings)

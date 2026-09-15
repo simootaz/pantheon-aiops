@@ -660,3 +660,64 @@ async def test_cross_attempt_dedup_is_not_claimed_to_exist() -> None:
         "into. If this now fails, persistence has landed: update the RETRIES "
         "docstring in base_agent.py and retire the ROADMAP row."
     )
+
+
+# --- runtime-provided tools go through the allowlist, not around it -----------------
+
+
+@pytest.mark.asyncio
+async def test_a_provided_tool_the_manifest_does_not_declare_is_not_bound() -> None:
+    """`AgentContext.provided` is how the dispatcher hands over `memory.recall`.
+
+    It is offered to every agent and must reach only the ones whose manifest
+    names it. Two guards hold that, and they hold different halves: `call`
+    refuses an undeclared name whatever is bound - which is what this asserts -
+    and `run` skips an undeclared provided tool rather than registering it,
+    because `register` refuses too and a refusal there would degrade every
+    agent on every alert plan. Planting the second (register unconditionally)
+    fails seventeen orchestrator tests; planting a bypass of `register` fails
+    nothing, because nothing but the first guard is needed for the property a
+    caller sees. Both are stated so the next reader does not delete one for
+    being redundant with the other.
+    """
+    seen: list[str] = []
+
+    async def offered(**kwargs: Any) -> Any:
+        return "the store"
+
+    async def try_it(ctx: AgentContext) -> list[Finding]:
+        try:
+            await ctx.tools.call("memory.recall")
+        except (ToolNotDeclared, ToolNotBound) as refused:
+            seen.append(type(refused).__name__)
+        return []
+
+    # Argus's manifest declares prometheus tools and no memory tool.
+    agent = _Probe(try_it)
+    ctx = a_context()
+    ctx.provided = {"memory.recall": offered}
+
+    outcome = await agent.run(ctx)
+
+    assert outcome.status is AgentStatus.COMPLETE
+    assert seen == ["ToolNotDeclared"], (
+        "a tool the manifest never named was callable because the runtime offered it"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_provided_tool_the_manifest_declares_is_bound() -> None:
+    """The control: the mechanism works when it should."""
+    from agents.knowledge.agent import Mnemosyne
+
+    async def offered(**kwargs: Any) -> Any:
+        return []
+
+    agent = Mnemosyne()
+    ctx = a_context()
+    ctx.provided = {"memory.recall": offered}
+    # Not an alert, so the agent returns before calling anything - the question
+    # here is only whether the tool was bound, which the toolset answers.
+    await agent.run(ctx)
+
+    assert "memory.recall" in ctx.tools._implementations

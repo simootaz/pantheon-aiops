@@ -26,9 +26,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from agents._base.base_agent import AgentContext, AgentOutcome, AgentStatus, BaseAgent
-from core.contracts.investigation import Trigger
+from core.contracts.investigation import DEFAULT_TENANT, Trigger
 from core.contracts.plan import PlanStep, StepStatus
+from core.memory import recall
 from core.orchestrator.classifier import subject_of
+from core.store.investigations import InvestigationStore
 
 #: Codename to the class that implements it. Not discovered by import scanning:
 #: a registry that finds agents by walking the filesystem will one day find a
@@ -79,6 +81,8 @@ async def run_step(
     trigger: Trigger,
     window_start: datetime,
     window_end: datetime,
+    store: InvestigationStore | None = None,
+    tenant: str = DEFAULT_TENANT,
 ) -> tuple[PlanStep, AgentOutcome]:
     """Run one step and return it updated, with what the agent produced.
 
@@ -108,6 +112,20 @@ async def run_step(
         # request or a CI run is a subject rather than a window, and an agent
         # pointed at one cannot find it from a time range.
         params=subject_of(trigger),
+        # `memory.recall`, closed over the store and THIS run's tenant. Offered
+        # to every agent and usable only by one whose manifest declares it -
+        # the runtime registers a provided tool through the allowlist, not
+        # around it. No store, no tool: the agent's call then raises
+        # ToolNotBound, which reads as "not available" rather than "may not".
+        provided=(
+            {
+                recall.TOOL_NAME: recall.recall_tool(
+                    store, tenant=tenant, current_id=investigation_id
+                )
+            }
+            if store is not None
+            else {}
+        ),
     )
 
     started = datetime.now(UTC)

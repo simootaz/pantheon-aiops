@@ -1298,7 +1298,8 @@
               "log_cluster": "#/$defs/LogClusterPayload",
               "manifest_diff": "#/$defs/ManifestDiffPayload",
               "metric_window": "#/$defs/MetricWindowPayload",
-              "pipeline_run": "#/$defs/PipelineRunPayload"
+              "pipeline_run": "#/$defs/PipelineRunPayload",
+              "prior_incident": "#/$defs/PriorIncidentPayload"
             },
             "propertyName": "kind"
           },
@@ -1320,6 +1321,9 @@
             },
             {
               "$ref": "#/$defs/CapacityForecastPayload"
+            },
+            {
+              "$ref": "#/$defs/PriorIncidentPayload"
             }
           ],
           "title": "Payload"
@@ -2612,6 +2616,73 @@
         "reason"
       ],
       "title": "PlanStep",
+      "type": "object"
+    },
+    "PriorIncidentPayload": {
+      "additionalProperties": false,
+      "description": "An earlier investigation of the same alert on the same subject.\n\nContext for the person reading the run, and deliberately NOT evidence about\nthe present: what a prior verdict concluded says nothing about what is\nhappening now, and `hypotheses.rank` excludes a Finding whose evidence is\nonly this kind. A ranker that let last Tuesday's verdict raise confidence\nin this Tuesday's would entrench the first mistake anybody made.\n\n`category` and `confidence` are the prior verdict's LEADING hypothesis, or\nabsent when it had none - a run that ended UNKNOWN, or one still going.",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The prior verdict's leading root-cause category, if any.",
+          "title": "Category"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "prior_incident",
+          "default": "prior_incident",
+          "title": "Kind",
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "description": "Whether a step of the prior run reported being unable to look.",
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "The prior run's InvestigationState, as it stands now.",
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "created_at",
+        "state"
+      ],
+      "title": "PriorIncidentPayload",
       "type": "object"
     },
     "ProviderConfig": {

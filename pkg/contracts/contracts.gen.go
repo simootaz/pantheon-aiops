@@ -3398,6 +3398,76 @@ func (j *PlanStep) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// An earlier investigation of the same alert on the same subject.
+//
+// Context for the person reading the run, and deliberately NOT evidence about
+// the present: what a prior verdict concluded says nothing about what is
+// happening now, and `hypotheses.rank` excludes a Finding whose evidence is
+// only this kind. A ranker that let last Tuesday's verdict raise confidence
+// in this Tuesday's would entrench the first mistake anybody made.
+//
+// `category` and `confidence` are the prior verdict's LEADING hypothesis, or
+// absent when it had none - a run that ended UNKNOWN, or one still going.
+type PriorIncidentPayload struct {
+	// The prior verdict's leading root-cause category, if any.
+	Category interface{} `json:"category,omitempty,omitzero" yaml:"category,omitempty" mapstructure:"category,omitempty"`
+
+	// Confidence corresponds to the JSON schema field "confidence".
+	Confidence interface{} `json:"confidence,omitempty,omitzero" yaml:"confidence,omitempty" mapstructure:"confidence,omitempty"`
+
+	// CreatedAt corresponds to the JSON schema field "created_at".
+	CreatedAt time.Time `json:"created_at" yaml:"created_at" mapstructure:"created_at"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind string `json:"kind,omitempty,omitzero" yaml:"kind,omitempty" mapstructure:"kind,omitempty"`
+
+	// Whether a step of the prior run reported being unable to look.
+	Partial bool `json:"partial,omitempty,omitzero" yaml:"partial,omitempty" mapstructure:"partial,omitempty"`
+
+	// The prior run's InvestigationState, as it stands now.
+	State string `json:"state" yaml:"state" mapstructure:"state"`
+}
+
+type PriorIncidentPayloadCategory_0 *string
+
+type PriorIncidentPayloadConfidence_0 *float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PriorIncidentPayload) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["created_at"]; raw != nil && !ok {
+		return fmt.Errorf("field created_at in PriorIncidentPayload: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in PriorIncidentPayload: required")
+	}
+	if _, ok := raw["state"]; raw != nil && !ok {
+		return fmt.Errorf("field state in PriorIncidentPayload: required")
+	}
+	type Plain PriorIncidentPayload
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if v, ok := raw["kind"]; !ok || v == nil {
+		plain.Kind = "prior_incident"
+	}
+	if plain.Kind != "prior_incident" {
+		return fmt.Errorf("field %s: must be equal to %s", "kind", "prior_incident")
+	}
+	if v, ok := raw["partial"]; !ok || v == nil {
+		plain.Partial = false
+	}
+	*j = PriorIncidentPayload(plain)
+	return nil
+}
+
 // A configured provider. Added from settings, never from code.
 type ProviderConfig struct {
 	// AuthMode corresponds to the JSON schema field "auth_mode".
@@ -4034,44 +4104,80 @@ func (j *TriggerReceivedEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type BreakGlassEventAuditEntry_0 = AuditEntry
-
 // UnmarshalJSON implements json.Unmarshaler.
-func (j *Verdict) UnmarshalJSON(value []byte) error {
+func (j *Trigger) UnmarshalJSON(value []byte) error {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(value, &raw); err != nil {
 		return err
 	}
-	if _, ok := raw["confidence"]; raw != nil && !ok {
-		return fmt.Errorf("field confidence in Verdict: required")
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Trigger: required")
 	}
-	if _, ok := raw["decided_at"]; raw != nil && !ok {
-		return fmt.Errorf("field decided_at in Verdict: required")
+	if _, ok := raw["received_at"]; raw != nil && !ok {
+		return fmt.Errorf("field received_at in Trigger: required")
 	}
-	if _, ok := raw["id"]; raw != nil && !ok {
-		return fmt.Errorf("field id in Verdict: required")
+	if _, ok := raw["source"]; raw != nil && !ok {
+		return fmt.Errorf("field source in Trigger: required")
 	}
-	if _, ok := raw["investigation_id"]; raw != nil && !ok {
-		return fmt.Errorf("field investigation_id in Verdict: required")
-	}
-	if _, ok := raw["steps"]; raw != nil && !ok {
-		return fmt.Errorf("field steps in Verdict: required")
-	}
-	if _, ok := raw["summary"]; raw != nil && !ok {
-		return fmt.Errorf("field summary in Verdict: required")
-	}
-	type Plain Verdict
+	type Plain Trigger
 	var plain Plain
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
-	if 1 < plain.Confidence {
-		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	if v, ok := raw["title"]; !ok || v == nil {
+		plain.Title = ""
 	}
-	if 0 > plain.Confidence {
-		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	*j = Trigger(plain)
+	return nil
+}
+
+// A user's response to an action, travelling back over AG-UI.
+//
+// Mirrors A2UI's client action message. Carries no decision authority of its
+// own: an approval reaching the Approval Gate, or an access decision reaching
+// Cerberus, is re-validated there against the request it claims to answer.
+type UIActionResponse struct {
+	// ActionName corresponds to the JSON schema field "action_name".
+	ActionName string `json:"action_name" yaml:"action_name" mapstructure:"action_name"`
+
+	// Context corresponds to the JSON schema field "context".
+	Context UIActionResponseContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
+
+	// InvestigationId corresponds to the JSON schema field "investigation_id".
+	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
+
+	// SourceComponentId corresponds to the JSON schema field "source_component_id".
+	SourceComponentId string `json:"source_component_id" yaml:"source_component_id" mapstructure:"source_component_id"`
+
+	// SurfaceId corresponds to the JSON schema field "surface_id".
+	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
+}
+
+type UIActionResponseContext map[string]interface{}
+
+type UIActionResponseInvestigationId_0 *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
 	}
-	*j = Verdict(plain)
+	if _, ok := raw["action_name"]; raw != nil && !ok {
+		return fmt.Errorf("field action_name in UIActionResponse: required")
+	}
+	if _, ok := raw["source_component_id"]; raw != nil && !ok {
+		return fmt.Errorf("field source_component_id in UIActionResponse: required")
+	}
+	if _, ok := raw["surface_id"]; raw != nil && !ok {
+		return fmt.Errorf("field surface_id in UIActionResponse: required")
+	}
+	type Plain UIActionResponse
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	*j = UIActionResponse(plain)
 	return nil
 }
 
@@ -4113,95 +4219,6 @@ type Verdict struct {
 	Summary string `json:"summary" yaml:"summary" mapstructure:"summary"`
 }
 
-type FindingSubject_0 = ResourceRef
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *Trigger) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["kind"]; raw != nil && !ok {
-		return fmt.Errorf("field kind in Trigger: required")
-	}
-	if _, ok := raw["received_at"]; raw != nil && !ok {
-		return fmt.Errorf("field received_at in Trigger: required")
-	}
-	if _, ok := raw["source"]; raw != nil && !ok {
-		return fmt.Errorf("field source in Trigger: required")
-	}
-	type Plain Trigger
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	if v, ok := raw["title"]; !ok || v == nil {
-		plain.Title = ""
-	}
-	*j = Trigger(plain)
-	return nil
-}
-
-type A2UIComponentAction_0 = A2UIAction
-
-type A2UIComponentArtifactRef_0 = ArtifactRef
-
-type EvidenceSubject_0 = ResourceRef
-
-type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
-
-type AuditEntryCredentialRef_0 = CredentialRef
-
-type UIActionResponseContext map[string]interface{}
-
-type UIActionResponseInvestigationId_0 *string
-
-// A user's response to an action, travelling back over AG-UI.
-//
-// Mirrors A2UI's client action message. Carries no decision authority of its
-// own: an approval reaching the Approval Gate, or an access decision reaching
-// Cerberus, is re-validated there against the request it claims to answer.
-type UIActionResponse struct {
-	// ActionName corresponds to the JSON schema field "action_name".
-	ActionName string `json:"action_name" yaml:"action_name" mapstructure:"action_name"`
-
-	// Context corresponds to the JSON schema field "context".
-	Context UIActionResponseContext `json:"context,omitempty,omitzero" yaml:"context,omitempty" mapstructure:"context,omitempty"`
-
-	// InvestigationId corresponds to the JSON schema field "investigation_id".
-	InvestigationId interface{} `json:"investigation_id,omitempty,omitzero" yaml:"investigation_id,omitempty" mapstructure:"investigation_id,omitempty"`
-
-	// SourceComponentId corresponds to the JSON schema field "source_component_id".
-	SourceComponentId string `json:"source_component_id" yaml:"source_component_id" mapstructure:"source_component_id"`
-
-	// SurfaceId corresponds to the JSON schema field "surface_id".
-	SurfaceId string `json:"surface_id" yaml:"surface_id" mapstructure:"surface_id"`
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (j *UIActionResponse) UnmarshalJSON(value []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(value, &raw); err != nil {
-		return err
-	}
-	if _, ok := raw["action_name"]; raw != nil && !ok {
-		return fmt.Errorf("field action_name in UIActionResponse: required")
-	}
-	if _, ok := raw["source_component_id"]; raw != nil && !ok {
-		return fmt.Errorf("field source_component_id in UIActionResponse: required")
-	}
-	if _, ok := raw["surface_id"]; raw != nil && !ok {
-		return fmt.Errorf("field surface_id in UIActionResponse: required")
-	}
-	type Plain UIActionResponse
-	var plain Plain
-	if err := json.Unmarshal(value, &plain); err != nil {
-		return err
-	}
-	*j = UIActionResponse(plain)
-	return nil
-}
-
 // The aggregator reached a conclusion.
 type VerdictReadyEvent struct {
 	// InvestigationId corresponds to the JSON schema field "investigation_id".
@@ -4213,6 +4230,59 @@ type VerdictReadyEvent struct {
 	// Verdict corresponds to the JSON schema field "verdict".
 	Verdict Verdict `json:"verdict" yaml:"verdict" mapstructure:"verdict"`
 }
+
+type AuditEntryCredentialRef_0 = CredentialRef
+
+type EvidenceSubject_0 = ResourceRef
+
+type InvestigationVerdict_0 = Verdict
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Verdict) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["confidence"]; raw != nil && !ok {
+		return fmt.Errorf("field confidence in Verdict: required")
+	}
+	if _, ok := raw["decided_at"]; raw != nil && !ok {
+		return fmt.Errorf("field decided_at in Verdict: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Verdict: required")
+	}
+	if _, ok := raw["investigation_id"]; raw != nil && !ok {
+		return fmt.Errorf("field investigation_id in Verdict: required")
+	}
+	if _, ok := raw["steps"]; raw != nil && !ok {
+		return fmt.Errorf("field steps in Verdict: required")
+	}
+	if _, ok := raw["summary"]; raw != nil && !ok {
+		return fmt.Errorf("field summary in Verdict: required")
+	}
+	type Plain Verdict
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if 1 < plain.Confidence {
+		return fmt.Errorf("field %s: must be <= %v", "confidence", 1)
+	}
+	if 0 > plain.Confidence {
+		return fmt.Errorf("field %s: must be >= %v", "confidence", 0)
+	}
+	*j = Verdict(plain)
+	return nil
+}
+
+type BreakGlassEventAuditEntryCredentialRef_0 = CredentialRef
+
+type A2UIComponentArtifactRef_0 = ArtifactRef
+
+type FindingSubject_0 = ResourceRef
+
+type BreakGlassEventAuditEntry_0 = AuditEntry
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
@@ -4241,4 +4311,4 @@ func (j *VerdictReadyEvent) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-type InvestigationVerdict_0 = Verdict
+type A2UIComponentAction_0 = A2UIAction

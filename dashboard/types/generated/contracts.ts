@@ -353,7 +353,8 @@ export type Payload1 =
   | ManifestDiffPayload
   | K8SEventPayload
   | PipelineRunPayload
-  | CapacityForecastPayload;
+  | CapacityForecastPayload
+  | PriorIncidentPayload;
 /**
  * Middle of the baseline, by `estimator`.
  */
@@ -474,6 +475,22 @@ export type TimeToLimitHours = number | null;
 export type Unit1 = string;
 export type WindowSeconds1 = number;
 /**
+ * The prior verdict's leading root-cause category, if any.
+ */
+export type Category = string | null;
+export type Confidence1 = number | null;
+export type CreatedAt = string;
+export type InvestigationId9 = string;
+export type Kind7 = "prior_incident";
+/**
+ * Whether a step of the prior run reported being unable to look.
+ */
+export type Partial1 = boolean;
+/**
+ * The prior run's InvestigationState, as it stands now.
+ */
+export type State1 = string;
+/**
  * When the connector ran, as distinct from what it observed.
  */
 export type CollectedAt = string | null;
@@ -528,7 +545,7 @@ export type WindowEnd = string | null;
  * Start of the period this claim is about.
  */
 export type WindowStart = string | null;
-export type InvestigationId9 = string;
+export type InvestigationId10 = string;
 export type Type5 = "finding_produced";
 /**
  * The closed vocabulary shared by agents, verdicts and scenario ground truth.
@@ -551,7 +568,7 @@ export type RootCauseCategory =
   | "data_corruption"
   | "external_incident"
   | "unknown";
-export type Confidence1 = number;
+export type Confidence2 = number;
 /**
  * Recorded deliberately. A hypothesis with none listed has usually not been tested, rather than survived testing.
  */
@@ -578,14 +595,14 @@ export type HypothesisStatus = "proposed" | "supported" | "refuted" | "inconclus
  */
 export type Subject = string | null;
 export type SupportingFindingIds = string[];
-export type InvestigationId10 = string;
-export type Type6 = "hypothesis_proposed";
 export type InvestigationId11 = string;
+export type Type6 = "hypothesis_proposed";
+export type InvestigationId12 = string;
 export type Type7 = "verdict_ready";
 /**
  * Confidence in the leading hypothesis.
  */
-export type Confidence2 = number;
+export type Confidence3 = number;
 export type ContributingFindings = Finding[];
 export type DecidedAt = string;
 /**
@@ -616,7 +633,7 @@ export type RootCauseCategory1 =
 /**
  * The competing hypothesis's own confidence.
  */
-export type Confidence3 = number;
+export type Confidence4 = number;
 export type FindingIds = string[];
 /**
  * Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.
@@ -627,7 +644,7 @@ export type Dissent = Dissent1[];
  */
 export type Hypotheses = RootCauseHypothesis[];
 export type Id9 = string;
-export type InvestigationId12 = string;
+export type InvestigationId13 = string;
 export type RecommendedActions = Action[];
 /**
  * Agent codename.
@@ -661,12 +678,12 @@ export type Steps = PlanStep[];
  * What happened, in one paragraph, for a human.
  */
 export type Summary1 = string;
-export type InvestigationId13 = string;
-export type Type8 = "approval_requested";
 export type InvestigationId14 = string;
+export type Type8 = "approval_requested";
+export type InvestigationId15 = string;
 export type Type9 = "access_requested";
 export type Agent5 = string;
-export type InvestigationId15 = string;
+export type InvestigationId16 = string;
 export type LeaseId2 = string;
 export type Reason4 = "expired" | "revoked";
 export type Type10 = "lease_expired";
@@ -696,7 +713,7 @@ export type Id11 = string;
 /**
  * Set when mode is ALLOW_FOR_INVESTIGATION.
  */
-export type InvestigationId16 = string | null;
+export type InvestigationId17 = string | null;
 /**
  * How a grant answers a request.
  *
@@ -731,7 +748,7 @@ export type Accounting = AgentAccounting[];
  */
 export type Audit = AuditEntry[];
 export type CompletedAt = string | null;
-export type CreatedAt = string;
+export type CreatedAt1 = string;
 export type Findings = Finding[];
 /**
  * Working hypotheses, before the Verdict ranks them.
@@ -819,7 +836,7 @@ export type Tenant = string;
 export type Connector2 = string;
 export type ExpiresAt1 = string;
 export type Id14 = string;
-export type InvestigationId17 = string;
+export type InvestigationId18 = string;
 export type IssuedAt = string;
 /**
  * Auto-renews while the underlying grant is valid and the run is live.
@@ -867,7 +884,7 @@ export type ModelsEndpoint = string | null;
  */
 export type SecretRef = string | null;
 export type ActionName = string;
-export type InvestigationId18 = string | null;
+export type InvestigationId19 = string | null;
 export type SourceComponentId = string;
 export type SurfaceId = string;
 
@@ -1199,7 +1216,7 @@ export interface StepFinishedEvent {
  */
 export interface FindingProducedEvent {
   finding: Finding;
-  investigation_id: InvestigationId9;
+  investigation_id: InvestigationId10;
   type?: Type5;
 }
 /**
@@ -1372,6 +1389,27 @@ export interface CapacityForecastPayload {
   window_seconds?: WindowSeconds1;
 }
 /**
+ * An earlier investigation of the same alert on the same subject.
+ *
+ * Context for the person reading the run, and deliberately NOT evidence about
+ * the present: what a prior verdict concluded says nothing about what is
+ * happening now, and `hypotheses.rank` excludes a Finding whose evidence is
+ * only this kind. A ranker that let last Tuesday's verdict raise confidence
+ * in this Tuesday's would entrench the first mistake anybody made.
+ *
+ * `category` and `confidence` are the prior verdict's LEADING hypothesis, or
+ * absent when it had none - a run that ended UNKNOWN, or one still going.
+ */
+export interface PriorIncidentPayload {
+  category?: Category;
+  confidence?: Confidence1;
+  created_at: CreatedAt;
+  investigation_id: InvestigationId9;
+  kind?: Kind7;
+  partial?: Partial1;
+  state: State1;
+}
+/**
  * Where a piece of Evidence came from, so a human can go and look.
  */
 export interface EvidenceSource {
@@ -1384,7 +1422,7 @@ export interface EvidenceSource {
  */
 export interface HypothesisProposedEvent {
   hypothesis: RootCauseHypothesis;
-  investigation_id: InvestigationId10;
+  investigation_id: InvestigationId11;
   type?: Type6;
 }
 /**
@@ -1392,7 +1430,7 @@ export interface HypothesisProposedEvent {
  */
 export interface RootCauseHypothesis {
   category: RootCauseCategory;
-  confidence: Confidence1;
+  confidence: Confidence2;
   contradicting_finding_ids?: ContradictingFindingIds;
   id: Id8;
   proposed_by: ProposedBy1;
@@ -1406,7 +1444,7 @@ export interface RootCauseHypothesis {
  * The aggregator reached a conclusion.
  */
 export interface VerdictReadyEvent {
-  investigation_id: InvestigationId11;
+  investigation_id: InvestigationId12;
   type?: Type7;
   verdict: Verdict;
 }
@@ -1414,13 +1452,13 @@ export interface VerdictReadyEvent {
  * The orchestrator's ranked conclusion for one Investigation.
  */
 export interface Verdict {
-  confidence: Confidence2;
+  confidence: Confidence3;
   contributing_findings?: ContributingFindings;
   decided_at: DecidedAt;
   dissent?: Dissent;
   hypotheses?: Hypotheses;
   id: Id9;
-  investigation_id: InvestigationId12;
+  investigation_id: InvestigationId13;
   recommended_actions?: RecommendedActions;
   steps: Steps;
   summary: Summary1;
@@ -1447,7 +1485,7 @@ export interface Verdict {
 export interface Dissent1 {
   agents?: Agents;
   category: RootCauseCategory1;
-  confidence: Confidence3;
+  confidence: Confidence4;
   finding_ids?: FindingIds;
 }
 /**
@@ -1466,14 +1504,14 @@ export interface PlanStep {
  */
 export interface ApprovalRequestedEvent {
   action: Action;
-  investigation_id: InvestigationId13;
+  investigation_id: InvestigationId14;
   type?: Type8;
 }
 /**
  * An agent asked Cerberus for a capability it has no standing grant for.
  */
 export interface AccessRequestedEvent {
-  investigation_id: InvestigationId14;
+  investigation_id: InvestigationId15;
   request: AccessRequest;
   type?: Type9;
 }
@@ -1487,7 +1525,7 @@ export interface AccessRequestedEvent {
  */
 export interface LeaseExpiredEvent {
   agent: Agent5;
-  investigation_id: InvestigationId15;
+  investigation_id: InvestigationId16;
   lease_id: LeaseId2;
   reason?: Reason4;
   type?: Type10;
@@ -1517,7 +1555,7 @@ export interface Grant {
   granted_at: GrantedAt;
   granted_by: GrantedBy;
   id: Id11;
-  investigation_id?: InvestigationId16;
+  investigation_id?: InvestigationId17;
   mode: PermissionMode;
   override_ask_default?: OverrideAskDefault;
   revoked_at?: RevokedAt;
@@ -1529,7 +1567,7 @@ export interface Investigation {
   accounting?: Accounting;
   audit?: Audit;
   completed_at?: CompletedAt;
-  created_at: CreatedAt;
+  created_at: CreatedAt1;
   findings?: Findings;
   hypotheses?: Hypotheses1;
   id: Id12;
@@ -1624,7 +1662,7 @@ export interface Lease {
   credential_ref: CredentialRef;
   expires_at: ExpiresAt1;
   id: Id14;
-  investigation_id: InvestigationId17;
+  investigation_id: InvestigationId18;
   issued_at: IssuedAt;
   renewable?: Renewable;
   renewed_count?: RenewedCount;
@@ -1654,7 +1692,7 @@ export interface ProviderConfig {
 export interface UIActionResponse {
   action_name: ActionName;
   context?: Context1;
-  investigation_id?: InvestigationId18;
+  investigation_id?: InvestigationId19;
   source_component_id: SourceComponentId;
   surface_id: SurfaceId;
 }

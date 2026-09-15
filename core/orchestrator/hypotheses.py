@@ -174,6 +174,7 @@ def rank(findings: list[Finding]) -> list[RootCauseHypothesis]:
         finding
         for finding in findings
         if finding.kind not in (FindingKind.DEGRADED, FindingKind.CORRELATION)
+        and not _is_history(finding)
     ]
     if not substantive:
         return []
@@ -240,6 +241,21 @@ def _signal_of(finding: Finding) -> Signal | None:
         ):
             return FLAKE_SIGNAL
     return None
+
+
+def _is_history(finding: Finding) -> bool:
+    """A Finding whose evidence is only prior incidents.
+
+    Excluded from ranking, not merely from proposing: a recalled prior would
+    otherwise CORROBORATE - it shares the subject - and last Tuesday's verdict
+    would raise confidence in this Tuesday's. What was concluded before says
+    nothing about what is happening now; it is for the person, not the ranker.
+    A Finding with no evidence at all is not history, and is left to the
+    contract's own rule that such a Finding is inadmissible.
+    """
+    return bool(finding.evidence) and all(
+        evidence.kind is EvidenceKind.PRIOR_INCIDENT for evidence in finding.evidence
+    )
 
 
 def _both_outcomes(conclusions: list[str]) -> bool:

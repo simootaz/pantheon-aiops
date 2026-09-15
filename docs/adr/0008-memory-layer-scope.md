@@ -119,3 +119,42 @@ question should be visibly cheaper, not invisibly the same.
 - Phase 2's "memory" deliverable is met by `cache.py` plus this ADR, and the
   Phase 2 row in `docs/REPOSITORY_MAP.md` is corrected to say so rather than
   implying three modules landed.
+
+---
+
+## Amendment — the first query is exact, and needs no vector store
+
+_2026-09-15, on branch `feature/lethe-detection`._
+
+**What this ADR predicted.** Trigger 1: *"Mnemosyne is scheduled. Its manifest
+declares a memory tool, which fixes the query shape."* And that the shape could
+be *"over a Finding's template, over a Verdict's root cause, over the full
+Investigation document, or over an embedding of the trigger."*
+
+**What happened.** Mnemosyne landed, its manifest declares `memory.recall`, and
+the shape it fixes is none of the four. It is a **keyed lookup on the trigger's
+own labels**: the same `alertname`, and the same values for whichever of `pod`,
+`service`, `node`, `instance` and `namespace` the current alert carries, in the
+same tenant. That answers the question a responder asks first - *has this
+happened before, and what did we conclude* - and it needs no embedding, no
+similarity threshold, and no backend decision.
+
+`core/memory/recall.py` scans `store.recent(200)` and filters in Python. That
+is honest about what exists: the store answers `recent(limit)` and nothing
+else. Trigger 3 of this ADR - investigation volume making `recent(limit)`
+insufficient for the API's listing - is now also the trigger for a real query
+here, and the two should be built together when it fires.
+
+**What the vector store is still for.** Anything that is not exact: "an
+incident that looked like this one on a different service", a runbook whose
+symptoms match a Finding's template. Nothing asks either question yet. The
+stub stays, and its trigger is now **a second consumer** or **a similarity
+question Mnemosyne is asked** - trigger 1 has fired and produced a query the
+stub does not serve.
+
+**One thing the tool's shape settled.** History is context, not evidence. A
+recalled prior shares the subject with whatever the ranker is weighing, and
+without an explicit exclusion it would corroborate - last Tuesday's verdict
+raising confidence in this Tuesday's. `hypotheses.rank` excludes a Finding
+whose evidence is only `PriorIncidentPayload`, and a test holds the confidence
+equal with and without it.

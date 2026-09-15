@@ -10,16 +10,24 @@
 codename: mnemosyne
 domain: knowledge
 description: >-
-  Retrieves prior incidents, runbooks and tribal knowledge.
+  Recalls prior investigations of the same alert on the same subject, and what
+  they concluded.
 
 capabilities:
   - name: recall_similar_incident
-    description: Find past investigations resembling this one.
-  - name: find_runbook
-    description: Locate the runbook covering a symptom.
+    description: >-
+      Find past investigations of this alert on this subject. Exact on the
+      trigger's own labels - the same alertname and the same pod, service, node,
+      instance or namespace - not similar by any measure that would need tuning.
+# `find_runbook` was declared here and is not: nothing stores a runbook, and a
+# capability nothing can perform reads as one that works.
+# The one tool is provided by the runtime - core/memory/recall.py - because it
+# closes over the investigation store. `prometheus.query_instant` was declared
+# and never called; a declared tool nothing calls is an allowlist entry for
+# nothing.
 tools:
-  - prometheus.query_instant
+  - memory.recall
 budget:
-  max_tokens: 16384
-  max_seconds: 90
-  max_tool_calls: 10
+  max_tokens: 4096
+  max_seconds: 30
+  max_tool_calls: 2

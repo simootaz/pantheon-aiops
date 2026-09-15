@@ -50,7 +50,11 @@ SEVERITY_LABELS = {
 #: only ones that name a disk, for the reason Argus scans every metric: the
 #: trigger's labels are operator-supplied text, and a fill is a fact about the
 #: window, not about the alertname.
-ALERT_DOMAINS = ("anomaly", "log_clustering", "capacity")
+#:
+#: Knowledge is fourth. "Has this happened before, and what did we conclude" is
+#: the first thing a responder asks, and it is a keyed lookup on the trigger's
+#: own labels - see core/memory/recall.py.
+ALERT_DOMAINS = ("anomaly", "log_clustering", "capacity", "knowledge")
 
 #: A question is answered, not investigated. Argus and Lethe scan a window and
 #: report what moved; neither answers "what is the error rate right now", and

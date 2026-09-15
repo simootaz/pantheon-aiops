@@ -140,6 +140,12 @@ class AgentContext:
     #: which is what makes `consult()` refuse rather than spend unmetered.
     meter: TokenMeter | None = None
     params: dict[str, Any] = field(default_factory=dict)
+    #: Tools the RUNTIME supplies rather than a connector adapter - ones that
+    #: close over something only the runtime holds, such as the investigation
+    #: store. Registered by `run` only when the manifest declares them, so this
+    #: widens nothing: an agent whose manifest does not name `memory.recall`
+    #: cannot call it however many implementations the dispatcher offers.
+    provided: dict[str, Any] = field(default_factory=dict)
     #: Every model consultation this run made, appended by the agent as it goes.
     #:
     #: Collected here rather than returned from `investigate`, because an agent
@@ -272,6 +278,13 @@ class BaseAgent(ABC):
             max_calls=self.manifest.budget.max_tool_calls,
         )
         self.bind_tools(tools)
+        # Runtime-provided implementations, through the same allowlist. An
+        # undeclared name is skipped, not registered: `register` would refuse
+        # it anyway, and a refusal here would make every alert plan fail for
+        # every agent that does not want the store.
+        for name, implementation in ctx.provided.items():
+            if name in tools.declared:
+                tools.register(name, implementation)
         ctx.tools = tools
         # One meter per run. A shared one would let a busy investigation exhaust
         # a quiet one's budget, and it would present as a flaky agent.

@@ -281,6 +281,7 @@ def test_every_capability_an_implemented_agent_requires_can_be_probed() -> None:
         "hermes": "agents.nl_query.agent",
         "moira": "agents.capacity.agent",
         "themis": "agents.dora.agent",
+        "mnemosyne": "agents.knowledge.agent",
     }
     for codename in sorted(planner.IMPLEMENTED.values()):
         assert codename in agents, (

@@ -59,6 +59,7 @@ from core.contracts.evidence import (
     MetricSample,
     MetricWindowPayload,
     PipelineRunPayload,
+    PriorIncidentPayload,
     ResourceRef,
 )
 from core.contracts.finding import Finding, FindingKind, Severity
@@ -179,6 +180,7 @@ __all__ = [
     "PermissionMode",
     "PipelineRunPayload",
     "PlanStep",
+    "PriorIncidentPayload",
     "ProviderConfig",
     "ResolutionRecord",
     "ResolutionStep",

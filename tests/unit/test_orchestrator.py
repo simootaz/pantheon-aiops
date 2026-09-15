@@ -175,7 +175,7 @@ def _evidence() -> Any:
 
 def test_a_scenario_label_is_read_not_inferred() -> None:
     result = classify(_trigger(scenario="bad_deploy_5xx", severity="critical"))
-    assert result.domains == ("anomaly", "log_clustering", "capacity")
+    assert result.domains == ("anomaly", "log_clustering", "capacity", "knowledge")
     assert result.severity is Severity.CRITICAL
     assert result.certain is True
     assert "bad_deploy_5xx" in result.reason
@@ -347,6 +347,15 @@ class _QuietMoira(BaseAgent):
         return []
 
 
+class _QuietMnemosyne(BaseAgent):
+    """The fourth domain an alert plans. Quiet, for the same reason as the third."""
+
+    domain = "knowledge"
+
+    async def investigate(self, ctx: AgentContext) -> list[Finding]:
+        return []
+
+
 class _Noisy(BaseAgent):
     domain = "anomaly"
 
@@ -374,17 +383,21 @@ async def test_a_run_emits_its_lifecycle_in_order(registered: Any) -> None:
     dispatcher.register("argus", _Noisy)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(scenario="memory_leak"), store=store, bus=bus)
 
     emitted = [e.event.type for e in bus.published]
-    # Three step pairs: an alert is read with metrics, logs AND a capacity
-    # projection, so the plan has three steps. Written out rather than counted,
-    # because the ORDER is what this asserts - a verdict emitted before a step
-    # finished would be a verdict over findings that had not arrived.
+    # Four step pairs: an alert is read with metrics, logs, a capacity
+    # projection and a memory lookup, so the plan has four steps. Written out
+    # rather than counted, because the ORDER is what this asserts - a verdict
+    # emitted before a step finished would be a verdict over findings that had
+    # not arrived.
     assert emitted == [
         "investigation_started",
+        "step_started",
+        "step_finished",
         "step_started",
         "step_finished",
         "step_started",
@@ -404,6 +417,7 @@ async def test_the_investigation_is_saved_before_it_is_announced(registered: Any
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     store = InMemoryInvestigationStore()
 
     seen: list[bool] = []
@@ -424,6 +438,7 @@ async def test_a_degraded_agent_produces_a_completed_partial_run(registered: Any
     dispatcher.register("argus", _Blind)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(), store=store, bus=bus)
@@ -441,6 +456,7 @@ async def test_the_id_the_receiver_returned_is_the_id_that_persists(registered: 
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     store = InMemoryInvestigationStore()
     promised = uuid4()
 
@@ -472,6 +488,7 @@ async def test_an_unroutable_trigger_is_recorded_as_failed_before_it_raises(
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     monkeypatch.setattr(planner, "IMPLEMENTED", {})
     bus, store = InMemoryEventBus(), InMemoryInvestigationStore()
 
@@ -498,6 +515,7 @@ async def test_reading_one_back_returns_it_or_none(registered: Any) -> None:
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     store = InMemoryInvestigationStore()
     investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
 
@@ -524,6 +542,7 @@ async def test_a_model_consultation_persists_on_the_investigation(registered: An
     dispatcher.register("argus", _Consulting)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     store = InMemoryInvestigationStore()
 
     investigation = await investigate(_trigger(), store=store, bus=InMemoryEventBus())
@@ -555,6 +574,7 @@ async def test_a_degraded_run_still_records_what_it_spent(registered: Any) -> No
     dispatcher.register("argus", _ConsultsThenFails)
     dispatcher.register("lethe", _Quiet)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
     investigation = await investigate(
         _trigger(), store=InMemoryInvestigationStore(), bus=InMemoryEventBus()
     )
@@ -633,6 +653,7 @@ def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
         "hermes": "agents.nl_query.tools",
         "moira": "agents.capacity.tools",
         "themis": "agents.dora.tools",
+        "mnemosyne": "agents.knowledge.tools",
     }
 
     for codename in sorted(planner.IMPLEMENTED.values()):
@@ -642,7 +663,10 @@ def test_every_implemented_agent_can_reach_the_tools_it_declares() -> None:
         )
         module = import_module(adapters[codename])
         declared = set(loader.for_codename(codename).tools)
-        implemented = set(module.IMPLEMENTATIONS)
+        # Connector adapters in IMPLEMENTATIONS; runtime-provided tools - ones
+        # that close over the store - in PROVIDED. Both fill the allowlist;
+        # neither may widen it, and a declared name in neither is unbound.
+        implemented = set(module.IMPLEMENTATIONS) | set(getattr(module, "PROVIDED", ()))
 
         assert declared == implemented, (
             f"{codename} declares {sorted(declared - implemented)} with no "
@@ -702,17 +726,19 @@ def test_an_alert_carrying_a_question_shaped_field_is_still_an_alert() -> None:
     trigger = _trigger(alertname="NodeDiskFillingUp")
     trigger.payload["question"] = "what is the error rate?"
 
-    assert classify(trigger).domains == ("anomaly", "log_clustering", "capacity")
+    assert classify(trigger).domains == ("anomaly", "log_clustering", "capacity", "knowledge")
 
 
 def test_a_domain_with_no_agent_is_skipped_rather_than_failing_the_plan() -> None:
     """An unimplemented agent must not block the implemented ones."""
-    mixed = Classification(("anomaly", "knowledge"), Severity.MEDIUM, True, "test")
+    # `reporting` (Clio): a manifest with no agent, which `knowledge` was until
+    # Mnemosyne landed. The example has to be an agent that does not exist.
+    mixed = Classification(("anomaly", "reporting"), Severity.MEDIUM, True, "test")
 
     steps = planner.build(mixed)
 
     assert [step.agent for step in steps] == ["argus"]
-    assert "knowledge" in steps[0].reason, (
+    assert "reporting" in steps[0].reason, (
         "the skipped domain is not named on the plan, so a reader cannot see what was not looked at"
     )
 
@@ -722,7 +748,7 @@ def test_the_skip_note_is_the_same_on_every_step() -> None:
     depending on where the stub fell in the order - a plan that reads as though
     the omission happened partway through."""
     mixed = Classification(
-        ("anomaly", "knowledge", "log_clustering"), Severity.MEDIUM, True, "test"
+        ("anomaly", "reporting", "log_clustering"), Severity.MEDIUM, True, "test"
     )
 
     reasons = {step.reason for step in planner.build(mixed)}
@@ -737,6 +763,7 @@ async def test_an_investigation_records_what_each_agent_consumed(registered: Any
     dispatcher.register("argus", _Quiet)
     dispatcher.register("lethe", _QuietLethe)
     dispatcher.register("moira", _QuietMoira)
+    dispatcher.register("mnemosyne", _QuietMnemosyne)
 
     investigation = await investigate(
         _trigger(scenario="memory_leak"),
@@ -744,7 +771,12 @@ async def test_an_investigation_records_what_each_agent_consumed(registered: Any
         bus=InMemoryEventBus(),
     )
 
-    assert [entry.agent for entry in investigation.accounting] == ["argus", "lethe", "moira"]
+    assert [entry.agent for entry in investigation.accounting] == [
+        "argus",
+        "lethe",
+        "moira",
+        "mnemosyne",
+    ]
     assert all(entry.token_ceiling > 0 for entry in investigation.accounting), (
         "an accounting entry with no ceiling cannot answer whether the spend was close"
     )

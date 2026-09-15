@@ -26,7 +26,7 @@ keep all of it honest. **No business logic.**
 | Python | uv, 3.12 pinned, ruff, mypy `--strict`, pytest |
 | Go | workspace over 5 modules, golangci-lint, compiling stubs |
 | TypeScript | Next.js 15, biome, vitest, AG-UI client, A2UI renderer |
-| Contracts | 54 models, closed, exported to Go + TS |
+| Contracts | 55 models, closed, exported to Go + TS |
 | Codegen | Pydantic → JSON Schema → Go + TS, drift-verified |
 | Deploy | Compose, Helm (lints + templates ×3), Terraform (validates), kustomize, Argo CD, observability, security, backup |
 | CI | 9 workflows, SHA-pinned, one required check |
@@ -200,7 +200,11 @@ serves.
   ranker cannot disagree about what a flake is. A plant that read the tag
   survived every test through the agent, because the agent writes both; the
   test that caught it sets the tag and the outcomes against each other.
-- **Mnemosyne**, **Clio**, **Eris**; Litmus connector
+- ✅ **Mnemosyne**, on every alert: prior investigations of the same alert on
+  the same subject, and what they concluded. Exact on the trigger's labels -
+  the vector store ADR 0008 deferred turns out not to be what the first
+  question needs, and its trigger is restated there.
+- **Clio**, **Eris**; Litmus connector
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches
 - End-to-end tests against the simulator
