@@ -210,6 +210,12 @@ serves.
   need Delphi and somewhere to write to; **no S3 write path exists in
   Python** and there is no MinIO here to verify one against, so they wait.
 - **Clio** (postmortem, summary), **Eris**; Litmus connector
+- ✅ **The AG-UI stream is live.** It never was: the bus had no subscribers,
+  the endpoint's subscription source was set only by tests, and every open
+  detail page reconnected every 1-30 s to a stream that closed on arrival.
+  In-process fan-out, correct while the API runs every investigation as its
+  own task - ⚠️ **a separate worker is the trigger for the shared bus**, and
+  Redis is in the stack for that day.
 - Temporal workflows, activities, worker
 - Replay from snapshot + ordered patches
 - End-to-end tests against the simulator

@@ -211,3 +211,20 @@ describe("Timeline", () => {
     expect(screen.getByText(/could not look/).className).toContain("amber");
   });
 });
+
+describe("Status, waiting", () => {
+  it("says waiting for approval rather than live", () => {
+    // The stream is open and idle on purpose. "live" would say the agents are
+    // working; the run is waiting for a person, possibly the one reading this.
+    render(
+      <Status
+        investigation={investigation({ state: "awaiting_approval" as InvestigationState })}
+        connected={true}
+        fatal={false}
+      />,
+    );
+
+    expect(screen.getByText("waiting for approval")).toBeDefined();
+    expect(screen.queryByText("live")).toBeNull();
+  });
+});

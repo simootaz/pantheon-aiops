@@ -317,7 +317,9 @@ def test_a_run_starts_and_finishes_with_the_investigation_id() -> None:
 
     assert _started(started[0]).run_id == str(RUN)
     assert _started(started[0]).thread_id == str(RUN)
-    assert _finished(finished[0]).run_id == str(RUN)
+    # The completion is the LAST event: a state patch goes out before it, so a
+    # client applies the terminal state before the stream closes on it.
+    assert _finished(finished[-1]).run_id == str(RUN)
 
 
 # --- break-glass is the one Custom event -----------------------------------------------------
@@ -682,11 +684,21 @@ def test_a_step_carries_the_agent_codename() -> None:
 
 
 def test_an_approval_request_becomes_a_surface_and_not_a_state_patch() -> None:
-    """An approval is a prompt, not a fact about the run. Patching it into state
-    would render it as history the moment it arrived."""
-    (event,) = translate(ApprovalRequestedEvent(investigation_id=RUN, action=_action()))
+    """An approval PROMPT is not a fact about the run. Patching the prompt into
+    state would render it as history the moment it arrived.
 
-    assert _custom(event).name == a2ui_channel.EVENT_NAME
+    The run's STATE is a fact about the run - the row says AWAITING_APPROVAL -
+    and that is patched. The distinction is what this asserts: one surface as
+    a Custom event, and the only state patch is `/state`, never the Action.
+    """
+    events = translate(ApprovalRequestedEvent(investigation_id=RUN, action=_action()))
+
+    (surface,) = [e for e in events if e.type == EventType.CUSTOM]
+    assert _custom(surface).name == a2ui_channel.EVENT_NAME
+    for patch in (e for e in events if e.type == EventType.STATE_DELTA):
+        assert [op["path"] for op in _delta(patch).delta] == ["/state"], (
+            "the approval itself was patched into state"
+        )
 
 
 def test_time_does_not_leak_into_the_translation() -> None:
@@ -703,9 +715,9 @@ def test_a_completed_run_carries_whether_it_was_partial() -> None:
     """`partial` is what tells a reader "nobody found anything" from "nobody
     looked". Dropping it at the edge would lose the distinction the whole
     DEGRADED path exists to preserve."""
-    (finished,) = translate(
+    finished = translate(
         InvestigationCompletedEvent(investigation_id=RUN, state="complete", partial=True)
-    )
+    )[-1]
 
     result = _finished(finished).result
     assert result is not None and result["partial"] is True
@@ -730,7 +742,7 @@ def test_investigation_ids_are_strings_on_the_wire() -> None:
     """AG-UI's run_id is a string. A UUID object would serialise differently
     depending on the encoder and a client comparing it against the id it asked
     for would find no match."""
-    (started,) = translate(InvestigationStartedEvent(investigation_id=RUN))
+    started = translate(InvestigationStartedEvent(investigation_id=RUN))[0]
 
     run_id = _started(started).run_id
     assert isinstance(run_id, str)
@@ -776,6 +788,33 @@ def _authorised(store: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     return TestClient(create_app(investigation_store=store))
 
 
+def _ended_at_once(client: Any) -> Any:
+    """Make every stream this app opens finish immediately.
+
+    THE STREAM IS LIVE NOW, AND THIS CLIENT CANNOT READ A LIVE ONE
+    ----------------------------------------------------------------
+    `create_app` bridges the bus to the stream, so a stream stays open until
+    the run finishes - which for a saved row nothing is running is forever.
+    Starlette's TestClient consumes a whole response before returning and
+    cannot close a stream part-way, so a plain `client.get` on a live stream
+    hangs the suite: the guard whose failure mode is a hung runner.
+
+    The tests that use this are about the OPENING frames and the headers, and
+    a run that ends the instant it is subscribed to gives them exactly that.
+    The bridge itself is tested where it can be observed: on the bus and on
+    the queue, in `test_the_bridge_puts_translated_events_on_the_queue`.
+    """
+    import asyncio
+
+    def _subscribe(investigation_id: Any, queue: asyncio.Queue[Any]) -> Any:
+        for event in translate(InvestigationCompletedEvent(investigation_id=RUN, state="complete")):
+            queue.put_nowait(event)
+        return lambda: None
+
+    client.app.state.agui_subscribe = _subscribe
+    return client
+
+
 @pytest.mark.asyncio
 async def test_a_stream_opens_with_the_run_as_it_stands(
     monkeypatch: pytest.MonkeyPatch,
@@ -788,7 +827,7 @@ async def test_a_stream_opens_with_the_run_as_it_stands(
     run = _investigation().model_copy(update={"tenant": "acme"})
     await store.save(run)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(f"/agui/{run.id}", headers={"Authorization": "Bearer t1"})
 
     assert response.status_code == 200
@@ -807,7 +846,7 @@ async def test_a_proxy_is_told_not_to_buffer(monkeypatch: pytest.MonkeyPatch) ->
     run = _investigation().model_copy(update={"tenant": "acme"})
     await store.save(run)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(f"/agui/{run.id}", headers={"Authorization": "Bearer t1"})
 
     assert response.headers["cache-control"] == "no-cache"
@@ -888,7 +927,7 @@ async def test_an_approver_can_answer_a_prompt(monkeypatch: pytest.MonkeyPatch) 
     await store.save(run)
     surface_id = uuid4()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.post(
             f"/agui/{run.id}/actions",
             json={"actionName": "approve", "surfaceId": str(surface_id), "context": {"a": "1"}},
@@ -912,7 +951,7 @@ async def test_an_unroutable_action_is_a_400_and_not_a_silent_200(
     run = _investigation().model_copy(update={"tenant": "acme"})
     await store.save(run)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.post(
             f"/agui/{run.id}/actions",
             json={"actionName": "delete_everything", "surfaceId": str(uuid4())},
@@ -933,7 +972,7 @@ async def test_answering_a_prompt_on_another_tenants_run_is_a_404(
     theirs = _investigation().model_copy(update={"tenant": "globex"})
     await store.save(theirs)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.post(
             f"/agui/{theirs.id}/actions",
             json={"actionName": "approve", "surfaceId": str(uuid4())},
@@ -1016,7 +1055,7 @@ async def test_a_client_that_cannot_render_a_button_is_refused_before_streaming(
     """
     store, run = await _saved_run()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{run.id}",
             headers={"Authorization": "Bearer t1", "X-A2UI-Components": "Card,Row,Text"},
@@ -1033,7 +1072,7 @@ async def test_a_client_declaring_the_full_catalog_streams(
     """The control. A handshake that refused everybody would pass the test above."""
     store, run = await _saved_run()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{run.id}",
             headers={"Authorization": "Bearer t1", "X-A2UI-Components": EVERY_COMPONENT},
@@ -1055,7 +1094,7 @@ async def test_an_undeclared_catalog_streams_and_says_it_was_not_checked(
     """
     store, run = await _saved_run()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(f"/agui/{run.id}", headers={"Authorization": "Bearer t1"})
 
     assert response.status_code == 200
@@ -1073,7 +1112,7 @@ async def test_an_empty_declaration_is_a_client_that_renders_nothing(
     """
     store, run = await _saved_run()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{run.id}", headers={"Authorization": "Bearer t1", "X-A2UI-Components": ""}
         )
@@ -1092,7 +1131,7 @@ async def test_a_newer_client_is_not_refused_for_knowing_more(
     """
     store, run = await _saved_run()
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{run.id}",
             headers={
@@ -1113,7 +1152,7 @@ async def test_whitespace_around_names_is_not_a_missing_component(
     store, run = await _saved_run()
     spaced = ", ".join(member.value for member in A2UIComponentType)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{run.id}", headers={"Authorization": "Bearer t1", "X-A2UI-Components": spaced}
         )
@@ -1134,10 +1173,190 @@ async def test_another_tenants_run_is_a_404_even_for_an_inadequate_client(
     theirs = run.model_copy(update={"id": uuid4(), "tenant": "globex"})
     await store.save(theirs)
 
-    with _authorised(store, monkeypatch) as client:
+    with _ended_at_once(_authorised(store, monkeypatch)) as client:
         response = client.get(
             f"/agui/{theirs.id}",
             headers={"Authorization": "Bearer t1", "X-A2UI-Components": "Text"},
         )
 
     assert response.status_code == 404
+
+
+# --- the bridge: bus to stream, which nothing but a test had ever wired -------------
+#
+# `app.state.agui_subscribe` was read by the endpoint since it existed and set only
+# by the tests above. In the running app the stream sent its snapshot and closed,
+# and the dashboard reconnected every one to thirty seconds for as long as the
+# page stayed open. These assert the seam at the level a TestClient can see it.
+
+
+@pytest.mark.asyncio
+async def test_the_app_wires_the_bus_to_the_stream() -> None:
+    """The one line that was missing. Asserted on the app object rather than
+    through a request, because a request on a live stream cannot be completed
+    by this client - see `_ended_at_once`."""
+    from api.main import create_app
+    from core.bus import InMemoryEventBus
+
+    app = create_app(event_bus=InMemoryEventBus())
+
+    assert callable(getattr(app.state, "agui_subscribe", None)), (
+        "the stream has no subscription source: it will send a snapshot and close"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_bridge_puts_translated_events_on_the_queue() -> None:
+    """Publish on the bus, receive AG-UI events on the stream's queue.
+
+    Translated at the edge, per subscriber: the bus knows nothing of AG-UI.
+    """
+    import asyncio
+
+    from api.main import create_app
+    from core.bus import InMemoryEventBus
+
+    bus = InMemoryEventBus()
+    app = create_app(event_bus=bus)
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+
+    unsubscribe = app.state.agui_subscribe(RUN, queue)
+    await bus.publish(
+        FindingProducedEvent(investigation_id=RUN, finding=_finding()), investigation_id=RUN
+    )
+    await bus.publish(
+        InvestigationCompletedEvent(investigation_id=RUN, state="completed"), investigation_id=RUN
+    )
+    unsubscribe()
+    await bus.publish(
+        FindingProducedEvent(investigation_id=RUN, finding=_finding()), investigation_id=RUN
+    )
+
+    received = []
+    while not queue.empty():
+        received.append(queue.get_nowait())
+    kinds = [event.type for event in received]
+
+    assert EventType.STATE_DELTA in kinds, "the finding never reached the queue"
+    assert kinds[-1] == EventType.RUN_FINISHED, "the run's end never reached the queue"
+    assert kinds.count(EventType.STATE_DELTA) == 2, (
+        "either the finding after unsubscribe arrived, or the completion's state patch did not"
+    )
+
+
+@pytest.mark.asyncio
+async def test_another_investigations_events_do_not_reach_this_stream() -> None:
+    """Fan-out is per investigation. A stream for one run receiving another's
+    findings would show a reader somebody else's incident."""
+    import asyncio
+    from uuid import uuid4
+
+    from api.main import create_app
+    from core.bus import InMemoryEventBus
+
+    bus = InMemoryEventBus()
+    app = create_app(event_bus=bus)
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    app.state.agui_subscribe(RUN, queue)
+
+    await bus.publish(
+        FindingProducedEvent(investigation_id=uuid4(), finding=_finding()), investigation_id=uuid4()
+    )
+
+    assert queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_the_generator_sends_a_keepalive_when_nothing_happens() -> None:
+    """The module docstring promised a keep-alive comment. The generator used
+    to `continue` on the timeout and send nothing, so an idle stream was closed
+    by the proxy at its own timeout regardless - the keepalive existed in
+    prose. Asserted on the generator directly, with the timeout shortened, so
+    the test does not take twenty seconds to prove it."""
+    import asyncio
+
+    from api.agui import endpoint
+    from core.store.investigations import InMemoryInvestigationStore
+
+    store = InMemoryInvestigationStore()
+    run = _investigation().model_copy(update={"tenant": "acme"})
+    await store.save(run)
+
+    class _Request:
+        class app:
+            class state:
+                @staticmethod
+                def agui_subscribe(investigation_id: Any, queue: asyncio.Queue[Any]) -> Any:
+                    return lambda: None
+
+    async def first_three() -> list[Any]:
+        frames: list[Any] = []
+        # A stand-in for the request: the generator reads `.app.state` and nothing
+        # else off it, and building a real Request for that is scaffolding.
+        async for frame in endpoint._events_for(_Request(), run.id, store):  # type: ignore[arg-type]
+            frames.append(frame)
+            if len(frames) >= 3:
+                break
+        return frames
+
+    original = endpoint.KEEPALIVE_SECONDS
+    endpoint.KEEPALIVE_SECONDS = 0.05
+    try:
+        # Bounded. A generator that swallowed the timeout would never yield a
+        # second frame, and a test waiting for one would hang the suite - which
+        # is exactly what a plant of the bare `continue` did before this bound
+        # existed. Failing in two seconds is the guard; hanging is not.
+        frames = await asyncio.wait_for(first_three(), timeout=2.0)
+    except TimeoutError:
+        pytest.fail("an idle stream sent nothing in 2 s: the keepalive is not being yielded")
+    finally:
+        endpoint.KEEPALIVE_SECONDS = original
+
+    assert frames[0].type == EventType.STATE_SNAPSHOT
+    assert frames[1] == endpoint.KEEPALIVE and frames[2] == endpoint.KEEPALIVE, (
+        "an idle stream sent nothing between events"
+    )
+    assert endpoint.KEEPALIVE.startswith(":"), "a keepalive that is not an SSE comment is a frame"
+
+
+# --- the state reaches a client that opened early ------------------------------------
+
+
+def test_a_client_that_opened_during_pending_is_told_the_run_is_running() -> None:
+    """Nothing else on the stream carries the state, and the opening snapshot is
+    the only place it was ever written. Without this a client's `state` never
+    moves from `pending`."""
+    events = translate(InvestigationStartedEvent(investigation_id=RUN))
+
+    patches = [e for e in events if e.type == EventType.STATE_DELTA]
+    assert patches, "no state patch on InvestigationStarted"
+    assert _delta(patches[0]).delta == [{"op": "replace", "path": "/state", "value": "running"}]
+
+
+def test_the_terminal_state_is_patched_before_the_stream_closes() -> None:
+    """A client applies the terminal state and then sees RUN_FINISHED. The
+    other order would close the stream on a client still showing `running`."""
+    from datetime import UTC, datetime
+
+    closed = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
+    events = translate(
+        InvestigationCompletedEvent(investigation_id=RUN, state="completed", completed_at=closed)
+    )
+
+    assert [e.type for e in events] == [EventType.STATE_DELTA, EventType.RUN_FINISHED]
+    assert _delta(events[0]).delta == [
+        {"op": "replace", "path": "/state", "value": "completed"},
+        {"op": "replace", "path": "/completed_at", "value": closed.isoformat()},
+    ]
+
+
+def test_an_approval_request_moves_the_state_to_awaiting() -> None:
+    """The run is waiting on a person. `Status` on the detail page reads the
+    state and would otherwise show "live" on a run doing nothing until somebody
+    clicks."""
+    events = translate(ApprovalRequestedEvent(investigation_id=RUN, action=_action()))
+
+    assert _delta(events[0]).delta == [
+        {"op": "replace", "path": "/state", "value": "awaiting_approval"}
+    ]
+    assert events[1].type == EventType.CUSTOM, "the approval surface no longer follows the state"

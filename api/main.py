@@ -13,11 +13,14 @@ Phase: 1 - Contracts & First Agent Path
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import UUID
 
+from ag_ui.core import BaseEvent
 from fastapi import FastAPI, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +28,7 @@ from fastapi.responses import JSONResponse
 
 from api import __version__
 from api.agui import router as agui_router
+from api.agui.translator import translate
 from api.routers import (
     agents,
     alerts,
@@ -37,6 +41,7 @@ from api.routers import (
 )
 from core.bus import EventBus, InMemoryEventBus
 from core.cerberus.redaction import redact
+from core.contracts.events import EventEnvelope
 from core.guardrails.approval_gate import ApprovalGate
 from core.observability.logging import configure as configure_logging
 from core.observability.logging import investigation
@@ -117,6 +122,25 @@ async def _redacted_validation_error(request: Request, error: Exception) -> JSON
     return JSONResponse(status_code=422, content=jsonable_encoder(scrubbed))
 
 
+def _agui_bridge(bus: EventBus) -> Callable[[UUID, asyncio.Queue[BaseEvent]], Callable[[], None]]:
+    """Subscribe one stream's queue to one investigation's events, translated.
+
+    Translation happens here, at the edge, per subscriber - not on the bus,
+    which knows nothing of AG-UI (ADR 0006). `investigation=None`: the stream
+    already sent its snapshot when it opened, and a second one on every
+    lifecycle event would reset the client's state for no reason.
+    """
+
+    def subscribe(investigation_id: UUID, queue: asyncio.Queue[BaseEvent]) -> Callable[[], None]:
+        def deliver(envelope: EventEnvelope) -> None:
+            for agui_event in translate(envelope.event):
+                queue.put_nowait(agui_event)
+
+        return bus.subscribe(investigation_id, deliver)
+
+    return subscribe
+
+
 def create_app(
     *,
     event_bus: EventBus | None = None,
@@ -165,6 +189,12 @@ def create_app(
     # rather than discovered by an approval that vanishes behind a load
     # balancer.
     app.state.approval_gate = approval_gate if approval_gate is not None else ApprovalGate()
+    # The bus reaches the AG-UI stream through this, and through nothing else.
+    # `api/agui/endpoint.py` read it for as long as it has existed, and only a
+    # test ever set it: in the running app the stream sent a snapshot and
+    # closed. Every event published for an investigation is translated here and
+    # put on that stream's queue.
+    app.state.agui_subscribe = _agui_bridge(app.state.event_bus)
 
     register_implemented()
 

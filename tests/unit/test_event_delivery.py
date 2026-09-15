@@ -15,6 +15,7 @@ Phase: 3 - Guardrails, Approvals & Write Actions
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -23,6 +24,8 @@ from core.bus import InMemoryEventBus
 from core.contracts.events import (
     DeliveryGuarantee,
     EventEnvelope,
+    InvestigationCompletedEvent,
+    InvestigationStartedEvent,
     ReplayCursor,
     TriggerReceivedEvent,
 )
@@ -212,3 +215,115 @@ async def test_sequences_are_per_investigation() -> None:
     await bus.publish(_event(), investigation_id=other)
 
     assert [envelope.sequence for envelope in bus.published] == [0, 0]
+
+
+# --- fan-out: the seam the stream was missing ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_subscriber_receives_every_envelope_for_its_investigation() -> None:
+    """`subscribe` did not exist. `api/agui/endpoint.py` read a subscription
+    source off the app and only a test ever set one, so the live stream sent a
+    snapshot and closed."""
+    bus = InMemoryEventBus()
+    run = uuid4()
+    received: list[EventEnvelope] = []
+
+    bus.subscribe(run, received.append)
+    await bus.publish(InvestigationStartedEvent(investigation_id=run), investigation_id=run)
+    await bus.publish(
+        InvestigationCompletedEvent(investigation_id=run, state="completed"), investigation_id=run
+    )
+
+    assert [e.event.type for e in received] == ["investigation_started", "investigation_completed"]
+    assert [e.sequence for e in received] == [0, 1], "the envelopes are the recorded ones"
+
+
+@pytest.mark.asyncio
+async def test_a_subscriber_does_not_receive_another_investigations_events() -> None:
+    bus = InMemoryEventBus()
+    mine, theirs = uuid4(), uuid4()
+    received: list[EventEnvelope] = []
+
+    bus.subscribe(mine, received.append)
+    await bus.publish(InvestigationStartedEvent(investigation_id=theirs), investigation_id=theirs)
+    await bus.publish(InvestigationStartedEvent(investigation_id=mine), investigation_id=mine)
+
+    assert [getattr(e.event, "investigation_id", None) for e in received] == [mine]
+
+
+@pytest.mark.asyncio
+async def test_unsubscribing_stops_delivery_and_is_idempotent() -> None:
+    bus = InMemoryEventBus()
+    run = uuid4()
+    received: list[EventEnvelope] = []
+
+    unsubscribe = bus.subscribe(run, received.append)
+    await bus.publish(InvestigationStartedEvent(investigation_id=run), investigation_id=run)
+    unsubscribe()
+    unsubscribe()  # a client that closed twice is not an error
+    await bus.publish(
+        InvestigationCompletedEvent(investigation_id=run, state="completed"), investigation_id=run
+    )
+
+    assert len(received) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_subscriber_that_raises_does_not_fail_the_publisher() -> None:
+    """A client that went away mid-event must not fail the run publishing to
+    it. The run is the thing that matters; the subscriber was watching it. And
+    the next subscriber still gets the envelope."""
+    bus = InMemoryEventBus()
+    run = uuid4()
+    after: list[EventEnvelope] = []
+
+    def broken(envelope: EventEnvelope) -> None:
+        raise RuntimeError("client gone")
+
+    bus.subscribe(run, broken)
+    bus.subscribe(run, after.append)
+
+    envelope = await bus.publish(
+        InvestigationStartedEvent(investigation_id=run), investigation_id=run
+    )
+
+    assert envelope.sequence == 0, "publish did not complete"
+    assert after == [envelope], "the subscriber after the broken one was skipped"
+
+
+@pytest.mark.asyncio
+async def test_a_subscriber_that_unsubscribes_during_delivery_does_not_skip_its_neighbour() -> None:
+    """Mutating the list under the loop skips the next entry. Delivery iterates
+    a copy."""
+    bus = InMemoryEventBus()
+    run = uuid4()
+    seen: list[str] = []
+    stop: list[Any] = []
+
+    def first(envelope: EventEnvelope) -> None:
+        seen.append("first")
+        stop[0]()
+
+    stop.append(bus.subscribe(run, first))
+    bus.subscribe(run, lambda envelope: seen.append("second"))
+
+    await bus.publish(InvestigationStartedEvent(investigation_id=run), investigation_id=run)
+
+    assert seen == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_is_from_now_on_not_from_the_start() -> None:
+    """A subscriber that wants the past reads the store - the AG-UI endpoint
+    sends a snapshot for exactly this reason. A bus that replayed history to
+    late subscribers would be a second copy of the store with weaker
+    guarantees."""
+    bus = InMemoryEventBus()
+    run = uuid4()
+    received: list[EventEnvelope] = []
+
+    await bus.publish(InvestigationStartedEvent(investigation_id=run), investigation_id=run)
+    bus.subscribe(run, received.append)
+
+    assert received == []

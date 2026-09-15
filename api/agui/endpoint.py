@@ -103,9 +103,16 @@ REQUIRED_COMPONENTS: frozenset[A2UIComponentType] = frozenset(
 KEEPALIVE_SECONDS = 20.0
 
 
+#: What goes on the wire when nothing has happened for KEEPALIVE_SECONDS. An
+#: SSE comment: every parser ignores it, and the dashboard's `parseFrames`
+#: drops lines starting with ':' by name. Not an event, so it is not a
+#: BaseEvent - the generator below yields either.
+KEEPALIVE = ": keep-alive\n\n"
+
+
 async def _events_for(
     request: Request, investigation_id: UUID, store: InvestigationStore
-) -> AsyncIterator[BaseEvent]:
+) -> AsyncIterator[BaseEvent | str]:
     """Every AG-UI event for one investigation.
 
     Reads the Investigation once for the opening snapshot, then follows the bus.
@@ -131,6 +138,11 @@ async def _events_for(
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_SECONDS)
             except TimeoutError:
+                # The comment the module docstring promised. This used to be a
+                # bare `continue`, which kept the generator alive and sent the
+                # proxy nothing - so an idle stream was closed at the proxy's
+                # timeout regardless, and the keepalive existed in prose only.
+                yield KEEPALIVE
                 continue
             yield event
             if event.type in (EventType.RUN_FINISHED, EventType.RUN_ERROR):
@@ -193,7 +205,7 @@ async def stream(
 
     async def frames() -> AsyncIterator[str]:
         async for event in _events_for(request, investigation_id, store):
-            yield encode(event, accept=accept)
+            yield event if isinstance(event, str) else encode(event, accept=accept)
 
     return StreamingResponse(
         frames(),

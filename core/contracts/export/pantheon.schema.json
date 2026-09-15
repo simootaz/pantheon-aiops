@@ -1851,6 +1851,20 @@
       "additionalProperties": false,
       "description": "A run reached a terminal state, successfully or not.",
       "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the row was closed. Carried so a client following the stream can patch it in; the envelope's emitted_at is when the event left, which is later.",
+          "title": "Completed At"
+        },
         "investigation_id": {
           "format": "uuid",
           "title": "Investigation Id",

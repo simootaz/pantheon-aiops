@@ -155,16 +155,28 @@ def translate(event: Event, *, investigation: Investigation | None = None) -> li
         ]
         if investigation is not None:
             started.append(_snapshot(investigation))
+        else:
+            # A client that opened the stream during PENDING holds a snapshot
+            # saying so. Without this the state it shows never moves: nothing
+            # else on the stream carries it, and the opening snapshot is the
+            # only place it was ever written.
+            started.append(_replace("/state", "running"))
         return started
 
     if isinstance(event, InvestigationCompletedEvent):
+        patches: list[dict[str, Any]] = [{"op": "replace", "path": "/state", "value": event.state}]
+        if event.completed_at is not None:
+            patches.append(
+                {"op": "replace", "path": "/completed_at", "value": event.completed_at.isoformat()}
+            )
         return [
+            StateDeltaEvent(type=EventType.STATE_DELTA, delta=patches),
             RunFinishedEvent(
                 type=EventType.RUN_FINISHED,
                 thread_id=str(event.investigation_id),
                 run_id=str(event.investigation_id),
                 result={"state": event.state, "partial": event.partial},
-            )
+            ),
         ]
 
     if isinstance(event, StepStartedEvent):
@@ -197,9 +209,14 @@ def translate(event: Event, *, investigation: Investigation | None = None) -> li
 
     if isinstance(event, ApprovalRequestedEvent):
         return [
+            # The run is waiting on a person now, and the stream stays open for
+            # exactly that person. Said in the state, because `Status` on the
+            # detail page reads it and would otherwise show "live" on a run
+            # that is doing nothing until somebody clicks.
+            _replace("/state", "awaiting_approval"),
             a2ui_channel.surface_event(
                 approval_surface(event.action, investigation_id=event.investigation_id)
-            )
+            ),
         ]
 
     if isinstance(event, AccessRequestedEvent):
@@ -254,6 +271,13 @@ def _snapshot(investigation: Investigation) -> StateSnapshotEvent:
     return StateSnapshotEvent(
         type=EventType.STATE_SNAPSHOT,
         snapshot=investigation.model_dump(mode="json"),
+    )
+
+
+def _replace(path: str, value: Any) -> StateDeltaEvent:
+    """One scalar field, replaced. For state that has exactly one value."""
+    return StateDeltaEvent(
+        type=EventType.STATE_DELTA, delta=[{"op": "replace", "path": path, "value": value}]
     )
 
 

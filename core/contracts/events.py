@@ -66,6 +66,13 @@ class InvestigationCompletedEvent(ContractModel):
     investigation_id: UUID
     state: str = Field(description="The terminal InvestigationState value.")
     partial: bool = Field(default=False, description="True when any agent reported DEGRADED.")
+    completed_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the row was closed. Carried so a client following the stream can "
+            "patch it in; the envelope's emitted_at is when the event left, which is later."
+        ),
+    )
 
 
 class StepStartedEvent(ContractModel):

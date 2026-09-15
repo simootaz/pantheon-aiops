@@ -2388,6 +2388,10 @@ type Investigation struct {
 
 // A run reached a terminal state, successfully or not.
 type InvestigationCompletedEvent struct {
+	// When the row was closed. Carried so a client following the stream can patch it
+	// in; the envelope's emitted_at is when the event left, which is later.
+	CompletedAt *time.Time `json:"completed_at,omitempty,omitzero" yaml:"completed_at,omitempty" mapstructure:"completed_at,omitempty"`
+
 	// InvestigationId corresponds to the JSON schema field "investigation_id".
 	InvestigationId string `json:"investigation_id" yaml:"investigation_id" mapstructure:"investigation_id"`
 

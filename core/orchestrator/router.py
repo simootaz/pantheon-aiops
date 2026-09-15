@@ -185,6 +185,7 @@ async def investigate(
     # finished were the same row - and the second is the one an operator stops
     # reading.
     state = InvestigationState.AWAITING_APPROVAL if waiting else InvestigationState.COMPLETED
+    closed_at = None if waiting else datetime.now(UTC)
 
     investigation = investigation.model_copy(
         update={
@@ -193,7 +194,7 @@ async def investigate(
             # still waiting for an approver would make every duration measured
             # from it wrong, and would read as finished to anything sorting by
             # it.
-            "completed_at": datetime.now(UTC) if not waiting else None,
+            "completed_at": closed_at,
             "plan": completed_steps,
             "findings": findings,
             "resolutions": resolutions,
@@ -227,6 +228,7 @@ async def investigate(
                 investigation_id=investigation.id,
                 state=state.value,
                 partial=partial,
+                completed_at=closed_at,
             ),
             investigation_id=investigation.id,
         )

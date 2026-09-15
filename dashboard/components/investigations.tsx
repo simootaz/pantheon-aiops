@@ -59,6 +59,12 @@ export function Status({
   if (isTerminal(investigation)) {
     return <span className="text-xs text-slate-500 dark:text-slate-400">finished</span>;
   }
+  if (investigation.state === "awaiting_approval") {
+    // The stream is open and nothing is happening on it, on purpose: the run is
+    // waiting for a person. "live" would say the agents are working; they are
+    // not, and the person the run is waiting for may be the one reading this.
+    return <span className="text-xs text-amber-600 dark:text-amber-400">waiting for approval</span>;
+  }
   return connected ? (
     <span className="text-xs text-emerald-700 dark:text-emerald-400">live</span>
   ) : (

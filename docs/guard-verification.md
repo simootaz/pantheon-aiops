@@ -1815,6 +1815,28 @@ both fail against the README.
 > A guard comparing a document to a derived count has two halves to verify. Plant
 > a change in the document, **and** plant something the count should see.
 
+## A guard that hung rather than failed, 2026-09-15
+
+The AG-UI endpoint's docstring promised a keep-alive comment on an idle stream.
+The timeout branch was a bare `continue`, which kept the generator alive and
+sent nothing - the keepalive existed in prose, and a proxy closed every idle
+stream at its own timeout regardless.
+
+The first test for the fix collected three frames from the generator with the
+timeout shortened. Planting the bare `continue` back **hung the test** instead
+of failing it: with nothing yielded there was never a second frame, and the
+loop waiting for one waited forever. A guard whose failure mode is a hung
+runner reports nothing - CI times out with no test named, and the next person
+reads a stall rather than a red line.
+
+The test now wraps the collection in `asyncio.wait_for(..., 2.0)` and calls
+`pytest.fail` with the reason on timeout. The same plant fails in two seconds
+with a sentence.
+
+> A test that waits for something to arrive must bound the wait, and the bound
+> must fail with a message. Plant the case where nothing arrives and watch it
+> go red, not quiet.
+
 ## The rule
 
 > When you add or change a guard, plant a violation and watch it fail. If you

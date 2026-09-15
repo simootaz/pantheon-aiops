@@ -316,6 +316,10 @@ export type Title = string;
 export type Type = "trigger_received";
 export type InvestigationId5 = string;
 export type Type1 = "investigation_started";
+/**
+ * When the row was closed. Carried so a client following the stream can patch it in; the envelope's emitted_at is when the event left, which is later.
+ */
+export type CompletedAt = string | null;
 export type InvestigationId6 = string;
 /**
  * True when any agent reported DEGRADED.
@@ -747,7 +751,7 @@ export type Accounting = AgentAccounting[];
  * Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.
  */
 export type Audit = AuditEntry[];
-export type CompletedAt = string | null;
+export type CompletedAt1 = string | null;
 export type CreatedAt1 = string;
 export type Findings = Finding[];
 /**
@@ -1189,6 +1193,7 @@ export interface InvestigationStartedEvent {
  * A run reached a terminal state, successfully or not.
  */
 export interface InvestigationCompletedEvent {
+  completed_at?: CompletedAt;
   investigation_id: InvestigationId6;
   partial?: Partial;
   state: State;
@@ -1566,7 +1571,7 @@ export interface Grant {
 export interface Investigation {
   accounting?: Accounting;
   audit?: Audit;
-  completed_at?: CompletedAt;
+  completed_at?: CompletedAt1;
   created_at: CreatedAt1;
   findings?: Findings;
   hypotheses?: Hypotheses1;
