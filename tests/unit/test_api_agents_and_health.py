@@ -85,7 +85,7 @@ class _RecordingStore:
         self.calls.append("get")
         return None
 
-    async def recent(self, limit: int = 20) -> list[Any]:
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Any]:
         self.calls.append("recent")
         return []
 
@@ -99,7 +99,7 @@ class _BrokenStore:
     async def get(self, investigation_id: Any) -> Any:  # pragma: no cover - never called
         raise AssertionError("readiness must not fetch by id")
 
-    async def recent(self, limit: int = 20) -> list[Any]:
+    async def recent(self, limit: int = 20, *, tenant: str | None = None) -> list[Any]:
         raise ConnectionRefusedError("the database is not there")
 
 
@@ -121,15 +121,15 @@ def test_every_rostered_agent_is_listed(client: TestClient) -> None:
 def test_the_roster_says_which_agents_actually_run(client: TestClient) -> None:
     """The load-bearing field.
 
-    Ten manifests validate and one agent has an implementation. A listing
-    without this would report ten working agents, which is the most misleading
-    thing this API could say - and it is exactly the distinction `PlanStep`
-    draws between COMPLETE and SKIPPED.
+    Ten manifests validate and six have code. A listing without this would
+    report ten working agents, which is the most misleading thing this API could
+    say - and it is exactly the distinction `PlanStep` draws between COMPLETE
+    and SKIPPED.
     """
     rows = client.get("/agents").json()
     implemented = {row["codename"] for row in rows if row["implemented"]}
 
-    assert implemented == set(dispatcher.AGENTS), (
+    assert implemented == set(dispatcher.IMPLEMENTATIONS), (
         "the roster's `implemented` disagrees with the dispatcher's registry, so "
         "the API is reporting an intention as a capability"
     )
@@ -138,6 +138,69 @@ def test_the_roster_says_which_agents_actually_run(client: TestClient) -> None:
         "every agent reports as implemented - either they all are, or this field "
         "has stopped being read from the registry"
     )
+
+
+def test_an_agent_that_exists_but_cannot_be_reached_says_both(client: TestClient) -> None:
+    """Written-and-unreachable is not the same fact as not-written.
+
+    Themis was the live example - an agent, tools and tests, and nothing routed
+    to it - until `/triggers/schedule` gave it a way in. No rostered agent is in
+    that state today, so the state is produced here, by registering a stub the
+    way `register(..., dispatchable=False)` is meant to be used. The roster
+    must still tell it apart from Clio, which is a manifest and nothing else.
+
+    Asserted on both fields rather than on the pair's names: a `dispatchable`
+    that merely copied `implemented` would satisfy a check for the field's
+    presence and report the same wrong thing.
+    """
+    from agents._base.base_agent import AgentContext, BaseAgent
+    from core.contracts.finding import Finding
+
+    class _Clio(BaseAgent):
+        """Clio's manifest is real and its agent is not. This stands in for one,
+        registered as implemented-but-not-dispatchable - the state Themis was in."""
+
+        domain = "reporting"
+
+        async def investigate(self, ctx: AgentContext) -> list[Finding]:
+            return []
+
+    original = dict(dispatcher.IMPLEMENTATIONS)
+    dispatcher.register("clio", _Clio, dispatchable=False)
+    try:
+        rows = {row["codename"]: row for row in client.get("/agents").json()}
+    finally:
+        dispatcher.IMPLEMENTATIONS.clear()
+        dispatcher.IMPLEMENTATIONS.update(original)
+
+    assert rows["clio"]["implemented"] is True
+    assert rows["clio"]["dispatchable"] is False, (
+        "a not-dispatchable registration was reported as dispatchable"
+    )
+
+    # Eris, the control: a manifest and nothing else. Without it, a roster that
+    # reported every agent as implemented would pass the two assertions above.
+    assert rows["eris"]["implemented"] is False
+    assert rows["eris"]["dispatchable"] is False
+
+    # And an agent that is both, so `dispatchable` is not simply always false.
+    # Themis, because it is the one this state was invented for.
+    assert rows["themis"]["implemented"] is True
+    assert rows["themis"]["dispatchable"] is True
+
+
+def test_dispatchable_is_never_wider_than_implemented(client: TestClient) -> None:
+    """An agent a plan may name, with no code behind it, is a run that crashes.
+
+    The two fields are read from two dicts and `register` writes both. A future
+    edit that wrote only `AGENTS` would produce exactly this, and `run_step`
+    would find the class - the failure would land in the agent's constructor
+    instead of at the registry, one layer from anything that explains it.
+    """
+    for row in client.get("/agents").json():
+        assert not (row["dispatchable"] and not row["implemented"]), (
+            f"{row['codename']} is dispatchable and not implemented"
+        )
 
 
 def test_one_manifest_comes_back_whole(client: TestClient) -> None:

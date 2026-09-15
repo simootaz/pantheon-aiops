@@ -138,4 +138,5 @@ export class InvestigationStore {
   }
 }
 
-// TODO: Phase 4 - expose this as a React hook over the AG-UI event stream
+// Exposed as a React hook by `use-investigation.ts`, which builds a new store per
+// connection - see that file for why a reconnect must not reuse this one.

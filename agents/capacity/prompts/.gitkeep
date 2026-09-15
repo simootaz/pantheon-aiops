@@ -1,3 +1,11 @@
-# Moira prompt templates.
+# Moira prompt templates. Empty, and intended to stay that way.
+#
+# Moira consults no model. A projection is a least-squares slope and a division
+# - see agents/capacity/forecast.py - and there is nothing for a model to add
+# to two numbers and an R² that would not be a paraphrase of them.
+#
+# The directory exists because tests/unit/test_repo_structure.py requires every
+# agent to ship one. The TODO that was here said "populate this directory", and
+# a TODO that must never be actioned trains people to ignore TODOs.
+#
 # Phase: 5 - Proactive Flow
-# TODO: Phase 5 - populate this directory

@@ -8,7 +8,24 @@ the chart refuses to render.
 
 Set `productionMode: true` (values-prod.yaml does) to enforce this.
 */}}
+
+{{/* The environment is a closed set, and productionMode must agree with it. */}}
+{{- $env := .Values.environment | toString }}
+{{- if not (has $env (list "local" "ci" "staging" "production")) }}
+{{- fail (printf "\n\nPantheon: environment is %q.\n\nIt must be one of local, ci, staging, production - the set core/config.py\naccepts. Anything else makes the API crash at startup on a validation error,\nwhich a rendered chart cannot show you.\n" $env) }}
+{{- end }}
+{{- if and .Values.productionMode (ne $env "production") }}
+{{- fail (printf "\n\nPantheon: productionMode is true but environment is %q.\n\nThe app decides what it refuses to start without from PANTHEON_ENV, and the\nchart decides what it refuses to render without from productionMode. Two\nanswers to one question; set environment: production.\n" $env) }}
+{{- end }}
+{{- if and (eq $env "production") (not .Values.productionMode) }}
+{{- fail "\n\nPantheon: environment is production but productionMode is false.\n\nThe app will refuse to start without its production credentials, and the\nchart would have rendered without checking for them. Set productionMode: true.\n" }}
+{{- end }}
+
 {{- if .Values.productionMode }}
+
+{{- if not .Values.api.existingSecret }}
+{{- fail "\n\nPantheon: productionMode is true but api.existingSecret is empty.\n\nThe app refuses to start in production without PANTHEON_API_TOKENS,\nGITHUB_WEBHOOK_SECRET, GITLAB_WEBHOOK_TOKEN and CERBERUS_MASTER_KEY - see\nREQUIRED_IN_PRODUCTION in core/config.py - and the chart does not generate\nany of them. Create a secret holding those keys and set api.existingSecret.\n\nSee deploy/security/sealed-secrets/README.md.\n" }}
+{{- end }}
 
 {{- if and .Values.minio.enabled (not .Values.minio.existingSecret) }}
 {{- fail "\n\nPantheon: productionMode is true but minio.existingSecret is empty.\n\nThe chart will not generate a MinIO credential for a production install.\nGenerated credentials are regenerated on every client-side render (helm\ntemplate, helm diff, Argo CD), which rotates the password on each sync and\norphans the stored data.\n\nFix one of:\n  - set minio.existingSecret to a pre-created secret, or\n  - set minio.enabled=false and use minio.external.*, or\n  - set productionMode=false if this really is a scratch environment.\n\nSee deploy/security/sealed-secrets/README.md.\n" }}

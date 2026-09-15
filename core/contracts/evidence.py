@@ -48,6 +48,8 @@ class EvidenceKind(StrEnum):
     MANIFEST_DIFF = "manifest_diff"
     K8S_EVENT = "k8s_event"
     PIPELINE_RUN = "pipeline_run"
+    CAPACITY_FORECAST = "capacity_forecast"
+    PRIOR_INCIDENT = "prior_incident"
 
 
 class ResourceRef(ContractModel):
@@ -214,7 +216,17 @@ class K8sEventPayload(ContractModel):
 
 
 class PipelineRunPayload(ContractModel):
-    """One CI pipeline run and the jobs that failed in it."""
+    """One CI pipeline run and the jobs that failed in it.
+
+    `attempt_conclusions` is what lets a reader apply the definition of a flake
+    for themselves: the same job at the same commit finishing two different
+    ways is non-determinism, read off two recorded outcomes rather than
+    inferred from one. Hephaestus fills it from every run it read at the
+    commit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and
+    from nothing else - not the title, not the tags, which are prose and
+    labels. Before this field the verdict lived in a tag, the ranker could not
+    see it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.
+    """
 
     kind: Literal["pipeline_run"] = "pipeline_run"
     pipeline_id: str
@@ -224,6 +236,83 @@ class PipelineRunPayload(ContractModel):
     failed_jobs: list[str] = Field(default_factory=list)
     duration_seconds: float | None = Field(default=None, ge=0.0)
     commit_sha: str | None = None
+    attempt_conclusions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Conclusion of every recorded run of the failed job at `commit_sha`, in run "
+            "order. Two distinct values is a flake by definition. Empty when the payload "
+            "is not a triage."
+        ),
+    )
+
+
+class CapacityForecastPayload(ContractModel):
+    """A trend on a resource that has a limit, and when the trend crosses it.
+
+    Three numbers and a statement about whether to trust them. `rate_per_hour`
+    is a least-squares slope, which is what "rate" means; `time_to_limit_hours`
+    is `(limit - current) / rate`, which is what "time to limit" means. Neither
+    is a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried
+    rather than thresholded away: a poor fit produces a Finding with a poor fit
+    on it, not a suppressed one and not a confident one.
+
+    `limit` is the metric's own limit - total bytes for a disk - and never a
+    substitute. Eviction happens before full, and the kubelet's threshold is
+    configuration this payload cannot read; projecting to it would be projecting
+    against a number that means something else. `time_to_limit_hours` therefore
+    reads as a latest-possible time, and the summary says "full".
+
+    The samples are carried so the projection can be re-fitted by anything that
+    disagrees with the method, and so a reader can see the trend rather than
+    take the slope on trust.
+    """
+
+    kind: Literal["capacity_forecast"] = "capacity_forecast"
+    metric: str = Field(description="What was fitted, e.g. a used/total ratio.")
+    unit: str = Field(default="", description="Unit of `current`, `limit` and the rate.")
+    samples: list[MetricSample] = Field(default_factory=list)
+    current: float = Field(description="The fitted value at the end of the window.")
+    limit: float = Field(
+        description="The line being projected to. The metric's own, never a stand-in."
+    )
+    rate_per_hour: float = Field(
+        description="Least-squares slope over the window, in units per hour."
+    )
+    fit_r2: float = Field(ge=0.0, le=1.0, description="Coefficient of determination of the fit.")
+    time_to_limit_hours: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Hours until the fitted line reaches `limit`. None when the trend does not reach it."
+        ),
+    )
+    window_seconds: int = Field(default=0, ge=0)
+
+
+class PriorIncidentPayload(ContractModel):
+    """An earlier investigation of the same alert on the same subject.
+
+    Context for the person reading the run, and deliberately NOT evidence about
+    the present: what a prior verdict concluded says nothing about what is
+    happening now, and `hypotheses.rank` excludes a Finding whose evidence is
+    only this kind. A ranker that let last Tuesday's verdict raise confidence
+    in this Tuesday's would entrench the first mistake anybody made.
+
+    `category` and `confidence` are the prior verdict's LEADING hypothesis, or
+    absent when it had none - a run that ended UNKNOWN, or one still going.
+    """
+
+    kind: Literal["prior_incident"] = "prior_incident"
+    investigation_id: UUID
+    created_at: datetime
+    state: str = Field(description="The prior run's InvestigationState, as it stands now.")
+    category: str | None = Field(
+        default=None, description="The prior verdict's leading root-cause category, if any."
+    )
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    partial: bool = Field(
+        default=False, description="Whether a step of the prior run reported being unable to look."
+    )
 
 
 EvidencePayload = Annotated[
@@ -231,7 +320,9 @@ EvidencePayload = Annotated[
     | LogClusterPayload
     | ManifestDiffPayload
     | K8sEventPayload
-    | PipelineRunPayload,
+    | PipelineRunPayload
+    | CapacityForecastPayload
+    | PriorIncidentPayload,
     Field(discriminator="kind"),
 ]
 """Discriminated union of everything Evidence can carry."""
@@ -259,4 +350,10 @@ class Evidence(ContractModel):
         return EvidenceKind(self.payload.kind)
 
 
-# TODO: Phase 2 - add a provenance chain linking derived Evidence to its source
+# TODO: Phase 5 - add a provenance chain linking derived Evidence to its source.
+#
+# BLOCKED ON A WRITER. Nothing derives Evidence from other Evidence today: Argus
+# and Lethe each read a connector and report what they saw. The agents that
+# would derive - Mnemosyne recalling a prior incident, Moira projecting forward -
+# are Phase 5, and a provenance field nothing populates is a field that reads as
+# absent provenance rather than as an unbuilt feature.

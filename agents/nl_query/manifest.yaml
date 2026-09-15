@@ -17,11 +17,17 @@ capabilities:
     description: Turn a question into one or more connector queries.
   - name: summarise_result
     description: Render a query result as an answer with its caveats.
+# Only tools something actually implements.
+#
+# `kubernetes.list` and `kubernetes.get` were declared here and exist in no
+# language: the Go connector's `readonly.Tools()` is scaffolding and its
+# python_ref is a six-line stub. A declaration nothing implements makes
+# ToolNotBound the NORMAL case rather than the exceptional one, which trains
+# everyone to ignore it - the same argument that keeps an unimplemented tool out
+# of a connector. They come back when the connector serves them.
 tools:
   - prometheus.query_instant
   - loki.query_range
-  - kubernetes.list
-  - kubernetes.get
 budget:
   max_tokens: 16384
   max_seconds: 90

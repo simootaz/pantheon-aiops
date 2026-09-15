@@ -3,4 +3,4 @@
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
-# TODO: Phase 2 - expose the Lethe agent entrypoint
+# No re-export - see agents/anomaly/__init__.py.

@@ -28,6 +28,7 @@ import ast
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from core.cerberus.redaction import PLACEHOLDER, contains_secret, redact
@@ -72,6 +73,11 @@ SAFE_NAMES = frozenset(
         "inputtokens",
         "outputtokens",
         "tokencount",
+        # LLM token ACCOUNTING, added with AgentAccounting. A count and a
+        # ceiling are integers; neither can carry a credential, and the guard
+        # matches the substring rather than the type.
+        "tokensspent",
+        "tokenceiling",
     }
 )
 
@@ -109,7 +115,15 @@ def test_the_heuristic_itself_behaves() -> None:
     """Pin the detector in both directions, so exemptions cannot creep."""
     for secret_shaped in ("password", "api_key", "SecretKey", "private_key", "authorization"):
         assert _is_secret_shaped(secret_shaped), f"{secret_shaped} should be flagged"
-    for safe in ("credential_ref", "secret_ref", "max_tokens", "lease_id", "granted_by"):
+    for safe in (
+        "credential_ref",
+        "secret_ref",
+        "max_tokens",
+        "tokens_spent",
+        "token_ceiling",
+        "lease_id",
+        "granted_by",
+    ):
         assert not _is_secret_shaped(safe), f"{safe} should not be flagged"
 
 
@@ -324,4 +338,52 @@ def test_schema_contains_no_nullable_enum() -> None:
     assert not offenders, (
         "nullable enums break Go codegen (duplicate UnmarshalJSON): "
         f"{offenders}. Add an explicit member such as NOT_APPLICABLE instead."
+    )
+
+
+def test_the_package_agents_may_import_re_exports_nothing_that_opens_a_credential() -> None:
+    """The hole the import-statement guard cannot see.
+
+    `test_agents_cannot_import_plaintext_modules` reads import STATEMENTS. But
+    importing `core.cerberus.broker` executes `core/cerberus/__init__.py`, so
+    anything that file re-exports is reachable as `core.cerberus.<name>` from
+    an agent whose imports are all perfectly legal.
+
+    Found by planting exactly that - one added line re-exporting `Vault` - and
+    watching every credential-safety test stay green.
+
+    Asserted on the module's own attributes rather than on a name list, because
+    the failure is an attribute existing, and a list of forbidden names would
+    only catch the ones somebody thought of.
+
+    SUBMODULES ARE EXCLUDED, AND THAT IS NOT THE GUARD BEING NARROWED
+    -------------------------------------------------------------------
+    The first version flagged `core.cerberus.store` and `.redemption` in the
+    full suite while passing alone. Importing a submodule anywhere in a process
+    binds it as an attribute of its parent package - so once the API imports the
+    vault, `core.cerberus.store` exists whatever this file does.
+
+    That is Python, not a decision anybody made, and a guard asserting it away
+    could never pass in a real process. The path it would have described -
+    `import core.cerberus as c; c.store.vault.Vault` - is still reachable and is
+    covered by `test_agents_cannot_import_plaintext_modules`, which reads the
+    statements that get there.
+
+    What is left is the checkable claim: a NAME this file binds itself. The
+    plant that started all of this - one line re-exporting `Vault` - still fails
+    it, which is what says the narrowing kept the part that mattered.
+    """
+    import core.cerberus as package
+
+    leaks = sorted(
+        name
+        for name in vars(package)
+        if not name.startswith("_")
+        and not isinstance(getattr(package, name), ModuleType)
+        and getattr(getattr(package, name), "__module__", "").startswith(FORBIDDEN_FOR_AGENTS)
+    )
+
+    assert not leaks, (
+        f"core.cerberus re-exports {leaks}, which an agent reaches by importing "
+        "core.cerberus.broker - the import-graph guard cannot see this."
     )

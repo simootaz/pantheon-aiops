@@ -21,7 +21,7 @@ GO_MODULE_DIRS := go list -m -f '{{.Dir}}'
 
 ## help: list every target
 help:
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed -e 's/## //' | awk -F':' '{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@uv run python -m tooling.make_tasks help
 
 ## install: install all Python, Go and dashboard dependencies
 install:
@@ -54,6 +54,18 @@ test:
 # `make help` parses one "## name: text" line per target; a second ## line
 # rendered as a row with no target name.
 #
+# PANTHEON_REQUIRE_STACK is set with a target-specific `export`, not with a
+# `VAR=value command` prefix. That prefix is POSIX shell syntax, and on Windows
+# make runs recipes through cmd.exe - which reports
+# `'PANTHEON_REQUIRE_STACK' is not recognized as an internal or external
+# command` and fails. Every live gate here was unrunnable on a Windows
+# developer machine for that reason, which is a poor property for the targets
+# whose entire job is to be run by hand before trusting something.
+#
+# `export` is a GNU make directive, so make puts it in the recipe's environment
+# itself and no shell has to understand it. The same reason `uv run --env-file`
+# replaced `set -a; . file; set +a` below: sourcing is a shell builtin.
+#
 # PANTHEON_REQUIRE_STACK turns the fixture's skip into a failure. Without it an
 # unreachable Loki makes all nine tests skip and pytest exit 0, so this target
 # reports success having asserted nothing. That is not hypothetical - it
@@ -64,23 +76,26 @@ test:
 # starts only prometheus, loki and pushgateway, so they errored on a missing API
 # while the simulator assertions themselves all passed. Each gate needs its own
 # services, so each gets its own target.
+test-sim: export PANTHEON_REQUIRE_STACK := 1
 test-sim:
 	@echo "test-sim: needs the stack up; runs real scenarios, so it takes minutes."
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_simulator_data.py -m integration --no-cov -v -s
+	@uv run pytest tests/integration/test_simulator_data.py -m integration --no-cov -v -s
 
 ## test-connectors: prove the connector path against a live stack
 # Same require-stack discipline as test-sim: a skipped gate reads as a pass, and
 # this one exists to prove a real query reaches a real Prometheus.
+test-connectors: export PANTHEON_REQUIRE_STACK := 1
 test-connectors:
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
+	@uv run pytest tests/integration/test_connector_path.py -m integration --no-cov -v
 
 ## test-loki: prove the Loki connector against a real Loki, both directions
 # The negative direction is the reason it exists. Loki omits `data` entirely on an
 # empty result, which crashed the connector with a KeyError that read like a broken
 # adapter - a unit test with a hand-written body would have asserted the shape
 # someone expected rather than the shape Loki sends.
+test-loki: export PANTHEON_REQUIRE_STACK := 1
 test-loki:
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_loki_connector.py -m integration --no-cov -v
+	@uv run pytest tests/integration/test_loki_connector.py -m integration --no-cov -v
 
 ## test-delphi: prove the gateway reaches a real model, whichever one is configured
 # Skips rather than fails when no API key is set: a developer who has not signed
@@ -96,28 +111,32 @@ test-delphi:
 # The database credential is sourced from deploy/compose/.env rather than
 # duplicated here: it is where the stack's own password is defined, and a second
 # copy is a second thing to keep in step.
+test-flow-one: export PANTHEON_REQUIRE_STACK := 1
 test-flow-one:
-	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_flow_one.py 	   -m integration --no-cov -v
+	@uv run --env-file deploy/compose/.env pytest tests/integration/test_flow_one.py -m integration --no-cov -v
 
 ## test-providers: prove the Postgres provider store seals keys before they reach a column
 # This is the gate that earns core/store/postgres_providers.py its coverage-floor
 # exemption. It reads the sealed_key column on a SECOND connection and asserts the
 # plaintext is not in it - which is the one claim a unit test cannot make, because a
 # unit test reads the value back through the object that sealed it.
+test-providers: export PANTHEON_REQUIRE_STACK := 1
 test-providers:
-	@set -a; . deploy/compose/.env; set +a; 	 PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_provider_store.py 	   -m integration --no-cov -v
+	@uv run --env-file deploy/compose/.env pytest tests/integration/test_provider_store.py -m integration --no-cov -v
 
 ## test-argus: prove Argus detects each scenario and stays silent on a clean baseline
 # The negative case runs three times. A detector that fires on everything passes
 # every positive test, and one clean run is one sample.
+test-argus: export PANTHEON_REQUIRE_STACK := 1
 test-argus:
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_argus_detection_flow.py -m integration --no-cov -v
+	@uv run pytest tests/integration/test_argus_detection_flow.py -m integration --no-cov -v
 
 ## test-alerts: prove flow 1 - a scenario fires its alert, baseline fires none
 # The negative case is the point: a rule that fires on everything passes every
 # positive test and is worse than no rule.
+test-alerts: export PANTHEON_REQUIRE_STACK := 1
 test-alerts:
-	@PANTHEON_REQUIRE_STACK=1 uv run pytest tests/integration/test_alert_flow.py -m integration --no-cov -v
+	@uv run pytest tests/integration/test_alert_flow.py -m integration --no-cov -v
 
 ## test-go: build and test every Go module in the workspace
 test-go:
@@ -162,7 +181,7 @@ codegen-verify:
 
 ## up: start the local Compose stack (add PROFILE=llm-local for local models)
 up:
-	@cd deploy/compose && [ -f .env ] || cp .env.example .env
+	@uv run python -m tooling.make_tasks ensure-env
 	@cd deploy/compose && docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 		$(if $(PROFILE),--profile $(PROFILE),) up -d
 	@echo "up: API http://localhost:8000  MinIO console http://localhost:9001"
@@ -174,8 +193,5 @@ down:
 
 ## clean: remove build artifacts and tooling caches
 clean:
-	@rm -rf .mypy_cache .ruff_cache .pytest_cache htmlcov .coverage coverage.xml
-	@rm -rf dist build *.egg-info bin
-	@rm -rf dashboard/.next dashboard/.turbo
-	@find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+	@uv run python -m tooling.make_tasks clean
 	@echo "clean: done"

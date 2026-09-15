@@ -1,3 +1,11 @@
-# Lethe prompt templates.
+# Lethe prompt templates. Empty, and intended to stay that way.
+#
+# Lethe consults no model. Templating is corpus-driven - variability measured
+# across a window rather than matched against a pattern list - and novelty is
+# surprise-tested, so an absence is only a finding when exp(-expected) falls
+# under significance.
+#
+# The directory exists because tests/unit/test_repo_structure.py requires every
+# agent to ship one.
+#
 # Phase: 2 - Orchestrator & Investigation Flow
-# TODO: Phase 2 - populate this directory

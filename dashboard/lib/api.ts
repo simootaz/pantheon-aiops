@@ -1,0 +1,293 @@
+/**
+ * The dashboard's REST reads. One place, so the token is attached once.
+ *
+ * The AG-UI stream carries a run as it happens; these are the reads that answer
+ * "what ran recently" and "what is waiting for me", which no stream can - a
+ * stream is about one investigation and starts when you open it.
+ *
+ * THE TOKEN TRAVELS IN A HEADER
+ * -----------------------------
+ * Same rule as `stream.ts`, `connectors/github` and `connectors/gitlab`: a
+ * credential in a query string lands in the reverse proxy's access log and in
+ * the browser's history. There is no code path here that puts one in a URL.
+ *
+ * A REFUSAL IS NOT AN EMPTY LIST
+ * ------------------------------
+ * Every function throws `ApiError` carrying the status. A caller that turned a
+ * 401 into `[]` would render "no investigations" to somebody whose token
+ * expired, and they would go looking for a run that is sitting right there.
+ *
+ * Phase: 4 - Delivery Flow
+ */
+import type { Action, Investigation } from "@/types/generated/contracts";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/** A request the API refused, with the status so a view can branch. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Whether this failure means "sign in again" rather than "try later". */
+export function isAuthFailure(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
+async function read<T>(path: string, token: string | null): Promise<T> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_URL}${path}`, { headers, cache: "no-store" });
+  if (!response.ok) {
+    throw new ApiError(response.status, `${path} answered ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+async function send<T>(
+  path: string,
+  token: string | null,
+  body: unknown,
+  method: "POST" | "PUT" = "POST",
+): Promise<T> {
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "content-type": "application/json",
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method,
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, `${path} answered ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+/**
+ * Recent investigations, newest first.
+ *
+ * The server narrows these to the caller's tenant. This does not pass a tenant
+ * and must not gain the ability to: a `?tenant=` would be a claim rather than a
+ * fact, and the endpoint would become an invitation to read somebody else's
+ * runs by typing their name.
+ */
+export function recentInvestigations(token: string | null, limit = 20): Promise<Investigation[]> {
+  return read<Investigation[]>(`/investigations?limit=${limit}`, token);
+}
+
+/**
+ * One moment in a run, as the API orders them.
+ *
+ * `kind` is the server's closed set (`core/reporting/timeline.py`). A Finding
+ * is placed when it was REPORTED, and its summary says what window it covers -
+ * placing it at the window would put an anomaly on the timeline before anyone
+ * had noticed it.
+ */
+export interface TimelineEntry {
+  at: string;
+  kind: string;
+  actor: string;
+  summary: string;
+  ref: string | null;
+}
+
+/** What happened in one run, oldest first. Derived on the server on every read. */
+export function investigationTimeline(id: string, token: string | null): Promise<TimelineEntry[]> {
+  return read<TimelineEntry[]>(`/investigations/${id}/timeline`, token);
+}
+
+/** One investigation, whole. 404 covers "no such run" and "not yours" alike. */
+export function investigation(id: string, token: string | null): Promise<Investigation> {
+  return read<Investigation>(`/investigations/${id}`, token);
+}
+
+/**
+ * One request waiting for a person.
+ *
+ * Declared here rather than imported from the generated contracts because it is
+ * not one: `ApprovalRequest.as_dict` in `core/guardrails/approval_gate.py` is an
+ * API shape, and the generator covers `core/contracts` only. Its docstring says
+ * no credential ever passes through it, and nothing here asks for one.
+ */
+export interface PendingApproval {
+  id: string;
+  action_id: string;
+  proposed_by: string;
+  opened_at: string;
+  expires_at: string;
+  answered_by: string | null;
+  reason: string | null;
+  /** The policy rule that sent this to a person. */
+  rule: string;
+  /** Why that rule fired, in the rule's own words. */
+  because: string;
+  /**
+   * The Action as proposed - what the approver is asked to read.
+   *
+   * Nullable because a persisted row written before the gate carried one
+   * cannot grow it retrospectively. A view must degrade to "id and rule" for
+   * such a row rather than offer a button, because a button there would be
+   * "approve action 7f3a?" - the prompt `core/ui/approval.py` refuses to emit.
+   */
+  action: Action | null;
+}
+
+/** Requests waiting for a person. Oldest first; expired ones are not listed. */
+export function pendingApprovals(token: string | null): Promise<PendingApproval[]> {
+  return read<PendingApproval[]>("/approvals", token);
+}
+
+/**
+ * Answer one. `approve` false is a rejection, which is also an answer.
+ *
+ * WHO IS ANSWERING IS NOT IN THE BODY
+ * -----------------------------------
+ * It comes from the bearer token. `api/routers/approvals.py` removed the
+ * `approver` field for the reason its docstring gives: the gate refuses a
+ * proposer approving their own request, and checking that against a name the
+ * caller just chose makes the rule hold for as long as they cooperate.
+ *
+ * THE ACTION GOES BACK IN
+ * -----------------------
+ * The gate re-validates the answer against the content the approver read. From
+ * here that check compares a served copy against itself and proves nothing -
+ * `may_execute` at execution time is what protects the run, against the Action
+ * the executor holds. Sending it anyway because the endpoint's contract is
+ * written for the caller that holds its own copy, and quietly omitting it
+ * would be a 422.
+ */
+export function respondToApproval(
+  requestId: string,
+  approve: boolean,
+  action: Action,
+  reason: string,
+  token: string | null,
+): Promise<PendingApproval> {
+  return send<PendingApproval>(`/approvals/${requestId}`, token, { approve, reason, action });
+}
+
+/**
+ * A row on the agent roster.
+ *
+ * TWO FIELDS, BECAUSE THEY ARE TWO FACTS
+ * --------------------------------------
+ * `implemented` says code exists. `dispatchable` says a trigger can produce a
+ * plan that names it, and is narrower. Themis is the case that forces the
+ * split: written, tooled and tested, and unreachable until something schedules
+ * anything - on one field it read exactly as Clio does, and Clio is a manifest
+ * with nothing behind it.
+ *
+ * A roster with neither would be a list of promises.
+ */
+export interface AgentSummary {
+  codename: string;
+  domain: string;
+  description: string;
+  capabilities: string[];
+  tools: string[];
+  implemented: boolean;
+  dispatchable: boolean;
+}
+
+/** Every agent on the roster, implemented or not. */
+export function agents(token: string | null): Promise<AgentSummary[]> {
+  return read<AgentSummary[]>("/agents", token);
+}
+
+/**
+ * One configured LLM provider.
+ *
+ * THERE IS NO KEY FIELD, AND THERE WILL NOT BE ONE
+ * -------------------------------------------------
+ * `has_key` is a boolean. `api/routers/providers.py` refuses to return the key
+ * even masked, for the reason its docstring gives: a masked key in a response
+ * body is still a key in a log, a browser cache and a screenshot, and "we only
+ * showed the last four" is how the first four leak too. Changing it means
+ * sending a new one.
+ */
+export interface Provider {
+  id: string;
+  provider_id: string;
+  display_name: string;
+  dialect: string;
+  base_url: string;
+  auth_mode: string;
+  enabled: boolean;
+  manual_models: string[];
+  has_key: boolean;
+  tiers: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * What a provider serves, and whether it was actually asked.
+ *
+ * `live` is the field a tier picker must not ignore. When the provider could
+ * not be reached the list falls back to `manual_models`, and binding a tier
+ * against that is binding against something nobody verified - which is the
+ * failure ADR 0004 puts at 03:00 rather than at settings time.
+ */
+export interface ProviderModels {
+  provider_id: string;
+  live: boolean;
+  models: string[];
+  tiers: Record<string, string>;
+  stale_tier_bindings: Record<string, string>;
+  warnings: string[];
+}
+
+/** What a probe observed. Capabilities are observed, never declared. */
+export interface ProbeResult {
+  provider_id: string;
+  probed: Array<Record<string, unknown>>;
+  reachable: string[];
+  unreachable: string[];
+}
+
+/** Every configured provider. Never carries a key. */
+export function providers(token: string | null): Promise<Provider[]> {
+  return read<Provider[]>("/providers", token);
+}
+
+/** Ask the provider what it serves. A network call on the server's side. */
+export function providerModels(id: string, token: string | null): Promise<ProviderModels> {
+  return read<ProviderModels>(`/providers/${id}/models`, token);
+}
+
+/** Bind models to tiers. The only place a human names a model. */
+export function bindTiers(
+  id: string,
+  tiers: Record<string, string | null>,
+  token: string | null,
+): Promise<Provider> {
+  return send<Provider>(`/providers/${id}/tiers`, token, tiers, "PUT");
+}
+
+/**
+ * Run the capability probes.
+ *
+ * EVERY PROBE IS A PAID REQUEST
+ * -----------------------------
+ * Charged to whoever pressed the button. Nothing calls this on render, on a
+ * timer, or as a side effect of opening a card - the endpoint's docstring is
+ * explicit that it runs on demand and never on a schedule, and a UI that probed
+ * automatically would turn "open the settings page" into a bill.
+ */
+export function probeProvider(
+  id: string,
+  models: string[] | null,
+  token: string | null,
+): Promise<ProbeResult> {
+  return send<ProbeResult>(`/providers/${id}/probe`, token, { models });
+}

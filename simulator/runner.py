@@ -24,7 +24,7 @@ from simulator.clock import SimClock
 from simulator.cluster import PODS, pods_for
 from simulator.log_generator import LogGenerator, LogLine
 from simulator.metrics_generator import MetricsGenerator
-from simulator.pipeline_generator import PipelineGenerator
+from simulator.pipeline_generator import GitHubGenerator
 from simulator.scenario import Phase, Scenario
 
 #: Simulated seconds per tick. Small enough that a phase boundary lands within
@@ -173,7 +173,9 @@ class ScenarioRunner:
         settings = get_settings()
         self.metrics = MetricsGenerator(gateway=pushgateway or settings.pushgateway.host_port)
         self.logs = LogGenerator(loki_url=loki_url or settings.loki.base)
-        self.pipelines = PipelineGenerator(webhook_url=webhook_url or settings.simulator.webhook)
+        self.pipelines = GitHubGenerator(
+            webhook_url=webhook_url or settings.simulator.github_webhook
+        )
         self.tick_seconds = tick_seconds
         #: Tick on a fixed WALL schedule, advancing simulated time per tick,
         #: rather than a fixed simulated step whose wall cadence scales with
@@ -287,10 +289,16 @@ class ScenarioRunner:
         for phase in phases:
             templates = {pattern.template for pattern in phase.logs}
             if "test_flake" in templates:
-                self.pipelines.send_pipeline(client, status="failed", failed_jobs=["integration"])
+                # A failed run is what reaches Hephaestus. Whether it is a FLAKE
+                # is decided from GitHub's API, not from this delivery - see the
+                # generator's docstring for what that means under simulation.
+                self.pipelines.send_workflow_run(client, conclusion="failure", branch="main")
                 sent += 1
             elif phase.name.startswith("deploy"):
-                self.pipelines.send_pipeline(client, status="success", ref="main")
+                # Green. Expected to come back `investigating: false`: a system
+                # that investigated every passing build would teach people to
+                # ignore it.
+                self.pipelines.send_workflow_run(client, conclusion="success", branch="main")
                 sent += 1
         return sent
 

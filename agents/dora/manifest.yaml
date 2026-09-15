@@ -13,14 +13,22 @@ description: >-
   Computes DORA metrics and judges delivery health.
 
 capabilities:
-  - name: compute_dora
-    description: Calculate the four DORA metrics over a window.
-  - name: assess_delivery_trend
-    description: Judge whether delivery health is improving.
+  - name: measure_delivery
+    description: Merge frequency and review latency over a window, named as such.
+
+# `compute_dora` is gone rather than unimplemented. Two of the four DORA metrics
+# - change failure rate and time to restore - need deployments linked to
+# incidents, and nothing here records either. A capability claiming all four
+# would be right about half of them.
+#
+# `assess_delivery_trend` is gone for the reason Lethe's surge test was deleted:
+# comparing two small windows measures the difference between two small samples.
+# See agents/dora/agent.py.
+
+# GitHub only, and only pull requests. github.actions_run was declared for a
+# change-failure rate that is not computable, and a tool declared for a metric
+# nothing produces says the metric exists.
 tools:
-  - gitlab.pipeline
-  - gitlab.merge_requests
-  - github.actions_run
   - github.pull_requests
 budget:
   max_tokens: 8192

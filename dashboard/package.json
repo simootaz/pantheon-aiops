@@ -25,9 +25,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ag-ui/client": "0.0.58",
-    "@ag-ui/core": "0.0.58",
-    "next": "15.5.23",
+    "next": "15.5.24",
     "react": "19.0.8",
     "react-dom": "19.0.8"
   },

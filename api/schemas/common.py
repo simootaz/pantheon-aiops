@@ -24,14 +24,24 @@ class HealthResponse(BaseModel):
 class AgentSummary(BaseModel):
     """One row of the roster.
 
-    `implemented` is the field that matters and the reason this envelope exists
-    rather than returning `AgentManifest` directly. Ten manifests validate; one
-    agent runs. A listing without this would say Pantheon has ten working
-    agents, which is the most misleading thing this API could report.
+    `implemented` is the reason this envelope exists rather than returning
+    `AgentManifest` directly. Ten manifests validate; six have code. A listing
+    without it would say Pantheon has ten working agents, which is the most
+    misleading thing this API could report.
 
     It is read from the dispatcher's registry, not from the manifest - a
     manifest describes an intention and cannot know whether anyone implemented
     it.
+
+    `dispatchable` IS A SECOND FIELD BECAUSE IT IS A SECOND FACT
+    -------------------------------------------------------------
+    Themis has an agent, tools and tests, and no trigger routes to it: nothing
+    schedules anything until Temporal lands. With one field it appeared on the
+    roster exactly as Clio did, and Clio is a manifest with nothing behind it.
+
+    So `implemented` says the code exists and `dispatchable` says a plan may
+    name it. Collapsing them made the field's name stop naming what it checked
+    - and a reader was told an agent that runs does not exist.
     """
 
     codename: str
@@ -44,7 +54,10 @@ class AgentSummary(BaseModel):
         default_factory=list, description="The manifest's tool allowlist, verbatim."
     )
     implemented: bool = Field(
-        description="Whether an implementation is registered. False means a stub."
+        description="Whether the agent has code behind it. False means a manifest and a stub."
+    )
+    dispatchable: bool = Field(
+        description="Whether a plan may name it. Narrower than `implemented`.",
     )
 
 
@@ -77,4 +90,8 @@ class ReadinessResponse(BaseModel):
     checks: list[ReadinessCheck] = Field(default_factory=list)
 
 
-# TODO: Phase 2 - add pagination and error envelopes
+# TODO: Phase 4 - add pagination and error envelopes.
+#
+# `GET /investigations` takes a `limit` and returns newest-first, which is the
+# whole of what a `recent()` store offers. Pagination needs a caller that scrolls,
+# and that is the dashboard's investigation list.

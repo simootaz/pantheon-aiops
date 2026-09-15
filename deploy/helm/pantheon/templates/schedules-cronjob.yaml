@@ -1,0 +1,77 @@
+{{/*
+The scheduler behind TriggerKind.SCHEDULE: one CronJob per configured job,
+each POSTing to the API's /triggers/schedule with an operator token.
+
+This is what "something schedules" means. Temporal is for what happens after a
+trigger - steps that wait on the outside world, retries that survive a restart
+- and firing a request at 06:00 is neither, so a CronJob is the honest tool.
+
+Disabled by default and fails closed when enabled without a token secret: the
+chart does not mint API tokens, and a CronJob that posts with no credential
+would produce a 401 every morning that nobody reads.
+*/}}
+{{- range $name, $job := .Values.schedules.jobs }}
+{{- if $job.enabled }}
+{{- if not $job.existingSecret }}
+{{- fail (printf "\n\nPantheon: schedules.jobs.%s is enabled but existingSecret is empty.\n\nThe CronJob authenticates to /triggers/schedule with a bearer token, and the\nchart does not generate one. Create a secret holding an OPERATOR token under\nthe key named by schedules.jobs.%s.secretKey and set existingSecret to it.\n" $name $name) }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pantheon.fullname" $ }}-schedule-{{ $name }}
+  labels:
+    {{- include "pantheon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: schedule
+    pantheon.io/job: {{ $job.job | quote }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "pantheon.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: schedule
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: trigger
+              image: "{{ $.Values.schedules.image.repository }}:{{ $.Values.schedules.image.tag }}"
+              securityContext:
+                {{- toYaml $.Values.securityContext | nindent 16 }}
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  memory: 64Mi
+              env:
+                - name: PANTHEON_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $job.existingSecret }}
+                      key: {{ $job.secretKey }}
+              command:
+                - /bin/sh
+                - -c
+                # `--fail` so a 4xx is a failed Job somebody can see, not a
+                # green run that was refused. The body is built by the shell
+                # rather than a heredoc, which a readOnlyRootFilesystem forbids.
+                - |
+                  set -eu
+                  body='{"job":"{{ $job.job }}","repository":"{{ $job.repository }}","window_days":{{ $job.windowDays }}}'
+                  curl --fail --silent --show-error --max-time 30 \
+                    -H "Authorization: Bearer ${PANTHEON_TOKEN}" \
+                    -H "Content-Type: application/json" \
+                    -d "${body}" \
+                    "http://{{ include "pantheon.fullname" $ }}-api:{{ $.Values.api.port }}/triggers/schedule"
+{{- end }}
+{{- end }}

@@ -49,6 +49,7 @@ from core.contracts.events import (
     VerdictReadyEvent,
 )
 from core.contracts.evidence import (
+    CapacityForecastPayload,
     Evidence,
     EvidenceKind,
     EvidenceSource,
@@ -58,6 +59,7 @@ from core.contracts.evidence import (
     MetricSample,
     MetricWindowPayload,
     PipelineRunPayload,
+    PriorIncidentPayload,
     ResourceRef,
 )
 from core.contracts.finding import Finding, FindingKind, Severity
@@ -87,7 +89,6 @@ from core.contracts.root_cause import (
 )
 from core.contracts.ui import (
     A2UIAction,
-    A2UIClientCapabilities,
     A2UIComponent,
     A2UIComponentType,
     A2UISurface,
@@ -119,14 +120,12 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     Lease,
     AuditEntry,
     A2UISurface,
-    A2UIClientCapabilities,
     UIActionResponse,
 )
 
 __all__ = [
     "EXPORTED_MODELS",
     "A2UIAction",
-    "A2UIClientCapabilities",
     "A2UIComponent",
     "A2UIComponentType",
     "A2UISurface",
@@ -148,6 +147,7 @@ __all__ = [
     "BlastRadius",
     "BreakGlassEvent",
     "Capability",
+    "CapacityForecastPayload",
     "CredentialAction",
     "CredentialRef",
     "CredentialScope",
@@ -180,6 +180,7 @@ __all__ = [
     "PermissionMode",
     "PipelineRunPayload",
     "PlanStep",
+    "PriorIncidentPayload",
     "ProviderConfig",
     "ResolutionRecord",
     "ResolutionStep",

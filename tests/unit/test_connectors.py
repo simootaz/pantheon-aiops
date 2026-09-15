@@ -18,6 +18,8 @@ import pytest
 
 from connectors._base.python.base_server import BaseMCPServer, Tool, ToolError
 from connectors.alertmanager.tools import build_server as build_alertmanager
+from connectors.github.tools import build_server as build_github
+from connectors.gitlab.tools import build_server as build_gitlab
 from connectors.loki import tools as loki_tools
 from connectors.loki.tools import build_server as build_loki
 from connectors.prometheus import tools as prometheus_tools
@@ -35,6 +37,8 @@ SERVERS = {
     "prometheus": build_prometheus,
     "alertmanager": build_alertmanager,
     "loki": build_loki,
+    "gitlab": build_gitlab,
+    "github": build_github,
 }
 
 #: Where each connector's read-path allowlist is written.
@@ -42,28 +46,73 @@ TOOL_MODULES = {
     "prometheus": REPO_ROOT / "connectors/prometheus/tools.py",
     "alertmanager": REPO_ROOT / "connectors/alertmanager/tools.py",
     "loki": REPO_ROOT / "connectors/loki/tools.py",
+    "gitlab": REPO_ROOT / "connectors/gitlab/tools.py",
+    "github": REPO_ROOT / "connectors/github/tools.py",
 }
 
 
 # --- read-only, proven rather than trusted -----------------------------------
 
 
-@pytest.mark.parametrize("name", sorted(SERVERS))
-def test_no_connector_exposes_a_mutating_tool(name: str) -> None:
-    """Phase 1 is read-only, and that is asserted rather than assumed.
+def _writes(module: Path) -> set[str]:
+    """Functions in this module that reach an HTTP method which changes state.
 
-    `mutating` is a field on the Tool, mirroring `pkg/mcpserver` on the Go side,
-    so this checks a declaration rather than guessing from a verb in a name. The
-    moment a mutating tool exists it needs the approval path at Phase 3, and
-    proving none exists is cheaper than discovering one that skipped it.
+    Read from the MECHANISM, not from the name. My first version of this guard
+    matched verbs in tool names and flagged `list_silences` - because "silence"
+    is a noun there - while criticising exactly that heuristic in its own
+    message. A name is what the flag exists to stop anyone relying on.
+    """
+    tree = ast.parse(read_data(module))
+    calls: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef):
+            continue
+        named: set[str] = set()
+        for inner in ast.walk(node):
+            if not isinstance(inner, ast.Call):
+                continue
+            if isinstance(inner.func, ast.Name):
+                named.add(inner.func.id)
+            elif isinstance(inner.func, ast.Attribute):
+                named.add(inner.func.attr)
+        calls[node.name] = named
+
+    writing = {"post", "put", "patch", "delete"}
+    writers = {name for name, called in calls.items() if called & writing}
+    # One hop of transitivity: a handler calling `_post` is a writer too. Deeper
+    # chains do not exist in a connector and pretending to handle them would be
+    # untested code in a guard.
+    writers |= {name for name, called in calls.items() if called & writers}
+    return writers
+
+
+@pytest.mark.parametrize("name", sorted(SERVERS))
+def test_a_tool_that_writes_is_declared_as_one(name: str) -> None:
+    """Replaces `test_no_connector_exposes_a_mutating_tool`, retired 2026-08-30.
+
+    That guard forbade mutating tools outright, because *"the moment a mutating
+    tool exists it needs the approval path at Phase 3"*. The approval path now
+    exists and so does `alertmanager.create_silence`, so its condition is met -
+    it is gone rather than left asserting something no longer true.
+
+    What still has to hold is that mutability is DECLARED and correct.
+    `tests/unit/test_write_path.py` reads this flag to decide what an agent may
+    not declare, so a tool that writes and forgets it is a write an agent can
+    reach - and one that reads and claims it locks a capability away for nothing.
     """
     server = SERVERS[name]()
-    mutating = sorted(tool.name for tool in server.tools.values() if tool.mutating)
-    assert not mutating, (
-        f"{name} exposes mutating tools {mutating} but Phase 1 has no approval "
-        "path for them. See core/guardrails (Phase 3)."
-    )
-    assert server.read_only
+    writers = _writes(TOOL_MODULES[name])
+
+    for tool in server.tools.values():
+        # The registered handler's function name, which is what `_writes` keyed on.
+        handler = getattr(tool.handler, "__name__", "")
+        assert tool.mutating == (handler in writers), (
+            f"{tool.name} declares mutating={tool.mutating} but its handler "
+            f"{handler!r} {'does' if handler in writers else 'does not'} reach a "
+            "state-changing HTTP method. The flag is what the write path checks."
+        )
+
+    assert server.read_only == (not any(tool.mutating for tool in server.tools.values()))
 
 
 def test_the_read_only_property_can_actually_be_false() -> None:

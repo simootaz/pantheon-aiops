@@ -37,6 +37,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from core.contracts.llm import AuthMode, Dialect, ProviderConfig, Tier
+from core.llm.capability_matrix import default as default_matrix
+from core.llm.probe import probe_into
 from core.llm.provider import ProviderError
 from core.llm.providers.chat_completions import ChatCompletionsProvider
 from core.store.providers import ProviderStore, StoredProvider, config_from_input
@@ -211,6 +213,61 @@ async def list_models(
             f"the {tier} tier is bound to {model!r}, which this provider no longer serves"
             for tier, model in stale.items()
         ],
+    }
+
+
+@router.post("/{provider_id}/probe", summary="Ask this provider's models what they can do")
+async def probe_provider(
+    provider_id: UUID,
+    store: Annotated[ProviderStore, Depends(get_provider_store)],
+    models: Annotated[list[str] | None, Body(embed=True)] = None,
+) -> dict[str, object]:
+    """Run the capability probes and record what was observed.
+
+    ON DEMAND, NEVER ON A TIMER
+    -----------------------------
+    Every probe is a real request that costs real money, charged to whoever
+    pressed the button. Nothing here runs during an investigation, and nothing
+    schedules it.
+
+    WHY THIS ENDPOINT MATTERS MORE THAN IT LOOKS
+    -----------------------------------------------
+    Capabilities are OBSERVED, never declared - ADR 0004. Until something probes,
+    no model is known to do anything beyond the baseline, and an agent that
+    declares a capability hard-stops on every run. Hermes spent days in exactly
+    that state: registered, reachable, and unresolvable, because nothing had
+    ever asked a model whether it could return JSON.
+
+    Results go into the process-wide matrix, which is what
+    `core/llm/assembly.py` builds an agent's catalogue from. Probing here is
+    therefore what makes a model resolvable there - see
+    `core/llm/capability_matrix.default()` for what "process-wide" costs.
+    """
+    stored = await _require(store, provider_id)
+    key = await store.reveal_key(provider_id)
+    provider = ChatCompletionsProvider(stored.config, api_key=key)
+
+    targets = (
+        models if models else sorted(stored.tiers.values()) or list(stored.config.manual_models)
+    )
+    if not targets:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "no models to probe. Bind a tier or configure manual_models, or pass "
+                "`models` - probing every model a provider lists can be dozens of paid "
+                "requests, so it is not the default."
+            ),
+        )
+
+    results = await probe_into(default_matrix(), provider, targets)
+    return {
+        "provider_id": stored.config.id,
+        "probed": [result.as_dict() for result in results],
+        # Separated so a caller can see at a glance whether anything is now
+        # usable. A response that only listed results would need reading.
+        "reachable": sorted(r.model_id for r in results if r.reachable),
+        "unreachable": sorted(r.model_id for r in results if not r.reachable),
     }
 
 

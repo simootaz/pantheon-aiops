@@ -13,18 +13,23 @@ description: >-
   Triages failing CI pipelines and separates flake from real regression.
 
 capabilities:
-  - name: triage_pipeline_failure
-    description: Classify a failed pipeline by likely cause.
   - name: detect_flake
     description: Judge whether a job fails non-deterministically.
-  - name: correlate_with_change
-    description: Link a failure to the change that introduced it.
+  - name: triage_pipeline_failure
+    description: Report every job that failed, and what the evidence supports.
+
+# `correlate_with_change` is gone rather than unimplemented. Linking a failure
+# to the change that introduced it needs the PARENT commit's runs, and the
+# commits API is not reachable from this connector - see agents/ci_triage/
+# triage.py. A declared capability nothing can perform reads as one that works.
+
+# GitHub only: this deployment does not use GitLab, and a declared tool nobody
+# calls makes an agent's reach unreadable from the one place it should be.
+# github.diff is absent for the same reason correlate_with_change is.
 tools:
-  - gitlab.pipeline
-  - gitlab.jobs
-  - gitlab.diff
   - github.actions_run
-  - github.diff
+  - github.workflow_runs
+  - github.jobs
 budget:
   max_tokens: 16384
   max_seconds: 180

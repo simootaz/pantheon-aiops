@@ -1,3 +1,13 @@
-# Hermes prompt templates.
+# Hermes prompt templates. Empty, and deliberately so.
+#
+# Hermes is the one agent here that DOES consult a model, and its two system
+# prompts live in agents/nl_query/agent.py as `_PLAN_SYSTEM` and
+# `_ANSWER_SYSTEM`. They stay beside the code that validates the reply: the
+# planning prompt and the tool allowlist it is checked against have to change
+# together, and a prompt in a separate file is a prompt somebody edits without
+# reading the validator.
+#
+# The TODO that was here said "populate this directory". The prompts exist; they
+# are just not here, which is a different thing from unwritten.
+#
 # Phase: 2 - Orchestrator & Investigation Flow
-# TODO: Phase 2 - populate this directory

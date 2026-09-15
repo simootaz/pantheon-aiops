@@ -1,6 +1,8 @@
-"""Mnemosyne - retrieves prior incidents, runbooks and tribal knowledge.
+"""Mnemosyne - has this happened before, and what did we conclude.
 
 Phase: 5 - Proactive Flow
 """
 
-# TODO: Phase 5 - expose the Mnemosyne agent entrypoint
+# No re-export. `core/orchestrator/__init__.py` imports the class directly when it
+# registers it, so a second name for the same object would be one more place to
+# keep in step.

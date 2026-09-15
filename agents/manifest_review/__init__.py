@@ -1,6 +1,10 @@
-"""Aegis - reviews Kubernetes manifests and IaC diffs for risk before rollout.
+"""Aegis - reports what a manifest change takes away, before it ships.
 
 Phase: 3 - Guardrails, Approvals & Write Actions
 """
 
-# TODO: Phase 3 - expose the Aegis agent entrypoint
+from __future__ import annotations
+
+from agents.manifest_review.agent import Aegis
+
+__all__ = ["Aegis"]

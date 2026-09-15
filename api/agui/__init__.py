@@ -11,4 +11,8 @@ See docs/adr/0006-agentic-ui-protocols.md.
 Phase: 4 - Delivery Flow
 """
 
-# TODO: Phase 4 - expose the AG-UI router
+from __future__ import annotations
+
+from api.agui.endpoint import router
+
+__all__ = ["router"]

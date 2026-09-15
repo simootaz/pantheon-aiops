@@ -12,9 +12,12 @@ domain: reporting
 description: >-
   Writes incident timelines, postmortems and executive summaries.
 
+# `write_timeline` was declared here and is not an agent capability: a timeline
+# is a pure ordering of the Investigation's own timestamps, and it lives in
+# core/reporting/timeline.py, served by GET /investigations/{id}/timeline. An
+# agent producing it would put "what happened so far" in the Findings list,
+# which is a list of claims about the incident.
 capabilities:
-  - name: write_timeline
-    description: Order what happened into a readable sequence.
   - name: write_postmortem
     description: Draft a postmortem from an investigation.
   - name: summarise_for_executives

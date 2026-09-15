@@ -15,12 +15,15 @@
 # are a development convenience and are unsafe under GitOps - see
 # templates/validation.yaml.
 productionMode: true
+environment: production
 
 image:
   pullPolicy: IfNotPresent
 
 api:
   replicas: 3
+  # Required. The render refuses without it - see templates/validation.yaml.
+  existingSecret: pantheon-app
   resources:
     requests:
       cpu: 500m

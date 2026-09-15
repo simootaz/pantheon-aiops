@@ -1,0 +1,1175 @@
+{
+  "compared_at_n": 3922,
+  "p1_template_counts": {
+    "bad_deploy_5xx": 66,
+    "baseline_a": 62,
+    "baseline_b": 62,
+    "disk_pressure": 83,
+    "flaky_test_storm": 63,
+    "memory_leak": 70,
+    "noisy_neighbor": 74
+  },
+  "p1_template_counts_at_common_n": {
+    "bad_deploy_5xx": 62,
+    "baseline_a": 62,
+    "baseline_b": 62,
+    "disk_pressure": 78,
+    "flaky_test_storm": 62,
+    "memory_leak": 62,
+    "noisy_neighbor": 63
+  },
+  "p2_baseline_jaccard": 1.0,
+  "p2_only_in_a": [],
+  "p2_only_in_b": [],
+  "p2_sizes": {
+    "a": 62,
+    "b": 62,
+    "shared": 62
+  },
+  "p3_p4_novelty": {
+    "bad_deploy_5xx": {
+      "novel": [],
+      "novel_count": 0,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    },
+    "baseline_a": {
+      "novel": [],
+      "novel_count": 0,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    },
+    "disk_pressure": {
+      "novel": [
+        {
+          "count": 28,
+          "rendered": "level=warn mount=/var/lib/containerd msg=disk usage high ts=<*> used_percent=<*>"
+        }
+      ],
+      "novel_count": 1,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    },
+    "flaky_test_storm": {
+      "novel": [],
+      "novel_count": 0,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    },
+    "memory_leak": {
+      "novel": [
+        {
+          "count": 8,
+          "rendered": "heap_max_mb=3000 level=warn msg=GC pause exceeded target heap_used_mb=<*> pause_ms=<*> ts=<*>"
+        },
+        {
+          "count": 7,
+          "rendered": "heap_max_mb=2937 level=warn msg=GC pause exceeded target heap_used_mb=<*> pause_ms=<*> ts=<*>"
+        }
+      ],
+      "novel_count": 2,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    },
+    "noisy_neighbor": {
+      "novel": [
+        {
+          "count": 17,
+          "rendered": "level=warn msg=cpu throttled periods=500 throttled_periods=<*> ts=<*>"
+        },
+        {
+          "count": 3,
+          "rendered": "error=upstream returned 500 level=error method=PUT msg=request failed path=/api/checkout status=201 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "novel_count": 2,
+      "surged": [],
+      "surged_count": 0,
+      "top_surge_ratio": null
+    }
+  },
+  "p5_convergence": [
+    {
+      "jaccard_vs_full": 0.0088,
+      "n": 100,
+      "templates": 52
+    },
+    {
+      "jaccard_vs_full": 0.9355,
+      "n": 250,
+      "templates": 58
+    },
+    {
+      "jaccard_vs_full": 1.0,
+      "n": 500,
+      "templates": 62
+    },
+    {
+      "jaccard_vs_full": 1.0,
+      "n": 1000,
+      "templates": 62
+    },
+    {
+      "jaccard_vs_full": 1.0,
+      "n": 2000,
+      "templates": 62
+    },
+    {
+      "jaccard_vs_full": 1.0,
+      "n": 3000,
+      "templates": 62
+    }
+  ],
+  "p6_stack_traces": {
+    "distinct_signatures": 1,
+    "traces": [
+      {
+        "count": 2,
+        "frames": [
+          "at com.acme.search.Handler.process(Handler.java:217)",
+          "at com.acme.search.Router.dispatch(Router.java:297)",
+          "at java.base/java.lang.Thread.run(Thread.java:840)"
+        ],
+        "header": "java.lang.OutOfMemoryError: Java heap space"
+      }
+    ]
+  },
+  "parameters": {
+    "MAX_STABLE_VALUES": 8,
+    "MIN_GROUP_FOR_VARIABILITY": 12,
+    "VARIABILITY_RATIO": 0.3,
+    "loki_limit": 5000,
+    "simulated_seconds": 86400.0,
+    "tick_seconds": 3600.0
+  },
+  "runs": {
+    "bad_deploy_5xx": {
+      "ended": 1787842784.2331471,
+      "label": "bad_deploy_5xx",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": "bad_deploy_5xx",
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ],
+        "json:in_use,level,max,msg,ts,wait_ms": [
+          "ts",
+          "wait_ms"
+        ],
+        "json:in_use,level,max,msg,ts,waited_ms": [
+          "waited_ms"
+        ]
+      },
+      "shape_only": 3,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|<shape only>",
+        "json:in_use,level,max,msg,ts,wait_ms|<shape only>",
+        "json:in_use,level,max,msg,ts,waited_ms|<shape only>"
+      ],
+      "started": 1787842781.9135516,
+      "template_count": 66,
+      "top": [
+        {
+          "count": 181,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 180,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 175,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 172,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 168,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 166,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "baseline_a": {
+      "ended": 1787842775.54188,
+      "label": "baseline_a",
+      "lines_parsed": 3922,
+      "lines_read": 3922,
+      "scenario": null,
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ]
+      },
+      "shape_only": 2,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|<shape only>",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|<shape only>"
+      ],
+      "started": 1787842773.5103388,
+      "template_count": 62,
+      "top": [
+        {
+          "count": 147,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 143,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 140,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 137,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 137,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 137,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 135,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 135,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 127,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 126,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "baseline_b": {
+      "ended": 1787842779.719177,
+      "label": "baseline_b",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": null,
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ]
+      },
+      "shape_only": 2,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|<shape only>",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|<shape only>"
+      ],
+      "started": 1787842777.696345,
+      "template_count": 62,
+      "top": [
+        {
+          "count": 184,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 181,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 178,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 176,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 175,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 174,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 174,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 171,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 168,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "disk_pressure": {
+      "ended": 1787842803.6770515,
+      "label": "disk_pressure",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": "disk_pressure",
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ],
+        "json:level,mount,msg,ts,used_percent": [
+          "ts"
+        ]
+      },
+      "shape_only": 1,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/cart status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/cart status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/catalog/search status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/catalog/search status=204",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/checkout status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/checkout status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/checkout status=204",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/payments/authorize status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/healthz status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/healthz status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/cart status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/cart status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/catalog/search status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/checkout status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/checkout status=204",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/checkout status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/cart status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/cart status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/checkout status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/payments/authorize status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|<shape only>",
+        "json:level,mount,msg,ts,used_percent|level=warn mount=/var/lib/containerd msg=disk usage high"
+      ],
+      "started": 1787842794.533196,
+      "template_count": 83,
+      "top": [
+        {
+          "count": 191,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 188,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 183,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 180,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 179,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 175,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 174,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 166,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 162,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 161,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "flaky_test_storm": {
+      "ended": 1787842808.8493342,
+      "label": "flaky_test_storm",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": "flaky_test_storm",
+      "sequence_fields": {
+        "json:attempt,error,level,msg,suite,test,ts": [
+          "ts"
+        ],
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "status",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ]
+      },
+      "shape_only": 3,
+      "signatures": [
+        "json:attempt,error,level,msg,suite,test,ts|<shape only>",
+        "json:duration_ms,error,level,method,msg,path,status,ts|<shape only>",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|<shape only>"
+      ],
+      "started": 1787842805.9406958,
+      "template_count": 63,
+      "top": [
+        {
+          "count": 189,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 178,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 175,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 170,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 166,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 163,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 162,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "memory_leak": {
+      "ended": 1787842792.3602526,
+      "label": "memory_leak",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": "memory_leak",
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ],
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts": [
+          "heap_used_mb",
+          "pause_ms",
+          "ts"
+        ]
+      },
+      "shape_only": 2,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:exception,level,msg,stack,ts|<shape only>",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|heap_max_mb=2937 level=warn msg=GC pause exceeded target",
+        "json:heap_max_mb,heap_used_mb,level,msg,pause_ms,ts|heap_max_mb=3000 level=warn msg=GC pause exceeded target",
+        "json:level,limit_mb,msg,reason,ts,usage_mb|<shape only>"
+      ],
+      "started": 1787842786.3886895,
+      "template_count": 70,
+      "top": [
+        {
+          "count": 194,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 176,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 171,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 169,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 165,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 165,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 160,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    },
+    "noisy_neighbor": {
+      "ended": 1787842815.4483235,
+      "label": "noisy_neighbor",
+      "lines_parsed": 5000,
+      "lines_read": 5000,
+      "scenario": "noisy_neighbor",
+      "sequence_fields": {
+        "json:duration_ms,error,level,method,msg,path,status,ts": [
+          "duration_ms",
+          "ts"
+        ],
+        "json:duration_ms,level,method,msg,path,status,ts": [
+          "ts"
+        ],
+        "json:level,msg,periods,throttled_periods,ts": [
+          "ts"
+        ]
+      },
+      "shape_only": 0,
+      "signatures": [
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/cart status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/checkout status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/checkout status=204",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=GET msg=request failed path=/api/payments/authorize status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/cart status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/catalog/search status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/payments/authorize status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/api/payments/authorize status=500",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=POST msg=request failed path=/healthz status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/catalog/search status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/checkout status=201",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/api/payments/authorize status=200",
+        "json:duration_ms,error,level,method,msg,path,status,ts|error=upstream returned 500 level=error method=PUT msg=request failed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=GET msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=POST msg=request completed path=/healthz status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/cart status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/catalog/search status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/checkout status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/api/payments/authorize status=500",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=200",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=201",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=204",
+        "json:duration_ms,level,method,msg,path,status,ts|level=info method=PUT msg=request completed path=/healthz status=500",
+        "json:level,msg,periods,throttled_periods,ts|level=warn msg=cpu throttled periods=500"
+      ],
+      "started": 1787842811.0028179,
+      "template_count": 74,
+      "top": [
+        {
+          "count": 192,
+          "inferred": true,
+          "rendered": "level=info method=PUT msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 184,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 184,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/healthz status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 181,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/catalog/search status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 173,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 172,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 171,
+          "inferred": true,
+          "rendered": "level=info method=POST msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 168,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/cart status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 167,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/payments/authorize status=200 duration_ms=<*> ts=<*>"
+        },
+        {
+          "count": 165,
+          "inferred": true,
+          "rendered": "level=info method=GET msg=request completed path=/api/checkout status=200 duration_ms=<*> ts=<*>"
+        }
+      ],
+      "unparsed": 0
+    }
+  },
+  "sanity": {
+    "baseline_a_templates": 62,
+    "baseline_b_templates": 62
+  }
+}

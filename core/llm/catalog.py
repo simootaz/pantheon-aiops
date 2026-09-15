@@ -12,7 +12,10 @@ this", not "we probed it and it answered".
 
 That distinction is carried rather than smoothed over: `last_probed_at` stays
 `None` for a configured-but-unprobed model, and capabilities come from
-`BASELINE_CAPABILITIES` rather than an optimistic guess. Probing is Phase 4.
+`BASELINE_CAPABILITIES` rather than an optimistic guess.
+
+Pass a `CapabilityMatrix` and the descriptors are built from what was
+actually observed instead - see core/llm/probe.py.
 Until then a model claiming `TOOL_USE` would be a claim nobody checked, and an
 agent that declared `TOOL_USE` and silently got a model without it does not
 fail - it produces confident nonsense.
@@ -26,6 +29,7 @@ from dataclasses import dataclass
 
 from core.config import get_settings
 from core.contracts.llm import Capability, ModelDescriptor, ProviderConfig, Tier
+from core.llm.capability_matrix import CapabilityMatrix
 from core.llm.provider import BASELINE_CAPABILITIES, Provider
 
 
@@ -61,7 +65,7 @@ class Catalogue:
         return self.models.get(model_id) if model_id else None
 
 
-def from_settings() -> Catalogue:
+def from_settings(matrix: CapabilityMatrix | None = None) -> Catalogue:
     """Build the catalogue from `LLM_*`.
 
     One provider today, because settings describe one. The shape is a mapping so
@@ -88,25 +92,47 @@ def from_settings() -> Catalogue:
         Tier.BALANCED: llm.tier_balanced_model,
         Tier.FRONTIER: llm.tier_frontier_model,
     }
-    models = {model_id: _descriptor(provider.id, model_id) for model_id in provider.manual_models}
+    models = {
+        model_id: _descriptor(provider.id, model_id, matrix) for model_id in provider.manual_models
+    }
     return Catalogue(providers={provider.id: provider}, models=models, by_tier=by_tier)
 
 
-def _descriptor(provider_id: str, model_id: str) -> ModelDescriptor:
-    """A configured model, described honestly as unprobed.
+def _descriptor(
+    provider_id: str, model_id: str, matrix: CapabilityMatrix | None = None
+) -> ModelDescriptor:
+    """A configured model, described by what was OBSERVED where anything was.
+
+    Without a matrix, or with nothing current in it, this is the honest
+    unprobed shape: baseline capabilities and no context window.
 
     `context_window` is 0 rather than a guess. Zero fails a `min_context`
     requirement, which is the safe direction: an agent that needs 32k tokens and
     is handed an unknown window should be refused, not given one that might
-    truncate its prompt silently.
+    truncate its prompt silently. Nothing measures a window yet, so it stays 0
+    even after probing - see core/llm/probe.py.
     """
+    probed = matrix.fresh(provider_id, model_id) if matrix is not None else None
+    if probed is None or not probed.reachable:
+        return ModelDescriptor(
+            provider_id=provider_id,
+            model_id=model_id,
+            context_window=0,
+            capabilities=sorted(BASELINE_CAPABILITIES),
+            median_latency_ms=None,
+            last_probed_at=None,
+        )
+
     return ModelDescriptor(
         provider_id=provider_id,
         model_id=model_id,
-        context_window=0,
-        capabilities=sorted(BASELINE_CAPABILITIES),
-        median_latency_ms=None,
-        last_probed_at=None,
+        context_window=probed.context_window,
+        # Observed only. A capability the probe could not test is left out
+        # rather than assumed, which is what makes an agent requiring it fail
+        # loudly instead of receiving a model that cannot do it.
+        capabilities=sorted(probed.present),
+        median_latency_ms=probed.median_latency_ms,
+        last_probed_at=probed.at,
     )
 
 

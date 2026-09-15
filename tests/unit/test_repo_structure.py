@@ -341,8 +341,63 @@ def test_chart_has_a_validation_template_that_fails_closed() -> None:
         "credential (bundled MinIO, external storage, Delphi)"
     )
     assert "productionMode" in body
-    for guarded in ("minio.existingSecret", "external.existingSecret", "delphi.existingSecret"):
+    for guarded in (
+        "minio.existingSecret",
+        "external.existingSecret",
+        "delphi.existingSecret",
+        "api.existingSecret",
+    ):
         assert guarded in body, f"validation.yaml does not guard {guarded}"
+
+
+def test_the_chart_sets_the_environment_from_a_value_not_the_namespace() -> None:
+    """`PANTHEON_ENV: {{ .Release.Namespace }}` was the configmap for two phases.
+
+    `Environment` is a closed enum, so any install in a namespace not literally
+    named local, ci, staging or production - `pantheon`, say, or `helm
+    template`'s own `default` - crashed the API at startup on a validation
+    error. A rendered chart cannot show that: the value is a string either way.
+    """
+    body = read_mechanism(CHART / "templates" / "configmap.yaml")
+
+    assert "PANTHEON_ENV: {{ .Values.environment" in body
+    assert ".Release.Namespace" not in body, "the environment is the namespace again"
+
+    validation = read_mechanism(CHART / "templates" / "validation.yaml")
+    for member in ("local", "ci", "staging", "production"):
+        assert f'"{member}"' in validation, f"validation.yaml does not admit {member!r}"
+
+
+def test_the_chart_documents_the_same_production_secrets_the_code_requires() -> None:
+    """Two lists of what production cannot start without, held equal.
+
+    `REQUIRED_IN_PRODUCTION` in core/config.py is what the app refuses to start
+    without. `api.existingSecret` in values.yaml is where the chart says to put
+    them. A key added to one and not the other is a deployment that renders,
+    installs, and crashes at the first request - so the comment in values.yaml
+    naming the keys is held equal to the code here, minus the two the chart
+    supplies through other secrets.
+    """
+    import re as _re
+
+    from core.config import REQUIRED_IN_PRODUCTION
+
+    #: Supplied by the chart from other secrets, so not the operator's to put in
+    #: api.existingSecret: S3 through the MinIO or external-storage secret, and
+    #: Postgres through its own - once the chart renders one, which it does
+    #: not yet; POSTGRES_PASSWORD is listed here so this test says so when it
+    #: starts to.
+    supplied_elsewhere = {"S3_SECRET_KEY", "POSTGRES_PASSWORD"}
+    required = {env for _group, _field, env in REQUIRED_IN_PRODUCTION} - supplied_elsewhere
+
+    values = read_data(CHART / "values.yaml")
+    api_block = values[values.index("\napi:") : values.index("\nworker:")]
+    documented = set(_re.findall(r"#\s+([A-Z][A-Z0-9_]+)\s{2,}", api_block))
+
+    assert documented == required, (
+        f"values.yaml documents {sorted(documented)} for api.existingSecret; the code "
+        f"requires {sorted(required)} in production. Fix the list that is wrong."
+    )
 
 
 def test_generated_secret_is_marked_and_protected() -> None:
@@ -498,10 +553,43 @@ def _count_models() -> int:
     )
 
 
+#: A test function as pytest collects one: sync or async, at module level or
+#: indented inside a `Test*` class.
+_TEST_FUNCTION = re.compile(r"^[ 	]*(?:async[ 	]+)?def test_", re.MULTILINE)
+
+
+def _test_roots() -> list[Path]:
+    """Where pytest looks, read from `pyproject.toml` rather than restated here.
+
+    Restating it is how this counter came to skip `agents/*/tests/`: pytest was
+    told to collect from `tests` and `agents`, and this looked only in `tests`.
+    Two lists of where tests live is one that can be wrong without failing.
+    """
+    import tomllib
+
+    config = tomllib.loads(read_data(REPO_ROOT / "pyproject.toml"))
+    roots: list[str] = config["tool"]["pytest"]["ini_options"]["testpaths"]
+    return [REPO_ROOT / root for root in roots]
+
+
 def _count_tests() -> int:
+    """Test functions pytest collects, before parametrisation expands them.
+
+    THIS UNDERCOUNTED BY 27 PER CENT, AND ENFORCED THE UNDERCOUNT
+    ---------------------------------------------------------------
+    It matched `^def test_` under `tests/`. That missed every `async def test_`
+    - 283 of them - and all 83 tests in `agents/*/tests/`, which pytest collects
+    because `testpaths` names `agents`. The README said 996 while 1362 existed,
+    and this guard, whose whole job is keeping that number true, passed it: it
+    was checking the prose against a count with the same blind spots.
+
+    It surfaced when seven async tests were added and the count did not move.
+    Every earlier batch had moved it, because they happened to be sync.
+    """
     return sum(
-        len(re.findall(r"^def test_", read_data(path), re.MULTILINE))
-        for path in sorted((REPO_ROOT / "tests").rglob("test_*.py"))
+        len(_TEST_FUNCTION.findall(read_data(path)))
+        for root in _test_roots()
+        for path in sorted(root.rglob("test_*.py"))
     )
 
 

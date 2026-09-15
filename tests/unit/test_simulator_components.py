@@ -507,7 +507,7 @@ def test_a_run_enters_every_phase_and_reports_them_in_order(
 ) -> None:
     events: list[str] = []
     runner = _offline_runner(monkeypatch, on_event=events.append)
-    monkeypatch.setattr(runner.pipelines, "send_pipeline", lambda *a, **k: None)
+    monkeypatch.setattr(runner.pipelines, "send_workflow_run", lambda *a, **k: None)
 
     report = runner.run(load("bad_deploy_5xx"), speed=1e9, send_pipelines=False)
 
@@ -523,14 +523,16 @@ def test_a_flaky_scenario_sends_pipeline_events(monkeypatch: pytest.MonkeyPatch)
     runner = _offline_runner(monkeypatch)
     monkeypatch.setattr(
         runner.pipelines,
-        "send_pipeline",
-        lambda *a, **k: sent.append(k.get("status", "?")),
+        "send_workflow_run",
+        lambda *a, **k: sent.append(k.get("conclusion", "?")),
     )
 
     report = runner.run(load("flaky_test_storm"), speed=1e9, send_pipelines=True)
 
     assert report.pipelines_sent > 0
-    assert sent and set(sent) == {"failed"}
+    # `failure`, GitHub's word. The runner sent GitLab's `failed` to an endpoint
+    # whose classifier reads GitHub's shapes, and nothing was ever investigated.
+    assert sent and set(sent) == {"failure"}
 
 
 def test_a_baseline_run_injects_nothing(monkeypatch: pytest.MonkeyPatch) -> None:

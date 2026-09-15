@@ -25,7 +25,7 @@ from core.contracts.action import Action
 from core.contracts.base import ContractModel
 from core.contracts.finding import Finding
 from core.contracts.plan import PlanStep, StepStatus
-from core.contracts.root_cause import RootCauseHypothesis
+from core.contracts.root_cause import RootCauseCategory, RootCauseHypothesis
 
 
 class VerdictConfidence(StrEnum):
@@ -38,6 +38,38 @@ class VerdictConfidence(StrEnum):
     LOW = "low"
     MODERATE = "moderate"
     HIGH = "high"
+
+
+class Dissent(ContractModel):
+    """Evidence from this run that pointed somewhere other than the leading claim.
+
+    WHAT DISSENT CAN HONESTLY MEAN HERE
+    -------------------------------------
+    No agent votes. Argus reports that a series moved; Lethe reports what
+    appeared in the logs. Neither states an opinion about a root cause, so
+    "the agents disagreed" cannot be read off anything they said.
+
+    What IS observable is that the run produced more than one candidate and the
+    leading one does not account for all the evidence. A reader told "memory
+    leak, confidence 0.65" has no way to know that two of the five findings
+    pointed at disk exhaustion - and that omission is the difference between a
+    conclusion and a summary of the majority.
+
+    So a Dissent is a competing hypothesis, named, with **who reported the
+    evidence for it**. "Somebody disagreed" is not actionable; "Argus's disk
+    signal pointed elsewhere" is.
+    """
+
+    category: RootCauseCategory = Field(description="What the dissenting evidence pointed at.")
+    agents: list[str] = Field(
+        default_factory=list,
+        description="Codenames whose Findings support it. Named, because an unattributed "
+        "disagreement is one nobody can follow up.",
+    )
+    finding_ids: list[UUID] = Field(default_factory=list)
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="The competing hypothesis's own confidence."
+    )
 
 
 class Verdict(ContractModel):
@@ -54,6 +86,11 @@ class Verdict(ContractModel):
     )
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence in the leading hypothesis.")
 
+    dissent: list[Dissent] = Field(
+        default_factory=list,
+        description="Candidates the leading hypothesis does not account for. Empty when "
+        "the run was unanimous OR when nothing led - see the validator below.",
+    )
     contributing_findings: list[Finding] = Field(default_factory=list)
     recommended_actions: list[Action] = Field(default_factory=list)
 
@@ -104,5 +141,29 @@ class Verdict(ContractModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _dissent_needs_something_to_dissent_from(self) -> Verdict:
+        """Dissent without a leading hypothesis is not dissent.
 
-# TODO: Phase 2 - record dissent when agents disagree about the leading hypothesis
+        `confidence` is 0.0 exactly when nothing leads - none proposed, or two
+        tied. Recording dissent there would say the leading claim is contested
+        when there is no leading claim, and a reader would go looking for the
+        conclusion being argued with.
+
+        The hypotheses are all still listed. Nothing is hidden; what is refused
+        is calling one of several equals "the leader" and the rest "dissent".
+        """
+        if self.dissent and self.confidence == 0.0:
+            raise ValueError(
+                f"Verdict {self.id} records dissent with confidence 0.0, so nothing "
+                "leads and there is nothing to dissent from. Two tied candidates are "
+                "a run that reached no conclusion, not a majority with objectors."
+            )
+        return self
+
+
+# Dissent is `Verdict.dissent`, built by `core/orchestrator/aggregator.py`.
+#
+# It is not a vote, because nothing votes. It is the evidence the leading
+# hypothesis does not account for, attributed to the agents that reported it -
+# which is the observable version of the question the TODO was asking.

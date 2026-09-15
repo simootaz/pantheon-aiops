@@ -12,4 +12,6 @@ See docs/adr/0004-llm-provider-abstraction.md.
 Phase: 2 - Orchestrator & Investigation Flow
 """
 
-# TODO: Phase 2 - expose consult() and resolve()
+# No re-export. Callers import `core.llm.gateway.Delphi` and
+# `core.llm.resolver.resolve` directly; a second name for the same object is one
+# more place to keep in step - see agents/anomaly/__init__.py for the same call.

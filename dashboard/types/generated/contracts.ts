@@ -7,51 +7,11 @@
  */
 
 export type A2UiVersion = string;
-export type CatalogId = string;
-/**
- * The closed allowlist of A2UI components Pantheon will render.
- *
- * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
- * the catalog is chosen for what it *cannot* be abused to do.
- *
- * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
- * object key for an artifact Pantheon itself produced and stored. The agent
- * cannot express an arbitrary destination, so there is nothing to filter.
- *
- * Deliberately excluded, with reasons:
- *
- * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
- *   same ArtifactRef pattern when something does; the allowlist grows on
- *   demand, never speculatively.
- * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
- *   credential prompt. Credential requests travel one path only, through
- *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use.
- */
-export type A2UIComponentType =
-  | "Row"
-  | "Column"
-  | "Card"
-  | "List"
-  | "Text"
-  | "Image"
-  | "Icon"
-  | "Divider"
-  | "TextField"
-  | "CheckBox"
-  | "ChoicePicker"
-  | "DateTimeInput"
-  | "Button";
-/**
- * Every component the renderer accepts.
- */
-export type Components = A2UIComponentType[];
-export type A2UiVersion1 = string;
 /**
  * Set by the orchestrator. An agent cannot claim another identity.
  */
 export type AgentDisplayName = string;
-export type CatalogId1 = string;
+export type CatalogId = string;
 /**
  * Server-dispatched action name, from the catalog.
  */
@@ -81,26 +41,9 @@ export type ArtifactKind = "image";
  */
 export type Children = string[];
 /**
- * The closed allowlist of A2UI components Pantheon will render.
- *
- * A subset of A2UI's basic catalog. Agent-generated UI is untrusted data, so
- * the catalog is chosen for what it *cannot* be abused to do.
- *
- * ``Image`` is present but **cannot take a URL**. It takes an ArtifactRef: an
- * object key for an artifact Pantheon itself produced and stored. The agent
- * cannot express an arbitrary destination, so there is nothing to filter.
- *
- * Deliberately excluded, with reasons:
- *
- * - ``Video``, ``AudioPlayer`` - nothing needs them yet. They would follow the
- *   same ArtifactRef pattern when something does; the allowlist grows on
- *   demand, never speculatively.
- * - ``Modal`` - an agent that can force a modal can overlay a convincing fake
- *   credential prompt. Credential requests travel one path only, through
- *   Cerberus.
- * - ``Tabs``, ``Slider`` - no current use.
+ * Must be in the allowlist.
  */
-export type A2UIComponentType1 =
+export type A2UIComponentType =
   | "Row"
   | "Column"
   | "Card"
@@ -130,7 +73,7 @@ export type Label = string | null;
  * Display text, where the type takes one.
  */
 export type Text = string | null;
-export type Components1 = A2UIComponent[];
+export type Components = A2UIComponent[];
 /**
  * Set by the orchestrator. Never agent-supplied.
  */
@@ -232,11 +175,19 @@ export type ProposedBy = string;
  * Why this Action was proposed, in terms of the Verdict.
  */
 export type Reason1 = string;
+/**
+ * The approval spent, when the rule required one. Null when it did not.
+ */
+export type ApprovalId = string | null;
 export type At = string;
 /**
  * Which connector executed it.
  */
 export type Connector = string;
+/**
+ * The policy rule that produced the decision, whichever way it went.
+ */
+export type DecidedBy = string;
 /**
  * Human-readable outcome. Never a credential.
  */
@@ -365,6 +316,10 @@ export type Title = string;
 export type Type = "trigger_received";
 export type InvestigationId5 = string;
 export type Type1 = "investigation_started";
+/**
+ * When the row was closed. Carried so a client following the stream can patch it in; the envelope's emitted_at is when the event left, which is later.
+ */
+export type CompletedAt = string | null;
 export type InvestigationId6 = string;
 /**
  * True when any agent reported DEGRADED.
@@ -397,7 +352,13 @@ export type Id6 = string;
  */
 export type ObservedAt = string;
 export type Payload1 =
-  MetricWindowPayload | LogClusterPayload | ManifestDiffPayload | K8SEventPayload | PipelineRunPayload;
+  | MetricWindowPayload
+  | LogClusterPayload
+  | ManifestDiffPayload
+  | K8SEventPayload
+  | PipelineRunPayload
+  | CapacityForecastPayload
+  | PriorIncidentPayload;
 /**
  * Middle of the baseline, by `estimator`.
  */
@@ -468,6 +429,10 @@ export type Message = string;
  * e.g. 'OOMKilling', 'Unhealthy', 'FailedScheduling'.
  */
 export type Reason2 = string;
+/**
+ * Conclusion of every recorded run of the failed job at `commit_sha`, in run order. Two distinct values is a flake by definition. Empty when the payload is not a triage.
+ */
+export type AttemptConclusions = string[];
 export type CommitSha = string | null;
 export type DurationSeconds = number | null;
 export type FailedJobs = string[];
@@ -482,6 +447,53 @@ export type Ref = string;
  * e.g. 'failed', 'success'.
  */
 export type Status = string;
+/**
+ * The fitted value at the end of the window.
+ */
+export type Current = number;
+/**
+ * Coefficient of determination of the fit.
+ */
+export type FitR2 = number;
+export type Kind6 = "capacity_forecast";
+/**
+ * The line being projected to. The metric's own, never a stand-in.
+ */
+export type Limit = number;
+/**
+ * What was fitted, e.g. a used/total ratio.
+ */
+export type Metric1 = string;
+/**
+ * Least-squares slope over the window, in units per hour.
+ */
+export type RatePerHour = number;
+export type Samples1 = MetricSample[];
+/**
+ * Hours until the fitted line reaches `limit`. None when the trend does not reach it.
+ */
+export type TimeToLimitHours = number | null;
+/**
+ * Unit of `current`, `limit` and the rate.
+ */
+export type Unit1 = string;
+export type WindowSeconds1 = number;
+/**
+ * The prior verdict's leading root-cause category, if any.
+ */
+export type Category = string | null;
+export type Confidence1 = number | null;
+export type CreatedAt = string;
+export type InvestigationId9 = string;
+export type Kind7 = "prior_incident";
+/**
+ * Whether a step of the prior run reported being unable to look.
+ */
+export type Partial1 = boolean;
+/**
+ * The prior run's InvestigationState, as it stands now.
+ */
+export type State1 = string;
 /**
  * When the connector ran, as distinct from what it observed.
  */
@@ -517,6 +529,10 @@ export type FindingKind = "observation" | "anomaly" | "correlation" | "risk" | "
  */
 export type Rationale = string | null;
 /**
+ * Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.
+ */
+export type Related = string[];
+/**
  * How much a Finding should worry the on-call engineer.
  */
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
@@ -533,7 +549,7 @@ export type WindowEnd = string | null;
  * Start of the period this claim is about.
  */
 export type WindowStart = string | null;
-export type InvestigationId9 = string;
+export type InvestigationId10 = string;
 export type Type5 = "finding_produced";
 /**
  * The closed vocabulary shared by agents, verdicts and scenario ground truth.
@@ -556,7 +572,7 @@ export type RootCauseCategory =
   | "data_corruption"
   | "external_incident"
   | "unknown";
-export type Confidence1 = number;
+export type Confidence2 = number;
 /**
  * Recorded deliberately. A hypothesis with none listed has usually not been tested, rather than survived testing.
  */
@@ -583,22 +599,56 @@ export type HypothesisStatus = "proposed" | "supported" | "refuted" | "inconclus
  */
 export type Subject = string | null;
 export type SupportingFindingIds = string[];
-export type InvestigationId10 = string;
-export type Type6 = "hypothesis_proposed";
 export type InvestigationId11 = string;
+export type Type6 = "hypothesis_proposed";
+export type InvestigationId12 = string;
 export type Type7 = "verdict_ready";
 /**
  * Confidence in the leading hypothesis.
  */
-export type Confidence2 = number;
+export type Confidence3 = number;
 export type ContributingFindings = Finding[];
 export type DecidedAt = string;
+/**
+ * Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.
+ */
+export type Agents = string[];
+/**
+ * The closed vocabulary shared by agents, verdicts and scenario ground truth.
+ *
+ * Adding a member is a deliberate act: it widens what an agent may conclude
+ * and what a scenario may assert. `UNKNOWN` exists so that "we do not know" is
+ * a statable conclusion rather than an absent one - an investigation that
+ * cannot say it will invent something instead.
+ */
+export type RootCauseCategory1 =
+  | "memory_leak"
+  | "resource_contention"
+  | "bad_deployment"
+  | "config_error"
+  | "disk_exhaustion"
+  | "capacity_saturation"
+  | "dependency_failure"
+  | "network_partition"
+  | "flaky_test"
+  | "data_corruption"
+  | "external_incident"
+  | "unknown";
+/**
+ * The competing hypothesis's own confidence.
+ */
+export type Confidence4 = number;
+export type FindingIds = string[];
+/**
+ * Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.
+ */
+export type Dissent = Dissent1[];
 /**
  * Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.
  */
 export type Hypotheses = RootCauseHypothesis[];
 export type Id9 = string;
-export type InvestigationId12 = string;
+export type InvestigationId13 = string;
 export type RecommendedActions = Action[];
 /**
  * Agent codename.
@@ -632,12 +682,12 @@ export type Steps = PlanStep[];
  * What happened, in one paragraph, for a human.
  */
 export type Summary1 = string;
-export type InvestigationId13 = string;
-export type Type8 = "approval_requested";
 export type InvestigationId14 = string;
+export type Type8 = "approval_requested";
+export type InvestigationId15 = string;
 export type Type9 = "access_requested";
 export type Agent5 = string;
-export type InvestigationId15 = string;
+export type InvestigationId16 = string;
 export type LeaseId2 = string;
 export type Reason4 = "expired" | "revoked";
 export type Type10 = "lease_expired";
@@ -667,7 +717,7 @@ export type Id11 = string;
 /**
  * Set when mode is ALLOW_FOR_INVESTIGATION.
  */
-export type InvestigationId16 = string | null;
+export type InvestigationId17 = string | null;
 /**
  * How a grant answers a request.
  *
@@ -684,11 +734,25 @@ export type OverrideAskDefault = boolean;
  */
 export type RevokedAt = string | null;
 /**
+ * Codename, e.g. 'argus'.
+ */
+export type Agent7 = string;
+export type SecondCeiling = number;
+export type Seconds = number;
+export type TokenCeiling = number;
+export type TokensSpent = number;
+export type ToolCallCeiling = number;
+export type ToolCalls = number;
+/**
+ * What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.
+ */
+export type Accounting = AgentAccounting[];
+/**
  * Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.
  */
 export type Audit = AuditEntry[];
-export type CompletedAt = string | null;
-export type CreatedAt = string;
+export type CompletedAt1 = string | null;
+export type CreatedAt1 = string;
 export type Findings = Finding[];
 /**
  * Working hypotheses, before the Verdict ranks them.
@@ -767,12 +831,16 @@ export type StartedAt1 = string | null;
 export type InvestigationState =
   "pending" | "planning" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
 /**
+ * Who this run belongs to. Never empty - see api/auth/dependencies.py.
+ */
+export type Tenant = string;
+/**
  * The only connector that may redeem this lease.
  */
 export type Connector2 = string;
 export type ExpiresAt1 = string;
 export type Id14 = string;
-export type InvestigationId17 = string;
+export type InvestigationId18 = string;
 export type IssuedAt = string;
 /**
  * Auto-renews while the underlying grant is valid and the run is live.
@@ -820,7 +888,7 @@ export type ModelsEndpoint = string | null;
  */
 export type SecretRef = string | null;
 export type ActionName = string;
-export type InvestigationId18 = string | null;
+export type InvestigationId19 = string | null;
 export type SourceComponentId = string;
 export type SurfaceId = string;
 
@@ -828,7 +896,6 @@ export type SurfaceId = string;
  * Generated from core/contracts/ by codegen/export_schemas.py. Do not edit by hand.
  */
 export interface PantheonContracts {
-  a2_u_i_client_capabilities?: A2UIClientCapabilities;
   a2_u_i_surface?: A2UISurface;
   access_request?: AccessRequest;
   action?: Action;
@@ -850,32 +917,16 @@ export interface PantheonContracts {
   verdict?: Verdict;
 }
 /**
- * What the client can render, declared once at run start.
- *
- * A2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI
- * defines no analog, so this is **Pantheon convention, not specification**: the
- * dashboard sends it in the AG-UI run input, and the agent is told what it may
- * emit before it emits anything.
- *
- * `components` is generated from A2UIComponentType, so what we advertise is
- * exactly what the renderer accepts - there is no second list to keep in step.
- */
-export interface A2UIClientCapabilities {
-  a2ui_version?: A2UiVersion;
-  catalog_id?: CatalogId;
-  components?: Components;
-}
-/**
  * A renderable surface, assembled by Pantheon rather than by an agent.
  *
  * Identity is set here, by the orchestrator, and never by the agent - A2UI
  * calls this out explicitly as an anti-impersonation measure.
  */
 export interface A2UISurface {
-  a2ui_version?: A2UiVersion1;
+  a2ui_version?: A2UiVersion;
   agent_display_name?: AgentDisplayName;
-  catalog_id?: CatalogId1;
-  components?: Components1;
+  catalog_id?: CatalogId;
+  components?: Components;
   data_model?: DataModel;
   icon_url?: IconUrl;
   id: Id1;
@@ -898,7 +949,7 @@ export interface A2UIComponent {
    */
   artifact_ref?: ArtifactRef | null;
   children?: Children;
-  component: A2UIComponentType1;
+  component: A2UIComponentType;
   data_path?: DataPath;
   id: Id;
   label?: Label;
@@ -1012,11 +1063,23 @@ export interface Parameters {
   [k: string]: unknown;
 }
 /**
- * What happened when an Action ran. Written once, never amended.
+ * What happened when an Action ran, and what let it. Written once, never amended.
+ *
+ * `decided_by` is required and cannot be empty. A receipt said what happened
+ * and never why it was allowed to: for a refusal the rule lived in an
+ * exception message, and for a success it was nowhere at all. "Why did this
+ * run" is the first question asked afterwards, and the record could not
+ * answer it.
+ *
+ * Required rather than defaulted, so a receipt that cannot say is
+ * unconstructible - a default would be filled in by the one call site that
+ * forgot, which is the site that most needed to say.
  */
 export interface ActionReceipt {
+  approval_id?: ApprovalId;
   at: At;
   connector: Connector;
+  decided_by: DecidedBy;
   detail?: Detail;
   lease_id?: LeaseId;
   state: ExecutionState1;
@@ -1065,6 +1128,11 @@ export interface AgentCapability {
  *
  * Attached to the Investigation, which agents can see - safe because every
  * reference here is a CredentialRef and never a value.
+ *
+ * FROZEN, and that is the whole of "immutable" above. The docstring said it
+ * for two phases while assignment worked fine, so an append-only log rested on
+ * a promise nothing enforced - and a trail that can be rewritten answers
+ * nothing. `tests/unit/test_audit_trail.py` plants the assignment.
  */
 export interface AuditEntry {
   action?: CredentialAction1;
@@ -1125,6 +1193,7 @@ export interface InvestigationStartedEvent {
  * A run reached a terminal state, successfully or not.
  */
 export interface InvestigationCompletedEvent {
+  completed_at?: CompletedAt;
   investigation_id: InvestigationId6;
   partial?: Partial;
   state: State;
@@ -1152,7 +1221,7 @@ export interface StepFinishedEvent {
  */
 export interface FindingProducedEvent {
   finding: Finding;
-  investigation_id: InvestigationId9;
+  investigation_id: InvestigationId10;
   type?: Type5;
 }
 /**
@@ -1166,6 +1235,7 @@ export interface Finding {
   id: Id7;
   kind?: FindingKind;
   rationale?: Rationale;
+  related?: Related;
   severity: Severity;
   /**
    * What the claim is about.
@@ -1270,8 +1340,18 @@ export interface K8SEventPayload {
 }
 /**
  * One CI pipeline run and the jobs that failed in it.
+ *
+ * `attempt_conclusions` is what lets a reader apply the definition of a flake
+ * for themselves: the same job at the same commit finishing two different
+ * ways is non-determinism, read off two recorded outcomes rather than
+ * inferred from one. Hephaestus fills it from every run it read at the
+ * commit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and
+ * from nothing else - not the title, not the tags, which are prose and
+ * labels. Before this field the verdict lived in a tag, the ranker could not
+ * see it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.
  */
 export interface PipelineRunPayload {
+  attempt_conclusions?: AttemptConclusions;
   commit_sha?: CommitSha;
   duration_seconds?: DurationSeconds;
   failed_jobs?: FailedJobs;
@@ -1280,6 +1360,59 @@ export interface PipelineRunPayload {
   project: Project;
   ref: Ref;
   status: Status;
+}
+/**
+ * A trend on a resource that has a limit, and when the trend crosses it.
+ *
+ * Three numbers and a statement about whether to trust them. `rate_per_hour`
+ * is a least-squares slope, which is what "rate" means; `time_to_limit_hours`
+ * is `(limit - current) / rate`, which is what "time to limit" means. Neither
+ * is a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried
+ * rather than thresholded away: a poor fit produces a Finding with a poor fit
+ * on it, not a suppressed one and not a confident one.
+ *
+ * `limit` is the metric's own limit - total bytes for a disk - and never a
+ * substitute. Eviction happens before full, and the kubelet's threshold is
+ * configuration this payload cannot read; projecting to it would be projecting
+ * against a number that means something else. `time_to_limit_hours` therefore
+ * reads as a latest-possible time, and the summary says "full".
+ *
+ * The samples are carried so the projection can be re-fitted by anything that
+ * disagrees with the method, and so a reader can see the trend rather than
+ * take the slope on trust.
+ */
+export interface CapacityForecastPayload {
+  current: Current;
+  fit_r2: FitR2;
+  kind?: Kind6;
+  limit: Limit;
+  metric: Metric1;
+  rate_per_hour: RatePerHour;
+  samples?: Samples1;
+  time_to_limit_hours?: TimeToLimitHours;
+  unit?: Unit1;
+  window_seconds?: WindowSeconds1;
+}
+/**
+ * An earlier investigation of the same alert on the same subject.
+ *
+ * Context for the person reading the run, and deliberately NOT evidence about
+ * the present: what a prior verdict concluded says nothing about what is
+ * happening now, and `hypotheses.rank` excludes a Finding whose evidence is
+ * only this kind. A ranker that let last Tuesday's verdict raise confidence
+ * in this Tuesday's would entrench the first mistake anybody made.
+ *
+ * `category` and `confidence` are the prior verdict's LEADING hypothesis, or
+ * absent when it had none - a run that ended UNKNOWN, or one still going.
+ */
+export interface PriorIncidentPayload {
+  category?: Category;
+  confidence?: Confidence1;
+  created_at: CreatedAt;
+  investigation_id: InvestigationId9;
+  kind?: Kind7;
+  partial?: Partial1;
+  state: State1;
 }
 /**
  * Where a piece of Evidence came from, so a human can go and look.
@@ -1294,7 +1427,7 @@ export interface EvidenceSource {
  */
 export interface HypothesisProposedEvent {
   hypothesis: RootCauseHypothesis;
-  investigation_id: InvestigationId10;
+  investigation_id: InvestigationId11;
   type?: Type6;
 }
 /**
@@ -1302,7 +1435,7 @@ export interface HypothesisProposedEvent {
  */
 export interface RootCauseHypothesis {
   category: RootCauseCategory;
-  confidence: Confidence1;
+  confidence: Confidence2;
   contradicting_finding_ids?: ContradictingFindingIds;
   id: Id8;
   proposed_by: ProposedBy1;
@@ -1316,7 +1449,7 @@ export interface RootCauseHypothesis {
  * The aggregator reached a conclusion.
  */
 export interface VerdictReadyEvent {
-  investigation_id: InvestigationId11;
+  investigation_id: InvestigationId12;
   type?: Type7;
   verdict: Verdict;
 }
@@ -1324,15 +1457,41 @@ export interface VerdictReadyEvent {
  * The orchestrator's ranked conclusion for one Investigation.
  */
 export interface Verdict {
-  confidence: Confidence2;
+  confidence: Confidence3;
   contributing_findings?: ContributingFindings;
   decided_at: DecidedAt;
+  dissent?: Dissent;
   hypotheses?: Hypotheses;
   id: Id9;
-  investigation_id: InvestigationId12;
+  investigation_id: InvestigationId13;
   recommended_actions?: RecommendedActions;
   steps: Steps;
   summary: Summary1;
+}
+/**
+ * Evidence from this run that pointed somewhere other than the leading claim.
+ *
+ * WHAT DISSENT CAN HONESTLY MEAN HERE
+ * -------------------------------------
+ * No agent votes. Argus reports that a series moved; Lethe reports what
+ * appeared in the logs. Neither states an opinion about a root cause, so
+ * "the agents disagreed" cannot be read off anything they said.
+ *
+ * What IS observable is that the run produced more than one candidate and the
+ * leading one does not account for all the evidence. A reader told "memory
+ * leak, confidence 0.65" has no way to know that two of the five findings
+ * pointed at disk exhaustion - and that omission is the difference between a
+ * conclusion and a summary of the majority.
+ *
+ * So a Dissent is a competing hypothesis, named, with **who reported the
+ * evidence for it**. "Somebody disagreed" is not actionable; "Argus's disk
+ * signal pointed elsewhere" is.
+ */
+export interface Dissent1 {
+  agents?: Agents;
+  category: RootCauseCategory1;
+  confidence: Confidence4;
+  finding_ids?: FindingIds;
 }
 /**
  * One agent consultation Zeus intends to make.
@@ -1350,14 +1509,14 @@ export interface PlanStep {
  */
 export interface ApprovalRequestedEvent {
   action: Action;
-  investigation_id: InvestigationId13;
+  investigation_id: InvestigationId14;
   type?: Type8;
 }
 /**
  * An agent asked Cerberus for a capability it has no standing grant for.
  */
 export interface AccessRequestedEvent {
-  investigation_id: InvestigationId14;
+  investigation_id: InvestigationId15;
   request: AccessRequest;
   type?: Type9;
 }
@@ -1371,7 +1530,7 @@ export interface AccessRequestedEvent {
  */
 export interface LeaseExpiredEvent {
   agent: Agent5;
-  investigation_id: InvestigationId15;
+  investigation_id: InvestigationId16;
   lease_id: LeaseId2;
   reason?: Reason4;
   type?: Type10;
@@ -1401,7 +1560,7 @@ export interface Grant {
   granted_at: GrantedAt;
   granted_by: GrantedBy;
   id: Id11;
-  investigation_id?: InvestigationId16;
+  investigation_id?: InvestigationId17;
   mode: PermissionMode;
   override_ask_default?: OverrideAskDefault;
   revoked_at?: RevokedAt;
@@ -1410,9 +1569,10 @@ export interface Grant {
  * One end-to-end run, from trigger to Verdict.
  */
 export interface Investigation {
+  accounting?: Accounting;
   audit?: Audit;
-  completed_at?: CompletedAt;
-  created_at: CreatedAt;
+  completed_at?: CompletedAt1;
+  created_at: CreatedAt1;
   findings?: Findings;
   hypotheses?: Hypotheses1;
   id: Id12;
@@ -1421,11 +1581,35 @@ export interface Investigation {
   scenario?: Scenario;
   started_at?: StartedAt1;
   state: InvestigationState;
+  tenant?: Tenant;
   trigger: Trigger;
   /**
    * Absent until the run reaches a conclusion.
    */
   verdict?: Verdict | null;
+}
+/**
+ * What one agent's step consumed, beside what it was allowed.
+ *
+ * EVERY FIGURE CARRIES ITS CEILING
+ * ----------------------------------
+ * "spent 16000 tokens" cannot answer the question anybody asks, which is
+ * whether that was close to the limit. 16000 of 16384 and 16000 of 200000 are
+ * different runs and the same number.
+ *
+ * Three resources because there are three ceilings on `AgentBudget`, and a
+ * breakdown missing one cannot explain a DEGRADED step that hit it. A run
+ * stopped by its token budget and one stopped by its clock look identical from
+ * the outside, and they are fixed differently.
+ */
+export interface AgentAccounting {
+  agent: Agent7;
+  second_ceiling?: SecondCeiling;
+  seconds?: Seconds;
+  token_ceiling?: TokenCeiling;
+  tokens_spent?: TokensSpent;
+  tool_call_ceiling?: ToolCallCeiling;
+  tool_calls?: ToolCalls;
 }
 /**
  * Why Delphi chose the model it chose, for one call.
@@ -1483,7 +1667,7 @@ export interface Lease {
   credential_ref: CredentialRef;
   expires_at: ExpiresAt1;
   id: Id14;
-  investigation_id: InvestigationId17;
+  investigation_id: InvestigationId18;
   issued_at: IssuedAt;
   renewable?: Renewable;
   renewed_count?: RenewedCount;
@@ -1513,7 +1697,7 @@ export interface ProviderConfig {
 export interface UIActionResponse {
   action_name: ActionName;
   context?: Context1;
-  investigation_id?: InvestigationId18;
+  investigation_id?: InvestigationId19;
   source_component_id: SourceComponentId;
   surface_id: SurfaceId;
 }

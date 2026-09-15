@@ -197,24 +197,18 @@ class A2UISurface(ContractModel):
     )
 
 
-class A2UIClientCapabilities(ContractModel):
-    """What the client can render, declared once at run start.
-
-    A2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI
-    defines no analog, so this is **Pantheon convention, not specification**: the
-    dashboard sends it in the AG-UI run input, and the agent is told what it may
-    emit before it emits anything.
-
-    `components` is generated from A2UIComponentType, so what we advertise is
-    exactly what the renderer accepts - there is no second list to keep in step.
-    """
-
-    catalog_id: str = Field(default=PANTHEON_CATALOG_ID)
-    a2ui_version: str = Field(default=A2UI_VERSION)
-    components: list[A2UIComponentType] = Field(
-        default_factory=lambda: list(A2UIComponentType),
-        description="Every component the renderer accepts.",
-    )
+# There is no client-capabilities model, and there was one.
+#
+# `A2UIClientCapabilities` said the dashboard sent it "in the AG-UI run input".
+# The only thing that ever built one was `dashboard/lib/agui/client.ts`, which
+# nothing imported and which POSTed to a route that never existed; nothing on
+# the server read one. A contract with no producer and no consumer is a claim
+# about a protocol, and this one described a protocol that did not exist.
+#
+# What a client actually declares is a list of component names in the
+# `X-A2UI-Components` header, checked by `api/agui/endpoint.py`. It needs no
+# model: it is `list[A2UIComponentType]`, parsed in one function. See the
+# amendment to ADR 0006.
 
 
 class UIActionResponse(ContractModel):

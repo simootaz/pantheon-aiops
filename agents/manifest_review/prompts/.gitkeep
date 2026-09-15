@@ -1,3 +1,13 @@
-# Aegis prompt templates.
+# Aegis prompt templates. Empty, and intended to stay that way.
+#
+# Aegis consults no model. Detection is one set difference over two manifests -
+# see agents/manifest_review/diff.py - and `Finding.rationale` is optional, so a
+# templated title plus real Evidence is a complete claim.
+#
+# The directory exists because tests/unit/test_repo_structure.py requires every
+# agent to ship one. The TODO that was here said "populate this directory",
+# which described work that must not happen: a prompt here would mean Aegis had
+# started deciding whether a change is WRONG, and it deliberately only reports
+# what a change takes away.
+#
 # Phase: 3 - Guardrails, Approvals & Write Actions
-# TODO: Phase 3 - populate this directory

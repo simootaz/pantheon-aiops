@@ -6,9 +6,6 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "a2_u_i_client_capabilities": {
-      "$ref": "#/$defs/A2UIClientCapabilities"
-    },
     "a2_u_i_surface": {
       "$ref": "#/$defs/A2UISurface"
     },
@@ -106,32 +103,6 @@
         }
       },
       "title": "A2UIAction",
-      "type": "object"
-    },
-    "A2UIClientCapabilities": {
-      "additionalProperties": false,
-      "description": "What the client can render, declared once at run start.\n\nA2UI carries this in A2A message metadata (`a2uiClientCapabilities`). AG-UI\ndefines no analog, so this is **Pantheon convention, not specification**: the\ndashboard sends it in the AG-UI run input, and the agent is told what it may\nemit before it emits anything.\n\n`components` is generated from A2UIComponentType, so what we advertise is\nexactly what the renderer accepts - there is no second list to keep in step.",
-      "properties": {
-        "a2ui_version": {
-          "default": "v0.9.1",
-          "title": "A2Ui Version",
-          "type": "string"
-        },
-        "catalog_id": {
-          "default": "pantheon.v1",
-          "title": "Catalog Id",
-          "type": "string"
-        },
-        "components": {
-          "description": "Every component the renderer accepts.",
-          "items": {
-            "$ref": "#/$defs/A2UIComponentType"
-          },
-          "title": "Components",
-          "type": "array"
-        }
-      },
-      "title": "A2UIClientCapabilities",
       "type": "object"
     },
     "A2UIComponent": {
@@ -508,8 +479,22 @@
     },
     "ActionReceipt": {
       "additionalProperties": false,
-      "description": "What happened when an Action ran. Written once, never amended.",
+      "description": "What happened when an Action ran, and what let it. Written once, never amended.\n\n`decided_by` is required and cannot be empty. A receipt said what happened\nand never why it was allowed to: for a refusal the rule lived in an\nexception message, and for a success it was nowhere at all. \"Why did this\nrun\" is the first question asked afterwards, and the record could not\nanswer it.\n\nRequired rather than defaulted, so a receipt that cannot say is\nunconstructible - a default would be filled in by the one call site that\nforgot, which is the site that most needed to say.",
       "properties": {
+        "approval_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The approval spent, when the rule required one. Null when it did not.",
+          "title": "Approval Id"
+        },
         "at": {
           "format": "date-time",
           "title": "At",
@@ -518,6 +503,12 @@
         "connector": {
           "description": "Which connector executed it.",
           "title": "Connector",
+          "type": "string"
+        },
+        "decided_by": {
+          "description": "The policy rule that produced the decision, whichever way it went.",
+          "minLength": 1,
+          "title": "Decided By",
           "type": "string"
         },
         "detail": {
@@ -547,9 +538,62 @@
       "required": [
         "at",
         "state",
-        "connector"
+        "connector",
+        "decided_by"
       ],
       "title": "ActionReceipt",
+      "type": "object"
+    },
+    "AgentAccounting": {
+      "additionalProperties": false,
+      "description": "What one agent's step consumed, beside what it was allowed.\n\nEVERY FIGURE CARRIES ITS CEILING\n----------------------------------\n\"spent 16000 tokens\" cannot answer the question anybody asks, which is\nwhether that was close to the limit. 16000 of 16384 and 16000 of 200000 are\ndifferent runs and the same number.\n\nThree resources because there are three ceilings on `AgentBudget`, and a\nbreakdown missing one cannot explain a DEGRADED step that hit it. A run\nstopped by its token budget and one stopped by its clock look identical from\nthe outside, and they are fixed differently.",
+      "properties": {
+        "agent": {
+          "description": "Codename, e.g. 'argus'.",
+          "title": "Agent",
+          "type": "string"
+        },
+        "second_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Second Ceiling",
+          "type": "integer"
+        },
+        "seconds": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "token_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Token Ceiling",
+          "type": "integer"
+        },
+        "tokens_spent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Spent",
+          "type": "integer"
+        },
+        "tool_call_ceiling": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Call Ceiling",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "AgentAccounting",
       "type": "object"
     },
     "AgentBudget": {
@@ -728,7 +772,7 @@
     },
     "AuditEntry": {
       "additionalProperties": false,
-      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.",
+      "description": "One immutable line in the credential audit log.\n\nAttached to the Investigation, which agents can see - safe because every\nreference here is a CredentialRef and never a value.\n\nFROZEN, and that is the whole of \"immutable\" above. The docstring said it\nfor two phases while assignment worked fine, so an append-only log rested on\na promise nothing enforced - and a trail that can be rewritten answers\nnothing. `tests/unit/test_audit_trail.py` plants the assignment.",
       "properties": {
         "action": {
           "$ref": "#/$defs/CredentialAction",
@@ -912,6 +956,87 @@
       "title": "Capability",
       "type": "string"
     },
+    "CapacityForecastPayload": {
+      "additionalProperties": false,
+      "description": "A trend on a resource that has a limit, and when the trend crosses it.\n\nThree numbers and a statement about whether to trust them. `rate_per_hour`\nis a least-squares slope, which is what \"rate\" means; `time_to_limit_hours`\nis `(limit - current) / rate`, which is what \"time to limit\" means. Neither\nis a judgement. `fit_r2` is where a forecaster gets to lie, so it is carried\nrather than thresholded away: a poor fit produces a Finding with a poor fit\non it, not a suppressed one and not a confident one.\n\n`limit` is the metric's own limit - total bytes for a disk - and never a\nsubstitute. Eviction happens before full, and the kubelet's threshold is\nconfiguration this payload cannot read; projecting to it would be projecting\nagainst a number that means something else. `time_to_limit_hours` therefore\nreads as a latest-possible time, and the summary says \"full\".\n\nThe samples are carried so the projection can be re-fitted by anything that\ndisagrees with the method, and so a reader can see the trend rather than\ntake the slope on trust.",
+      "properties": {
+        "current": {
+          "description": "The fitted value at the end of the window.",
+          "title": "Current",
+          "type": "number"
+        },
+        "fit_r2": {
+          "description": "Coefficient of determination of the fit.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Fit R2",
+          "type": "number"
+        },
+        "kind": {
+          "const": "capacity_forecast",
+          "default": "capacity_forecast",
+          "title": "Kind",
+          "type": "string"
+        },
+        "limit": {
+          "description": "The line being projected to. The metric's own, never a stand-in.",
+          "title": "Limit",
+          "type": "number"
+        },
+        "metric": {
+          "description": "What was fitted, e.g. a used/total ratio.",
+          "title": "Metric",
+          "type": "string"
+        },
+        "rate_per_hour": {
+          "description": "Least-squares slope over the window, in units per hour.",
+          "title": "Rate Per Hour",
+          "type": "number"
+        },
+        "samples": {
+          "items": {
+            "$ref": "#/$defs/MetricSample"
+          },
+          "title": "Samples",
+          "type": "array"
+        },
+        "time_to_limit_hours": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hours until the fitted line reaches `limit`. None when the trend does not reach it.",
+          "title": "Time To Limit Hours"
+        },
+        "unit": {
+          "default": "",
+          "description": "Unit of `current`, `limit` and the rate.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "window_seconds": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Window Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric",
+        "current",
+        "limit",
+        "rate_per_hour",
+        "fit_r2"
+      ],
+      "title": "CapacityForecastPayload",
+      "type": "object"
+    },
     "CredentialAction": {
       "description": "Read and write are separate grants.\n\nApproving read never implies write, mirroring the connector split between\ninternal/readonly and internal/write.\n\nNOT_APPLICABLE exists for audit entries that concern no single access -\nbreak-glass and rotation, for instance. It is meaningful only on AuditEntry;\na Grant, Lease or AccessRequest carrying it is invalid, and Phase 3\nvalidation rejects it.\n\nIt is also why AuditEntry.action is not simply nullable: a nullable enum\nemits `anyOf: [$ref, null]`, which go-jsonschema v0.24.1 turns into two\nconflicting UnmarshalJSON methods on the same Go type. Stating \"not\napplicable\" explicitly is clearer than an implicit null convention anyway.",
       "enum": [
@@ -1023,6 +1148,45 @@
       "title": "Dialect",
       "type": "string"
     },
+    "Dissent": {
+      "additionalProperties": false,
+      "description": "Evidence from this run that pointed somewhere other than the leading claim.\n\nWHAT DISSENT CAN HONESTLY MEAN HERE\n-------------------------------------\nNo agent votes. Argus reports that a series moved; Lethe reports what\nappeared in the logs. Neither states an opinion about a root cause, so\n\"the agents disagreed\" cannot be read off anything they said.\n\nWhat IS observable is that the run produced more than one candidate and the\nleading one does not account for all the evidence. A reader told \"memory\nleak, confidence 0.65\" has no way to know that two of the five findings\npointed at disk exhaustion - and that omission is the difference between a\nconclusion and a summary of the majority.\n\nSo a Dissent is a competing hypothesis, named, with **who reported the\nevidence for it**. \"Somebody disagreed\" is not actionable; \"Argus's disk\nsignal pointed elsewhere\" is.",
+      "properties": {
+        "agents": {
+          "description": "Codenames whose Findings support it. Named, because an unattributed disagreement is one nobody can follow up.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "category": {
+          "$ref": "#/$defs/RootCauseCategory",
+          "description": "What the dissenting evidence pointed at."
+        },
+        "confidence": {
+          "description": "The competing hypothesis's own confidence.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "finding_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Finding Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category",
+        "confidence"
+      ],
+      "title": "Dissent",
+      "type": "object"
+    },
     "EventEnvelope": {
       "additionalProperties": false,
       "description": "Transport wrapper carrying one event plus its correlation metadata.",
@@ -1129,11 +1293,13 @@
         "payload": {
           "discriminator": {
             "mapping": {
+              "capacity_forecast": "#/$defs/CapacityForecastPayload",
               "k8s_event": "#/$defs/K8sEventPayload",
               "log_cluster": "#/$defs/LogClusterPayload",
               "manifest_diff": "#/$defs/ManifestDiffPayload",
               "metric_window": "#/$defs/MetricWindowPayload",
-              "pipeline_run": "#/$defs/PipelineRunPayload"
+              "pipeline_run": "#/$defs/PipelineRunPayload",
+              "prior_incident": "#/$defs/PriorIncidentPayload"
             },
             "propertyName": "kind"
           },
@@ -1152,6 +1318,12 @@
             },
             {
               "$ref": "#/$defs/PipelineRunPayload"
+            },
+            {
+              "$ref": "#/$defs/CapacityForecastPayload"
+            },
+            {
+              "$ref": "#/$defs/PriorIncidentPayload"
             }
           ],
           "title": "Payload"
@@ -1294,6 +1466,15 @@
           "default": null,
           "description": "Why the Evidence supports the claim.",
           "title": "Rationale"
+        },
+        "related": {
+          "description": "Other Findings this one connects. Populated on a CORRELATION; empty elsewhere, because a detector states what it saw and does not decide what else it belongs with.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Related",
+          "type": "array"
         },
         "severity": {
           "$ref": "#/$defs/Severity"
@@ -1535,6 +1716,14 @@
       "additionalProperties": false,
       "description": "One end-to-end run, from trigger to Verdict.",
       "properties": {
+        "accounting": {
+          "description": "What each agent consumed against what it was allowed. One entry per dispatched step, including the steps that degraded - a run that exhausted its budget is the one anybody asks about.",
+          "items": {
+            "$ref": "#/$defs/AgentAccounting"
+          },
+          "title": "Accounting",
+          "type": "array"
+        },
         "audit": {
           "description": "Cerberus credential audit for this run. Safe to expose: every credential here is a CredentialRef, never a value.",
           "items": {
@@ -1626,6 +1815,13 @@
         "state": {
           "$ref": "#/$defs/InvestigationState"
         },
+        "tenant": {
+          "default": "default",
+          "description": "Who this run belongs to. Never empty - see api/auth/dependencies.py.",
+          "minLength": 1,
+          "title": "Tenant",
+          "type": "string"
+        },
         "trigger": {
           "$ref": "#/$defs/Trigger"
         },
@@ -1655,6 +1851,20 @@
       "additionalProperties": false,
       "description": "A run reached a terminal state, successfully or not.",
       "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the row was closed. Carried so a client following the stream can patch it in; the envelope's emitted_at is when the event left, which is later.",
+          "title": "Completed At"
+        },
         "investigation_id": {
           "format": "uuid",
           "title": "Investigation Id",
@@ -2286,8 +2496,16 @@
     },
     "PipelineRunPayload": {
       "additionalProperties": false,
-      "description": "One CI pipeline run and the jobs that failed in it.",
+      "description": "One CI pipeline run and the jobs that failed in it.\n\n`attempt_conclusions` is what lets a reader apply the definition of a flake\nfor themselves: the same job at the same commit finishing two different\nways is non-determinism, read off two recorded outcomes rather than\ninferred from one. Hephaestus fills it from every run it read at the\ncommit; `core/orchestrator/hypotheses.py` names `FLAKY_TEST` from it and\nfrom nothing else - not the title, not the tags, which are prose and\nlabels. Before this field the verdict lived in a tag, the ranker could not\nsee it, and a CI run ended UNKNOWN beside a Finding that said FLAKE.",
       "properties": {
+        "attempt_conclusions": {
+          "description": "Conclusion of every recorded run of the failed job at `commit_sha`, in run order. Two distinct values is a flake by definition. Empty when the payload is not a triage.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Attempt Conclusions",
+          "type": "array"
+        },
         "commit_sha": {
           "anyOf": [
             {
@@ -2412,6 +2630,73 @@
         "reason"
       ],
       "title": "PlanStep",
+      "type": "object"
+    },
+    "PriorIncidentPayload": {
+      "additionalProperties": false,
+      "description": "An earlier investigation of the same alert on the same subject.\n\nContext for the person reading the run, and deliberately NOT evidence about\nthe present: what a prior verdict concluded says nothing about what is\nhappening now, and `hypotheses.rank` excludes a Finding whose evidence is\nonly this kind. A ranker that let last Tuesday's verdict raise confidence\nin this Tuesday's would entrench the first mistake anybody made.\n\n`category` and `confidence` are the prior verdict's LEADING hypothesis, or\nabsent when it had none - a run that ended UNKNOWN, or one still going.",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The prior verdict's leading root-cause category, if any.",
+          "title": "Category"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "investigation_id": {
+          "format": "uuid",
+          "title": "Investigation Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "prior_incident",
+          "default": "prior_incident",
+          "title": "Kind",
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "description": "Whether a step of the prior run reported being unable to look.",
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "The prior run's InvestigationState, as it stands now.",
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "investigation_id",
+        "created_at",
+        "state"
+      ],
+      "title": "PriorIncidentPayload",
       "type": "object"
     },
     "ProviderConfig": {
@@ -2952,6 +3237,14 @@
           "format": "date-time",
           "title": "Decided At",
           "type": "string"
+        },
+        "dissent": {
+          "description": "Candidates the leading hypothesis does not account for. Empty when the run was unanimous OR when nothing led - see the validator below.",
+          "items": {
+            "$ref": "#/$defs/Dissent"
+          },
+          "title": "Dissent",
+          "type": "array"
         },
         "hypotheses": {
           "description": "Ranked most-likely first. Empty means no explanation was reached, which is a legitimate outcome and must not be dressed up as one.",

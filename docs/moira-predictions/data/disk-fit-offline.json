@@ -1,0 +1,98 @@
+{
+  "produced_by": "scratchpad/moira_capture.py, fitting simulator.metrics_generator directly",
+  "captured_at": "2026-09-14T21:32:11+00:00",
+  "step_seconds": 600,
+  "lookback_hours": 24.0,
+  "horizon_hours": 72.0,
+  "note": "Simulated time. Under `make test-sim` at speed N, Prometheus sees these rates multiplied by N and these hours divided by N.",
+  "fits": [
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 54.0,
+      "samples": 325,
+      "rate_per_hour": 0.009034216650472762,
+      "r2": 0.9990565397522366,
+      "current": 0.8292603963797031,
+      "time_to_limit_hours": 18.899215087050422,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.5,
+      "window_hours": 24.0,
+      "samples": 145,
+      "rate_per_hour": 0.008715297079822581,
+      "r2": 0.998260413133539,
+      "current": 0.6083754516046149,
+      "time_to_limit_hours": 44.93530682988003,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 24.0,
+      "samples": 145,
+      "rate_per_hour": 0.008560258190398337,
+      "r2": 0.9963897803226415,
+      "current": 0.8244993183634849,
+      "time_to_limit_hours": 20.50179769500019,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "memory_leak",
+      "window_ends_at_progress": 1.0,
+      "window_hours": 24.0,
+      "samples": 145,
+      "rate_per_hour": 0.000209276585188277,
+      "r2": 0.32369983949341796,
+      "current": 0.3431275030197616,
+      "time_to_limit_hours": 3138.776831575682,
+      "crossing_within_horizon": false
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 6.0,
+      "samples": 37,
+      "rate_per_hour": 0.010734590212929754,
+      "r2": 0.9947945536782742,
+      "current": 0.8300215037369939,
+      "time_to_limit_hours": 15.834651616068953,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 12.0,
+      "samples": 73,
+      "rate_per_hour": 0.008699979785411732,
+      "r2": 0.9864591208124023,
+      "current": 0.8238563235603854,
+      "time_to_limit_hours": 20.246446633700824,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 18.0,
+      "samples": 109,
+      "rate_per_hour": 0.00828214547081102,
+      "r2": 0.9930454030984807,
+      "current": 0.8223429510891246,
+      "time_to_limit_hours": 21.45060715692531,
+      "crossing_within_horizon": true
+    },
+    {
+      "scenario": "disk_pressure",
+      "window_ends_at_progress": 0.9,
+      "window_hours": 36.0,
+      "samples": 217,
+      "rate_per_hour": 0.009023885037063148,
+      "r2": 0.997165870104334,
+      "current": 0.828668554173326,
+      "time_to_limit_hours": 18.986439335494282,
+      "crossing_within_horizon": true
+    }
+  ]
+}
